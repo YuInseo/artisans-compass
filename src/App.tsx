@@ -1,0 +1,206 @@
+import { useEffect, useState } from 'react';
+
+
+
+import { AppLayout } from '@/components/layout/AppLayout';
+import { TimelineSection } from '@/components/dashboard/TimelineSection';
+import { CalendarNav } from '@/components/dashboard/CalendarNav';
+import { DailyPanel } from '@/components/dashboard/DailyPanel';
+import { ClosingRitualModal } from '@/components/dashboard/ClosingRitualModal';
+import { InspirationModal } from '@/components/dashboard/InspirationModal';
+import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { DailyArchiveModal } from '@/components/dashboard/DailyArchiveModal';
+import { format, addDays } from 'date-fns';
+import { ThemeProvider } from "@/components/theme-provider"
+import { SettingsModal } from '@/components/settings-modal';
+import { Todo, Project } from "@/types";
+import { useDataStore } from "@/hooks/useDataStore";
+
+// Placeholder for List View (can be moved to separate file later)
+import { ProjectList } from '@/components/dashboard/ProjectList';
+
+function App() {
+  // Prevent Refresh (Ctrl+R, F5)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+        e.preventDefault();
+      }
+      if (e.key === 'F5') {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+  const { settings, saveSettings, loading, projects } = useDataStore();
+  const [isRitualOpen, setIsRitualOpen] = useState(false);
+  const [showInspiration, setShowInspiration] = useState(true);
+  const [currentStats, setCurrentStats] = useState({ totalSeconds: 0, questAchieved: false, screenshotCount: 0 });
+
+  // Archive State
+  const [isArchiveOpen, setIsArchiveOpen] = useState(false);
+  const [archiveDate, setArchiveDate] = useState<Date>(new Date());
+  const [lastSessionTodos, setLastSessionTodos] = useState<Todo[]>([]);
+  const [viewMode, setViewMode] = useState<'timeline' | 'list'>('timeline');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [focusedProject, setFocusedProject] = useState<Project | null>(null);
+
+  // Navigation Signal State
+  const [navigationSignal, setNavigationSignal] = useState<{ date: Date, timestamp: number } | null>(null);
+
+  const handleNavigate = (date: Date) => {
+    setNavigationSignal({ date, timestamp: Date.now() });
+  };
+
+  // Calculate dynamic timeline height: (Rows * RowHeight) + HeaderHeight (+ buffer)
+  // RowHeight = 50 (40 bar + 10 gap), Header = 32. 
+  const rowCount = settings?.visibleProjectRows || 3;
+  const timelineHeight = (rowCount * 50) + 33; // +33 for header border
+
+  // Poll for stats when opening modal (or just keep them in sync via IPC)
+  const handleOpenRitual = async (todos: Todo[] = []) => {
+    // ... existing ...
+    setLastSessionTodos(todos);
+    // Fetch today's stats from IPC or store
+    if ((window as any).ipcRenderer) {
+      const now = new Date();
+      const yearMonth = format(now, 'yyyy-MM');
+      const dateStr = format(now, 'yyyy-MM-dd');
+      const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
+      const todayLog = logs[dateStr];
+
+      if (todayLog) {
+        // Calculate total seconds from sessions
+        const totalSeconds = todayLog.sessions ? todayLog.sessions.reduce((acc: number, s: any) => acc + s.duration, 0) : 0;
+        setCurrentStats({
+          totalSeconds,
+          questAchieved: todayLog.quest_cleared || false,
+          screenshotCount: todayLog.screenshots?.length || 0
+        });
+      }
+    }
+    setIsRitualOpen(true);
+  };
+
+  const handleSaveLog = async (plan: string) => {
+    // ... existing ...
+    const now = new Date();
+    const tomorrow = addDays(now, 1);
+    const yearMonth = format(now, 'yyyy-MM');
+    // Handle month boundary for tomorrow's log? 
+    const tmrYearMonth = format(tomorrow, 'yyyy-MM');
+    const dateStr = format(now, 'yyyy-MM-dd');
+    const tmrDateStr = format(tomorrow, 'yyyy-MM-dd');
+
+    // Parse Plan into Todos
+    const newTodos: Todo[] = plan
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .map((text, i) => ({
+        id: `${Date.now()}-${i}`,
+        text: text.replace(/^- [ ] /, '').replace(/^- /, ''), // Remove markdown checkbox/bullet if present
+        completed: false
+      }));
+
+    if ((window as any).ipcRenderer) {
+      // 1. Save Today's Log (Closing Note, Quest Cleared)
+      const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
+      if (!logs[dateStr]) logs[dateStr] = {};
+
+      logs[dateStr].closingNote = plan;
+      logs[dateStr].todos = lastSessionTodos;
+      logs[dateStr].quest_cleared = true;
+
+      await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
+
+      // 2. Save Tomorrow's Todos (Handle Month Boundary)
+      if (yearMonth === tmrYearMonth) {
+        if (!logs[tmrDateStr]) logs[tmrDateStr] = {};
+        const existingTodos = logs[tmrDateStr].todos || [];
+        logs[tmrDateStr].todos = [...existingTodos, ...newTodos];
+        await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
+      } else {
+        // Different month
+        const tmrLogs = await (window as any).ipcRenderer.getMonthlyLog(tmrYearMonth);
+        if (!tmrLogs[tmrDateStr]) tmrLogs[tmrDateStr] = {};
+        const existingTodos = tmrLogs[tmrDateStr].todos || [];
+        tmrLogs[tmrDateStr].todos = [...existingTodos, ...newTodos];
+        await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth: tmrYearMonth, data: tmrLogs });
+      }
+
+      console.log("Day ended. Plan saved & parsed to tomorrow:", newTodos);
+    }
+    setIsRitualOpen(false);
+  };
+
+  const handleDateSelect = (date: Date) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const selected = new Date(date);
+    selected.setHours(0, 0, 0, 0);
+
+    if (selected.getTime() < today.getTime()) {
+      setArchiveDate(date);
+      setIsArchiveOpen(true);
+    }
+  };
+
+  if (loading) return null;
+
+  return (
+    <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+      {settings && !settings.hasCompletedOnboarding && !loading && (
+        <OnboardingWizard
+          isOpen={true}
+          onComplete={() => saveSettings({ ...settings, hasCompletedOnboarding: true })}
+        />
+      )}
+      <InspirationModal
+        isOpen={showInspiration}
+        onClose={() => setShowInspiration(false)}
+      />
+      <AppLayout
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        timelineHeight={timelineHeight}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        focusedProject={focusedProject}
+        onFocusProject={setFocusedProject}
+        timeline={
+          viewMode === 'timeline'
+            ? <TimelineSection searchQuery={searchQuery} focusedProject={focusedProject} navigationSignal={navigationSignal} />
+            : <ProjectList searchQuery={searchQuery} />
+        }
+        calendar={<CalendarNav onSelect={handleDateSelect} focusedProject={focusedProject} onNavigate={handleNavigate} navigationSignal={navigationSignal} />}
+        dailyPanel={<DailyPanel onEndDay={handleOpenRitual} projects={projects} />}
+      />
+      <ClosingRitualModal
+        isOpen={isRitualOpen}
+        onClose={() => setIsRitualOpen(false)}
+        currentStats={currentStats}
+        onSaveLog={handleSaveLog}
+        projects={projects}
+        sessions={currentStats.totalSeconds ? [{ duration: currentStats.totalSeconds, process: "Focus Session", timestamp: Date.now() }] : []}
+      />
+      <DailyArchiveModal
+        isOpen={isArchiveOpen}
+        onClose={() => setIsArchiveOpen(false)}
+        date={archiveDate}
+        onDateChange={setArchiveDate}
+      />
+      <SettingsModal
+        open={isSettingsOpen}
+        onOpenChange={setIsSettingsOpen}
+        settings={settings}
+        onSaveSettings={saveSettings}
+      />
+    </ThemeProvider >
+  );
+}
+
+export default App;

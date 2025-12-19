@@ -1,0 +1,110 @@
+/* BlockNote Theme Overrides to match App Theme */
+:root {
+    --bn-colors-editor-text: hsl(var(--foreground));
+    --bn-colors-editor-background: transparent;
+
+    --bn-colors-menu-text: hsl(var(--popover-foreground));
+    --bn-colors-menu-background: hsl(var(--popover));
+
+    --bn-colors-tooltip-text: hsl(var(--popover-foreground));
+    --bn-colors-tooltip-background: hsl(var(--popover));
+
+    --bn-colors-hovered-text: hsl(var(--accent-foreground));
+    --bn-colors-hovered-background: hsl(var(--accent));
+
+    --bn-colors-selected-text: hsl(var(--accent-foreground));
+    --bn-colors-selected-background: hsl(var(--accent));
+
+    --bn-colors-disabled-text: hsl(var(--muted-foreground));
+    --bn-colors-disabled-background: hsl(var(--muted));
+
+    --bn-colors-shadow: hsl(var(--border));
+    --bn-colors-border: hsl(var(--border));
+
+    --bn-colors-side-menu: hsl(var(--muted-foreground));
+
+    --bn-border-radius: var(--radius);
+    --bn-font-family: var(--font-sans, "Inter", sans-serif);
+}
+
+.dark {
+    --bn-colors-editor-background: transparent;
+}
+
+.bn-editor {
+    /* 기존의 max-content는 지우세요 */
+    /* max-width: max-content; (삭제) */
+
+    /* 부모(가운데 컬럼)의 너비를 가득 채우되 넘지 않음 */
+    width: 100%;
+    max-width: 100%;
+
+    /* 긴 단어나 URL이 있을 때 강제로 줄바꿈 */
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+
+    /* 테두리나 패딩 때문에 튀어나가는 것 방지 */
+    box-sizing: border-box;
+
+    /* 배경/색상은 기존 유지 */
+    background-color: transparent !important;
+    color: hsl(var(--foreground)) !important;
+}
+
+/* Placeholder Styling */
+.bn-editor .bn-block-content.bn-is-empty::before,
+.bn-editor p.is-empty::before,
+.bn-editor .is-empty::before {
+    color: hsl(var(--muted-foreground)) !important;
+    opacity: 1 !important;
+    -webkit-text-fill-color: hsl(var(--muted-foreground)) !important;
+}
+
+/* Ensure Input Text Color & Overflow Protection */
+.bn-editor,
+.bn-editor p,
+.bn-editor div,
+.bn-block-content {
+    color: hsl(var(--foreground)) !important;
+    -webkit-text-fill-color: hsl(var(--foreground));
+
+    /* Text Wrapping Fixes */
+    max-width: 100%;
+    word-break: break-word;
+    /* Prevent overflow */
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+}
+
+.bn-side-menu .bn-button {
+    color: var(--bn-colors-side-menu);
+}
+
+/* Hide indentation lines via border color */
+.bn-block-group {
+    border-color: hsl(var(--border));
+}
+
+/* Context Menu Styling */
+.bn-menu-dropdown {
+    border: 1px solid hsl(var(--border));
+    background-color: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+}
+
+/* Journey Log Theme (Read-Only context) */
+.journey-log-theme .bn-editor {
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+/* Daily Focus Theme (Editable context) */
+.daily-focus-theme .bn-editor {
+    padding-left: 3rem !important;
+    /* Space for drag handle */
+}
+
+/* Min height for empty blocks */
+.bn-editor .bn-block-content {
+    min-height: 1.5em;
+}
