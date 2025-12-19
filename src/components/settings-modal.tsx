@@ -19,7 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
-import { X, Cloud, Check, ExternalLink, Moon, Sun, Monitor, Eye, EyeOff } from "lucide-react";
+import { X, Cloud, Check, Moon, Sun, Monitor, Eye, EyeOff } from "lucide-react";
 import { AppSettings } from "@/types"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"

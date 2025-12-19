@@ -72,22 +72,28 @@
   "main": "dist-electron/main.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME"
+    "url": "https://github.com/YuInseo/artisans-compass"
   },
   "build": {
     "appId": "com.artisans.compass",
     "productName": "Artisans Compass",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*"
+    ],
     "publish": [
       {
         "provider": "github",
-        "owner": "YOUR_GITHUB_USERNAME",
-        "repo": "YOUR_REPO_NAME"
+        "owner": "YuInseo",
+        "repo": "artisans-compass"
       }
     ],
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,

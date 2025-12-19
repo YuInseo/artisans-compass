@@ -24,7 +24,7 @@ interface AppLayoutProps {
     onFocusProject: (project: Project | null) => void;
 }
 
-export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewModeChange, onOpenSettings, timelineHeight = 150, searchQuery, onSearchChange, focusedProject, onFocusProject }: AppLayoutProps) {
+export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, searchQuery, onSearchChange, focusedProject: _focusedProject, onFocusProject }: AppLayoutProps) {
     const { projects, saveProjects, saveSettings, settings, isWidgetMode } = useDataStore();
     const [isSidebarOpen, setIsSidebarOpen] = useState(true);
     const [sidebarWidth, setSidebarWidth] = useState(400);
@@ -302,7 +302,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
             {!isWidgetMode && (
                 <div
                     className="mt-10 shrink-0 border-b border-border bg-background transition-all duration-300 ease-in-out"
-                    style={{ height: timelineHeight }}
+                    style={{ height: _timelineHeight }}
                 >
                     {showFocusGoals ? (
                         <FocusGoalsSection />

@@ -2,7 +2,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Swords, Target, Home, ArrowLeft, Check, Plus, AlertTriangle, Flame, FlameIcon, FlameKindlingIcon } from "lucide-react";
+import { Swords, Target, Home, ArrowLeft, Check, Plus, AlertTriangle } from "lucide-react";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useTimelineStore } from "@/hooks/useTimelineStore";
 import { useQuestStore } from "@/hooks/useQuestStore";

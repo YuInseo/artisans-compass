@@ -11,7 +11,7 @@ interface ProjectListProps {
     searchQuery?: string;
 }
 
-export function ProjectList({ searchQuery = "" }: ProjectListProps) {
+export function ProjectList({ searchQuery: _searchQuery = "" }: ProjectListProps) {
     const { projects, saveProjects } = useDataStore();
     const [editingProject, setEditingProject] = useState<Project | null>(null);
 

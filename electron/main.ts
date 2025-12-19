@@ -15,35 +15,50 @@ process.env.APP_ROOT = path.join(__dirname, '..')
 
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
-export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+
+// Note: RENDERER_DIST will be resolved at runtime in createWindow
+let RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
 
 function createWindow() {
+  // Resolve correct dist path at runtime
+  if (app.isPackaged) {
+    RENDERER_DIST = path.join(process.resourcesPath, 'app.asar', 'dist')
+    process.env.VITE_PUBLIC = RENDERER_DIST
+  }
+
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
     titleBarStyle: 'hidden',
     width: 1500,
     height: 900,
-    transparent: true, // Enable transparency
-    frame: false, // Ensure frameless for transparency to work reliably
+    show: false, // Don't show until ready
+    backgroundColor: '#1a1a1a', // Fallback background color
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
     },
   })
 
+  // Show window when ready to prevent white flash
+  win.once('ready-to-show', () => {
+    win?.show();
+  });
+
   win.webContents.on('did-finish-load', () => {
     win?.webContents.send('main-process-message', (new Date).toLocaleString())
   })
 
-  // Enable DevTools
+  // Enable DevTools for debugging
   win.webContents.openDevTools();
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
   } else {
+    // Log the path for debugging
+    console.log('[Main] Loading:', path.join(RENDERER_DIST, 'index.html'));
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
 }

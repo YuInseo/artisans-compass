@@ -239,7 +239,7 @@ export const useTodoStore = create<TodoStore>()(
                 saveToIPC(newProjectTodos);
             },
 
-            moveTodo: (activeId, overId) => {
+            moveTodo: (_activeId, _overId) => {
                 // Keep implementation minimal for now
             },
 

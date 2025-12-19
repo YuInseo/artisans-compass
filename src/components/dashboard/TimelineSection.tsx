@@ -19,7 +19,7 @@ interface TimelineSectionProps {
     navigationSignal?: { date: Date, timestamp: number } | null;
 }
 
-export function TimelineSection({ searchQuery = "", focusedProject, navigationSignal }: TimelineSectionProps) {
+export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject, navigationSignal }: TimelineSectionProps) {
     const { projects, saveProjects } = useDataStore();
     const {
         selectedIds,
