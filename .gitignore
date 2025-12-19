@@ -32,3 +32,6 @@ dist-electron
 
 # Test files
 test
+
+# Subprojects
+landing-site
