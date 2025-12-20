@@ -1,41 +1,63 @@
 import { ReactNode, useState, useCallback, useEffect } from 'react';
 import { FocusGoalsSection } from "../dashboard/FocusGoalsSection";
 import { Button } from "@/components/ui/button";
-import { GanttChartSquare, Settings, Minus, Square, X, Plus, Eye, Search, ArrowUpCircle } from "lucide-react";
+import { GanttChartSquare, Settings, Minus, Square, X, Plus, Eye, Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/hooks/useDataStore";
 import { v4 as uuidv4 } from 'uuid';
 import { format, addDays } from "date-fns";
-import { OnboardingOverlay } from "@/components/onboarding-overlay";
+
+import { UpdateChecker } from "./UpdateChecker";
 import { Project } from "@/types";
 
+
 interface AppLayoutProps {
-    timeline: ReactNode; // This prop might be unused if we render TimelineSection directly here, but let's keep it for compatibility if passed
+    timeline: ReactNode;
     calendar: ReactNode;
     dailyPanel: ReactNode;
     viewMode: 'timeline' | 'list';
     onViewModeChange: (mode: 'timeline' | 'list') => void;
     onOpenSettings: () => void;
     timelineHeight?: number;
-    searchQuery: string;
-    onSearchChange: (query: string) => void;
+
     focusedProject: Project | null;
     onFocusProject: (project: Project | null) => void;
+
+    // Responsive Props
+    isSidebarOpen: boolean;
+    setIsSidebarOpen: (isOpen: boolean) => void;
 }
 
-export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, searchQuery, onSearchChange, focusedProject: _focusedProject, onFocusProject }: AppLayoutProps) {
-    const { projects, saveProjects, saveSettings, settings, isWidgetMode } = useDataStore();
-    const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject: _focusedProject, onFocusProject, isSidebarOpen, setIsSidebarOpen }: AppLayoutProps) {
+    const { projects, saveProjects, saveSettings, settings, isWidgetMode, searchQuery, setSearchQuery, addToHistory } = useDataStore();
+    // const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Lifted to App.tsx
     const [sidebarWidth, setSidebarWidth] = useState(400);
     const [isResizing, setIsResizing] = useState(false);
     const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
+    const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'date', direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+
     // Filter projects for suggestions
-    const matchingProjects = searchQuery.trim()
-        ? projects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase().trim()))
-        : [];
+    const filteredProjects = projects.filter(p =>
+        !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase().trim())
+    );
+
+    const sortedProjects = [...filteredProjects].sort((a, b) => {
+        if (sortConfig.key === 'name') {
+            return sortConfig.direction === 'asc'
+                ? a.name.localeCompare(b.name)
+                : b.name.localeCompare(a.name);
+        } else {
+            // Date Sort (Start Date)
+            const dateA = new Date(a.startDate).getTime();
+            const dateB = new Date(b.startDate).getTime();
+            return sortConfig.direction === 'asc'
+                ? dateA - dateB
+                : dateB - dateA;
+        }
+    });
 
     // Resize Handler
     const startResizing = useCallback((mouseDownEvent: React.MouseEvent) => {
@@ -91,7 +113,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
     // If viewMode === 'list': Show ProjectList 
     // timeline={viewMode === 'list' ? <ProjectList ... /> : <TimelineSection ... />}
 
-    const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+    const [_, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
 
     useEffect(() => {
         const handleResize = () => setWindowWidth(window.innerWidth);
@@ -99,8 +121,8 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
         return () => window.removeEventListener('resize', handleResize);
     }, []);
 
-    // Only switch to Focus Goals (hiding timeline) if screen is smaller than 1350px
-    const showFocusGoals = !isSidebarOpen && viewMode === 'timeline' && windowWidth < 1350;
+    // Show Focus Goals when sidebar is closed in timeline mode (regardless of screen size)
+    const showFocusGoals = !isSidebarOpen && viewMode === 'timeline';
 
     return (
         <div className={cn("flex flex-col h-screen w-screen text-foreground overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
@@ -132,7 +154,10 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                     className="w-full h-8 pl-9 pr-4 text-sm font-medium bg-background border border-border/50 rounded-full focus:border-blue-500/30 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all placeholder:text-muted-foreground/50"
                                     placeholder="Search projects..."
                                     value={searchQuery}
-                                    onChange={(e) => onSearchChange(e.target.value)}
+                                    onChange={(e) => {
+                                        setSearchQuery(e.target.value);
+                                        if (!e.target.value) onFocusProject(null);
+                                    }}
                                     onBlur={() => {
                                         if (!searchQuery.trim()) {
                                             setTimeout(() => setIsMobileSearchOpen(false), 200);
@@ -146,7 +171,8 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                 className="h-7 w-7 p-0 ml-2 text-muted-foreground hover:text-foreground"
                                 onClick={() => {
                                     setIsMobileSearchOpen(false);
-                                    onSearchChange('');
+                                    setSearchQuery('');
+                                    onFocusProject(null);
                                 }}
                             >
                                 <X className="w-4 h-4" />
@@ -161,35 +187,96 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                         <div className="relative group">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-blue-500 transition-colors" />
                             <input
-                                className="w-full h-9 pl-9 pr-4 text-sm font-medium bg-background/50 border border-border/50 rounded-full focus:bg-background focus:border-blue-500/30 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all placeholder:text-muted-foreground/50 shadow-sm hover:bg-background/80"
+                                className="w-full h-9 pl-9 pr-9 text-sm font-medium bg-background/50 border border-border/50 rounded-full focus:bg-background focus:border-blue-500/30 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all placeholder:text-muted-foreground/50 shadow-sm hover:bg-background/80"
                                 placeholder="Search projects..."
                                 value={searchQuery}
-                                onChange={(e) => onSearchChange(e.target.value)}
+                                onChange={(e) => {
+                                    setSearchQuery(e.target.value);
+                                    if (!e.target.value) onFocusProject(null);
+                                    if (!isSearchFocused) setIsSearchFocused(true);
+                                }}
                                 onFocus={() => setIsSearchFocused(true)}
                                 onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                             />
 
+                            {searchQuery && (
+                                <button
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5 hover:bg-muted/50 rounded-full transition-colors"
+                                    onClick={() => {
+                                        setSearchQuery('');
+                                        setIsSearchFocused(false);
+                                        onFocusProject(null);
+                                    }}
+                                    tabIndex={-1}
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            )}
+
                             {/* Suggestions Dropdown */}
-                            {isSearchFocused && matchingProjects.length > 0 && (
-                                <div className="absolute top-full left-0 right-0 mt-2 bg-popover/95 backdrop-blur-md border border-border shadow-2xl rounded-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col max-h-[300px] overflow-y-auto custom-scrollbar">
-                                    <div className="px-3 py-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider bg-muted/50 border-b border-border">Suggestions</div>
-                                    {matchingProjects.map(project => (
-                                        <div
-                                            key={project.id}
-                                            className="px-4 py-2.5 hover:bg-accent hover:text-accent-foreground cursor-pointer flex items-center justify-between group transition-colors"
-                                            onClick={() => {
-                                                onSearchChange(project.name);
-                                                onFocusProject(project);
-                                                setIsSearchFocused(false);
-                                            }}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <div className={cn("w-2 h-2 rounded-full", project.type === 'Main' ? "bg-blue-500" : project.type === 'Sub' ? "bg-green-500" : "bg-orange-500")} />
-                                                <span className="text-sm font-medium">{project.name}</span>
-                                            </div>
-                                            <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">Jump to Project</span>
+                            {isSearchFocused && (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-popover/95 backdrop-blur-md border border-border shadow-2xl rounded-xl overflow-hidden animate-in fade-in zoom-in-95 duration-100 flex flex-col max-h-[400px]">
+                                    {/* Sort Controls Header */}
+                                    <div className="px-3 py-2 bg-muted/50 border-b border-border flex items-center justify-between shrink-0">
+                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                                            {searchQuery.trim() ? "Results" : "All Projects"}
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                className={`text-[10px] uppercase font-bold tracking-wider hover:text-foreground transition-colors ${sortConfig.key === 'name' ? 'text-primary' : 'text-muted-foreground'}`}
+                                                onMouseDown={(e) => e.preventDefault()}
+                                                onClick={() => setSortConfig(prev => ({ key: 'name', direction: prev.key === 'name' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
+                                            >
+                                                Name {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                            </button>
+                                            <div className="w-px h-3 bg-border" />
+                                            <button
+                                                className={`text-[10px] uppercase font-bold tracking-wider hover:text-foreground transition-colors ${sortConfig.key === 'date' ? 'text-primary' : 'text-muted-foreground'}`}
+                                                onMouseDown={(e) => e.preventDefault()}
+                                                onClick={() => setSortConfig(prev => ({ key: 'date', direction: prev.key === 'date' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
+                                            >
+                                                Date {sortConfig.key === 'date' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
+                                            </button>
                                         </div>
-                                    ))}
+                                    </div>
+
+                                    <div className="overflow-y-auto custom-scrollbar flex-1">
+                                        {sortedProjects.length > 0 ? (
+                                            sortedProjects.map(project => (
+                                                <div
+                                                    key={project.id}
+                                                    className="px-4 py-3 hover:bg-accent hover:text-accent-foreground cursor-pointer flex items-center justify-between group transition-colors border-b border-border/40 last:border-0"
+                                                    onMouseDown={(e) => {
+                                                        // Prevent blur before click
+                                                        e.preventDefault();
+                                                    }}
+                                                    onClick={() => {
+                                                        setSearchQuery(project.name);
+                                                        onFocusProject(project);
+                                                        setIsSearchFocused(false);
+                                                    }}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <div className={cn("w-2.5 h-2.5 rounded-full shadow-sm", project.type === 'Main' ? "bg-blue-500" : project.type === 'Sub' ? "bg-green-500" : "bg-orange-500")} />
+                                                        <div className="flex flex-col">
+                                                            <span className="text-sm font-medium leading-none">{project.name}</span>
+                                                            <span className="text-[10px] text-muted-foreground mt-1">
+                                                                {project.startDate} ~ {project.endDate}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 px-2 py-1 rounded">
+                                                        Jump
+                                                    </span>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <div className="px-4 py-8 text-sm text-muted-foreground italic text-center flex flex-col items-center gap-2">
+                                                <Search className="w-8 h-8 opacity-20" />
+                                                <span>No projects found</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -214,10 +301,11 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                             size="sm"
                             className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-blue-600 hover:bg-blue-500/10 mr-2 no-drag"
                             onClick={async () => {
+                                addToHistory();
                                 const newProject = {
                                     id: uuidv4(),
                                     name: `Project ${projects.length + 1}`,
-                                    type: "Main" as const,
+                                    type: (settings?.projectTags && settings.projectTags.length > 0 ? settings.projectTags[0] : "Main"),
                                     startDate: format(new Date(), 'yyyy-MM-dd'),
                                     endDate: format(addDays(new Date(), settings?.defaultProjectDurationDays || 14), 'yyyy-MM-dd'),
                                     isCompleted: false
@@ -234,17 +322,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                             {/* Focus Mode Toggle */}
 
 
-                            <div className="flex p-0.5 bg-muted rounded-lg">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => onViewModeChange('timeline')}
-                                    className={`h-7 px-2 lg:px-3 text-xs font-medium rounded-md transition-all ${viewMode === 'timeline' ? 'bg-background shadow-sm text-blue-600' : 'text-muted-foreground hover:text-foreground'}`}
-                                >
-                                    <GanttChartSquare className="w-3.5 h-3.5 lg:mr-1.5" /><span className="hidden lg:inline"> Timeline</span>
-                                </Button>
 
-                            </div>
 
                             {/* Settings Button */}
                             <Button
@@ -256,21 +334,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                 <Settings className="w-4 h-4" />
                             </Button>
 
-                            {/* Update Button (Test) */}
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => {
-                                    alert("Check for updates clicked (Placeholder)");
-                                    if ((window as any).ipcRenderer) {
-                                        // (window as any).ipcRenderer.send('check-for-updates'); // Future implementation
-                                    }
-                                }}
-                                className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-500/10 rounded-lg"
-                                title="Check for Updates"
-                            >
-                                <ArrowUpCircle className="w-4 h-4" />
-                            </Button>
+                            <UpdateChecker />
                         </div>
 
                         {/* Window Controls (Custom) */}
@@ -313,7 +377,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
             )}
 
             {/* Bottom Section */}
-            <div className={cn("flex-1 flex overflow-hidden", isWidgetMode && "mt-10")}>
+            <div className={cn("flex-1 flex min-h-0")}>
                 {/* Left: Calendar Navigator (Collapsible & Resizable) - Hide in Widget Mode */}
                 {!isWidgetMode && (
                     <div
@@ -344,27 +408,29 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                 )}
 
                 {/* Right: Interactive Daily Panel */}
-                <div className="flex-1 p-4 relative bg-muted/40 text-foreground">
-                    <div className="absolute top-2 right-2 z-20">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 rounded-full text-muted-foreground/50 hover:text-foreground hover:bg-background/80 shadow-sm"
-                            title="Help / Replay Tutorial"
-                            onClick={() => {
-                                if (settings) {
-                                    saveSettings({ ...settings, hasCompletedOnboarding: false });
-                                }
-                            }}
-                        >
-                            <span className="text-xs font-bold">?</span>
-                        </Button>
-                    </div>
+                <div className={cn("flex-1 relative bg-muted/40 text-foreground", isWidgetMode ? "p-0" : "p-4")}>
+                    {!isWidgetMode && (
+                        <div className="absolute top-2 right-2 z-20">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 rounded-full text-muted-foreground/50 hover:text-foreground hover:bg-background/80 shadow-sm"
+                                title="Help / Replay Tutorial"
+                                onClick={() => {
+                                    if (settings) {
+                                        saveSettings({ ...settings, hasCompletedOnboarding: false });
+                                    }
+                                }}
+                            >
+                                <span className="text-xs font-bold">?</span>
+                            </Button>
+                        </div>
+                    )}
                     {dailyPanel}
                 </div>
             </div>
 
-            <OnboardingOverlay />
+
         </div>
     );
 }

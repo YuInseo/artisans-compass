@@ -76,6 +76,40 @@ function BlueprintEditor({ initialTodos, onChange }: BlueprintEditorProps) {
             // DEBUG
             // console.log("Native Key:", e.key);
 
+            // Manual Navigation Override (Fix for "Up arrow not working")
+            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                const selection = editor.getTextCursorPosition();
+                if (selection) {
+                    // Helper to flatten blocks including children
+                    const getFlatBlocks = (blocks: any[]): any[] => {
+                        let flat: any[] = [];
+                        for (const b of blocks) {
+                            flat.push(b);
+                            if (b.children && b.children.length > 0) {
+                                flat = flat.concat(getFlatBlocks(b.children));
+                            }
+                        }
+                        return flat;
+                    };
+
+                    const flat = getFlatBlocks(editor.document);
+                    const idx = flat.findIndex(b => b.id === selection.block.id);
+
+                    if (e.key === "ArrowUp" && idx > 0) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Focus previous block at end
+                        editor.setTextCursorPosition(flat[idx - 1], 'end');
+                    } else if (e.key === "ArrowDown" && idx < flat.length - 1) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        // Focus next block at start
+                        editor.setTextCursorPosition(flat[idx + 1], 'start');
+                    }
+                }
+                // If not found or at edge, let default happen (though default might be broken for Up)
+            }
+
             if (e.key === "Enter" && !e.shiftKey) {
                 const selection = editor.getTextCursorPosition();
                 if (selection && selection.block.type === "checkListItem") {
@@ -353,6 +387,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                 screenshots={screenshots}
                                 sessions={sessions}
                                 stats={currentStats}
+                                hideCloseButton={true}
                             />
                         </div>
                     )}

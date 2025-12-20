@@ -3,11 +3,20 @@ import path from 'node:path'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
+import * as dotenv from 'dotenv'
+
+// Load .env file
+dotenv.config()
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  define: {
+    // Inject environment variables at build time
+    'process.env.CLIENT_ID': JSON.stringify(process.env.CLIENT_ID || ''),
+    'process.env.CLIENT_SECRET': JSON.stringify(process.env.CLIENT_SECRET || ''),
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -23,7 +32,11 @@ export default defineConfig({
         vite: {
           build: {
             rollupOptions: {
-              external: ['active-win'],
+              external: ['active-win', 'screenshot-desktop', 'jpeg-js'],
+              input: {
+                main: path.resolve(__dirname, 'electron/main.ts'),
+                'screenshot-worker': path.resolve(__dirname, 'electron/tracking/screenshot-worker.ts')
+              }
             },
           },
         },

@@ -17,10 +17,11 @@ interface TimelineSectionProps {
     searchQuery?: string;
     focusedProject?: Project | null;
     navigationSignal?: { date: Date, timestamp: number } | null;
+    onOpenSettings?: (tab: 'timeline') => void;
 }
 
-export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject, navigationSignal }: TimelineSectionProps) {
-    const { projects, saveProjects } = useDataStore();
+export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject, navigationSignal, onOpenSettings }: TimelineSectionProps) {
+    const { projects, saveProjects, settings, addToHistory } = useDataStore();
     const {
         selectedIds,
         selectionBox,
@@ -231,15 +232,18 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
         const start = parseISO(startStr);
         const end = parseISO(endStr);
         const diff = differenceInDays(end, start);
-        return Math.max(diff, 1) * PX_PER_DAY;
+        // Inclusive duration: diff + 1 day
+        return (diff + 1) * PX_PER_DAY;
     };
 
     const handleProjectUpdate = async (updatedProject: Project) => {
+        addToHistory();
         const updated = projects.map(p => p.id === updatedProject.id ? updatedProject : p);
         await saveProjects(updated);
     };
 
     const handleProjectDelete = async (id: string) => {
+        addToHistory();
         let updated: Project[];
         if (selectedIds.has(id)) {
             // Delete all selected
@@ -253,15 +257,43 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
     };
 
     // Separate handler for multi-delete to ensure clean execution after menu closes
+    // Separate handler for multi-delete to ensure clean execution after menu closes
     const handleDeleteSelected = () => {
+        addToHistory();
         // Use store action - it handles isDeleting state internally
         // Pass selectedIds explicitly to fix race condition where selection might clear before delete runs
         deleteSelected(projects, saveProjects, selectedIds);
     };
 
+    // Keyboard Delete Listener
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (selectedIds.size === 0) return;
+
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                // Safety: Don't delete if we are typing in an input or editor
+                const active = document.activeElement;
+                const isInput = active instanceof HTMLInputElement ||
+                    active instanceof HTMLTextAreaElement ||
+                    (active as HTMLElement).isContentEditable;
+
+                if (isInput) return;
+
+                e.preventDefault(); // Prevent browser back navigation on Backspace
+                handleDeleteSelected();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [selectedIds, projects, saveProjects]); // Re-bind when data/selection changes
+
     // --- Selection Logic Handlers ---
+    // Ref to store selection state at drag start for additive logic
+    const initialSelectionRef = useRef<Set<string>>(new Set());
+
     const handleContainerMouseDown = (e: React.MouseEvent) => {
-        // Only handle left click for selection box
+
         if (e.button !== 0) return;
 
         // If clicking on background (projects stop propagation), start selection
@@ -270,12 +302,9 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
 
+        // Snapshot current selection for additive drag
+        initialSelectionRef.current = new Set(selectedIds);
         setSelectionBox({ startX: x, startY: y, currentX: x, currentY: y });
-
-        // Clear selection if not holding Ctrl
-        if (!e.ctrlKey) {
-            clearSelection();
-        }
     };
 
     const handleContainerMouseMove = (e: React.MouseEvent) => {
@@ -296,7 +325,10 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
 
             const scrollLeft = containerRef.current.scrollLeft;
 
-            const newSelected = new Set(e.ctrlKey ? selectedIds : []);
+            // Additive by default: Start with initial selection, then add what's in box
+            // Unless Alt key is held? (Maybe later)
+            // Just satisfy "No Ctrl needed to select multiple"
+            const newSelected = new Set(initialSelectionRef.current);
 
             stackedProjects.projects.forEach(p => {
                 const pLeft = getLeftStyle(p.startDate) - scrollLeft;
@@ -318,7 +350,17 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
         }
     };
 
-    const handleContainerMouseUp = () => {
+    const handleContainerMouseUp = (e: React.MouseEvent) => {
+        if (selectionBox) {
+            const deltaX = Math.abs(selectionBox.currentX - selectionBox.startX);
+            const deltaY = Math.abs(selectionBox.currentY - selectionBox.startY);
+            // Treat as click if movement is very small
+            const isClick = deltaX < 5 && deltaY < 5;
+
+            if (isClick && !e.ctrlKey) {
+                clearSelection();
+            }
+        }
         setSelectionBox(null);
     };
 
@@ -337,7 +379,10 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
         }
 
         if (!selectedIds.has(proj.id)) {
-            setSelectedIds(new Set([proj.id]));
+            // Additive selection by default (requested by user)
+            const newSet = new Set(selectedIds);
+            newSet.add(proj.id);
+            setSelectedIds(newSet);
         }
 
         setDragState({
@@ -373,6 +418,7 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
 
             if (dragState.action === 'move') {
                 if (deltaDays !== 0) {
+                    addToHistory(); // Snapshot before saving
                     const updates: Project[] = [];
                     for (const id of selectedIds) {
                         const p = projects.find(proj => proj.id === id);
@@ -391,7 +437,7 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                     }
                     const projectMap = new Map(updates.map(u => [u.id, u]));
                     const finalProjects = projects.map(p => projectMap.get(p.id) || p);
-                    saveProjects(finalProjects);
+                    await saveProjects(finalProjects);
                 }
             } else {
                 // Resize
@@ -399,16 +445,24 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                 if (project) {
                     let newStart = dragState.initialStart;
                     let newEnd = dragState.initialEnd;
+                    let changed = false;
+
                     if (dragState.action === 'resize-left') {
                         newStart = addDays(dragState.initialStart, deltaDays);
                         if (isBefore(newEnd, newStart)) newStart = addDays(newEnd, -1);
+                        changed = format(newStart, 'yyyy-MM-dd') !== project.startDate;
                     } else if (dragState.action === 'resize-right') {
                         newEnd = addDays(dragState.initialEnd, deltaDays);
                         if (isBefore(newEnd, newStart)) newEnd = addDays(newStart, 1);
+                        changed = format(newEnd, 'yyyy-MM-dd') !== project.endDate;
                     }
-                    const updated = { ...project, startDate: format(newStart, 'yyyy-MM-dd'), endDate: format(newEnd, 'yyyy-MM-dd') };
-                    const finalProjects = projects.map(p => p.id === updated.id ? updated : p);
-                    saveProjects(finalProjects);
+
+                    if (changed) {
+                        addToHistory(); // Snapshot before saving
+                        const updated = { ...project, startDate: format(newStart, 'yyyy-MM-dd'), endDate: format(newEnd, 'yyyy-MM-dd') };
+                        const finalProjects = projects.map(p => p.id === updated.id ? updated : p);
+                        await saveProjects(finalProjects);
+                    }
                 }
             }
 
@@ -422,7 +476,7 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [dragState !== null]); // Only re-run if drag starts/stops. NOT on every mousemove.
+    }, [!!dragState]); // Only re-run if drag starts/stops
 
     // ...
 
@@ -534,8 +588,47 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                                 const snapPixelOffset = snapDays * PX_PER_DAY;
                                 ghostTransform = `translateX(${snapPixelOffset}px)`;
                                 showGhost = true;
-                            } else if (dragState && dragState.id === project.id) {
-                                // Resizing logic...
+                            } else if (dragState && dragState.id === project.id && (dragState.action === 'resize-left' || dragState.action === 'resize-right')) {
+                                // Resize Preview
+                                showGhost = true;
+                                zIndex = 50;
+                                const pixelOffset = dragState.currentX - dragState.startX;
+                                const snapDays = Math.round(pixelOffset / PX_PER_DAY);
+
+                                // Calculate ghost dimensions
+                                const originalWidth = getWidthStyle(project.startDate, project.endDate);
+
+                                if (dragState.action === 'resize-left') {
+                                    // Ghost Left moves, Width changes
+                                    const snapPixelChange = snapDays * PX_PER_DAY;
+                                    // Prevent inverting (min width 1 day)
+                                    // Width decreases as Left increases
+                                    let newWidth = originalWidth - snapPixelChange;
+                                    let translate = snapPixelChange;
+
+                                    if (newWidth < PX_PER_DAY) {
+                                        translate = originalWidth - PX_PER_DAY;
+                                        newWidth = PX_PER_DAY;
+                                    }
+
+                                    // Apply transform to position relative to original 'left'
+                                    ghostTransform = `translateX(${translate}px)`;
+                                    // We need to override dimensions in style below. 
+                                    // But ghost style uses 'left' from project loop which is 'originalLeft'.
+                                    // So translateX works.
+
+                                    // Actually, we can just modify the style directly if we extract text content? 
+                                    // No, easier to just calculate "ghostLeft" and "ghostWidth".
+                                } else {
+                                    // Resize Right: Left stays, Width changes
+                                    const snapPixelChange = snapDays * PX_PER_DAY;
+                                    let newWidth = originalWidth + snapPixelChange;
+                                    if (newWidth < PX_PER_DAY) newWidth = PX_PER_DAY;
+
+                                    // Ghost starts at original left, just width changes?
+                                    // The render below uses `width: ${width}px`.
+                                    // We need to pass dynamic width to ghost style.
+                                }
                             }
 
                             // Determine Ghost Top Position (Smart Stacking)
@@ -550,79 +643,98 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                                             className="absolute h-9 border-2 border-dashed border-red-500/50 rounded-md bg-transparent z-20 pointer-events-none"
                                             style={{
                                                 left: `${left}px`,
-                                                width: `${width}px`,
+                                                width: (() => {
+                                                    if (dragState?.id === project.id && (dragState.action === 'resize-left' || dragState.action === 'resize-right')) {
+                                                        const pixelOffset = dragState.currentX - dragState.startX;
+                                                        const snapDays = Math.round(pixelOffset / PX_PER_DAY);
+                                                        const originalWidth = getWidthStyle(project.startDate, project.endDate);
+
+                                                        if (dragState.action === 'resize-left') {
+                                                            return Math.max(PX_PER_DAY, originalWidth - (snapDays * PX_PER_DAY)) + 'px';
+                                                        } else {
+                                                            return Math.max(PX_PER_DAY, originalWidth + (snapDays * PX_PER_DAY)) + 'px';
+                                                        }
+                                                    }
+                                                    return `${width}px`;
+                                                })(),
                                                 top: `${ghostTop}px`, // Use calculated ghost top
-                                                transform: ghostTransform
+                                                transform: (() => {
+                                                    if (dragState?.id === project.id && dragState.action === 'resize-left') {
+                                                        const pixelOffset = dragState.currentX - dragState.startX;
+                                                        const snapDays = Math.round(pixelOffset / PX_PER_DAY);
+                                                        const originalWidth = getWidthStyle(project.startDate, project.endDate);
+                                                        // If we hit min width, we stop moving right
+                                                        if (originalWidth - (snapDays * PX_PER_DAY) < PX_PER_DAY) {
+                                                            return `translateX(${originalWidth - PX_PER_DAY}px)`;
+                                                        }
+                                                        return `translateX(${snapDays * PX_PER_DAY}px)`;
+                                                    }
+                                                    return ghostTransform;
+                                                })()
                                             }}
                                         />
                                     )}
 
                                     {/* Actual Project Bar */}
-                                    <ContextMenu.Root modal={false}>
-                                        <ContextMenu.Trigger disabled={isDeleting} asChild>
-                                            <div
-                                                className={cn(
-                                                    "absolute h-9 bg-card border border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 group overflow-visible cursor-pointer",
-                                                    isSelected && "ring-2 ring-blue-500 border-blue-500",
-                                                    dragState?.action === 'move' && isSelected ? 'shadow-xl opacity-90' : '',
-                                                    project.locked && "opacity-90 bg-muted/50 border-dashed cursor-default" // Locked style
-                                                )}
-                                                style={{
-                                                    left: `${left}px`,
-                                                    width: `${width}px`,
-                                                    top: `${top}px`, // Keep original row while dragging
-                                                    transform: transform,
-                                                    zIndex: zIndex
-                                                }}
-                                                onContextMenu={(e) => {
-                                                    if (isDeleting) {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        return;
-                                                    }
-                                                    // If right-clicking an unselected project, add it to selection
-                                                    // If already selected, keep current selection
-                                                    if (!selectedIds.has(project.id)) {
-                                                        const newSet = new Set(selectedIds);
-                                                        newSet.add(project.id);
-                                                        setSelectedIds(newSet);
-                                                    }
-                                                }}
-                                                onMouseDown={(e) => {
-                                                    if (project.locked) return; // Prevent drag if locked
-                                                    handleMouseDown(e, project, 'move')
-                                                }}
-                                                onDoubleClick={() => setEditingProject(project)}
-                                            >
-                                                <div className={`w-full h-full opacity-20 rounded-md ${project.type === 'Main' ? 'bg-blue-500' : project.type === 'Sub' ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
-
-                                                {/* Bar Content */}
-                                                <div className="absolute inset-0 flex items-center px-2 gap-1">
-                                                    {/* Lock Icon */}
-                                                    {project.locked && (
-                                                        <div className="bg-background/80 p-0.5 rounded-full shadow-sm">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-lock text-muted-foreground"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                                                        </div>
+                                    {/* Actual Project Bar */}
+                                    {isSelected && selectedIds.size > 1 ? (
+                                        <ContextMenu.Root modal={false}>
+                                            <ContextMenu.Trigger disabled={isDeleting} asChild>
+                                                <div
+                                                    className={cn(
+                                                        "absolute h-9 bg-card border border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 group overflow-visible cursor-pointer",
+                                                        isSelected && "ring-2 ring-blue-500 border-blue-500",
+                                                        dragState?.action === 'move' && isSelected ? 'shadow-xl opacity-90' : '',
+                                                        project.locked && "opacity-90 bg-muted/50 border-dashed cursor-default"
                                                     )}
-                                                    <span className="font-semibold text-xs text-foreground truncate w-full select-none">
-                                                        {project.name}
-                                                    </span>
+                                                    style={{
+                                                        left: `${left}px`,
+                                                        width: `${width}px`,
+                                                        top: `${top}px`,
+                                                        transform: transform,
+                                                        zIndex: zIndex
+                                                    }}
+                                                    onContextMenu={(e) => {
+                                                        if (isDeleting) {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            return;
+                                                        }
+                                                        // Already multi-selected, just open menu
+                                                    }}
+                                                    onMouseDown={(e) => {
+                                                        if (project.locked) return;
+                                                        handleMouseDown(e, project, 'move')
+                                                    }}
+                                                    onDoubleClick={() => setEditingProject(project)}
+                                                >
+                                                    <div
+                                                        className="w-full h-full opacity-20 rounded-md"
+                                                        style={{
+                                                            backgroundColor: (() => {
+                                                                if (settings?.enableCustomProjectColors && project.color) return project.color;
+                                                                return settings?.typeColors?.[project.type] || "#3b82f6";
+                                                            })()
+                                                        }}
+                                                    ></div>
+                                                    <div className="absolute inset-0 flex items-center px-2 gap-1">
+                                                        {project.locked && (
+                                                            <div className="bg-background/80 p-0.5 rounded-full shadow-sm">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-lock text-muted-foreground"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                                                            </div>
+                                                        )}
+                                                        <span className="font-semibold text-xs text-foreground truncate w-full select-none">
+                                                            {project.name}
+                                                        </span>
+                                                    </div>
                                                 </div>
-
-                                                {/* Resize Handles - Hide if locked */}
-                                                {!project.locked && (
-                                                    <>
-                                                        <div className="absolute left-0 top-0 bottom-0 w-3 cursor-w-resize hover:bg-foreground/5 rounded-l-md" onMouseDown={(e) => handleMouseDown(e, project, 'resize-left')} />
-                                                        <div className="absolute right-0 top-0 bottom-0 w-3 cursor-e-resize hover:bg-foreground/5 rounded-r-md" onMouseDown={(e) => handleMouseDown(e, project, 'resize-right')} />
-                                                    </>
-                                                )}
-                                            </div>
-                                        </ContextMenu.Trigger>
-
-                                        <ContextMenu.Portal>
-                                            <ContextMenu.Content className="min-w-[200px] bg-popover text-popover-foreground rounded-lg shadow-xl border border-border p-1 z-50 animate-in fade-in zoom-in-95 duration-100">
-                                                {/* Multi-select mode: show only delete option */}
-                                                {isSelected && selectedIds.size > 1 ? (
+                                            </ContextMenu.Trigger>
+                                            <ContextMenu.Portal>
+                                                <ContextMenu.Content
+                                                    className="min-w-[200px] bg-popover text-popover-foreground rounded-lg shadow-xl border border-border p-1 z-50 animate-in fade-in zoom-in-95 duration-100"
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    onMouseUp={(e) => e.stopPropagation()}
+                                                >
                                                     <ContextMenu.Item
                                                         className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-destructive/10 focus:bg-destructive/10 text-destructive"
                                                         onSelect={handleDeleteSelected}
@@ -630,32 +742,100 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                                                         <Trash className="mr-2 h-4 w-4" />
                                                         Delete Selected ({selectedIds.size})
                                                     </ContextMenu.Item>
-                                                ) : (
-                                                    /* Single project mode: show full menu */
-                                                    <>
-                                                        <ContextMenu.Label className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                                                </ContextMenu.Content>
+                                            </ContextMenu.Portal>
+                                        </ContextMenu.Root>
+                                    ) : (
+                                        <ContextMenu.Root modal={false}>
+                                            <ContextMenu.Trigger disabled={isDeleting} asChild>
+                                                <div
+                                                    className={cn(
+                                                        "absolute h-9 bg-card border border-border rounded-md shadow-sm hover:shadow-md transition-shadow duration-200 group overflow-visible cursor-pointer",
+                                                        isSelected && "ring-2 ring-blue-500 border-blue-500",
+                                                        dragState?.action === 'move' && isSelected ? 'shadow-xl opacity-90' : '',
+                                                        project.locked && "opacity-90 bg-muted/50 border-dashed cursor-default"
+                                                    )}
+                                                    style={{
+                                                        left: `${left}px`,
+                                                        width: `${width}px`,
+                                                        top: `${top}px`,
+                                                        transform: transform,
+                                                        zIndex: zIndex
+                                                    }}
+                                                    onContextMenu={(e) => {
+                                                        if (isDeleting) {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            return;
+                                                        }
+                                                        if (!selectedIds.has(project.id)) {
+                                                            const newSet = new Set(selectedIds);
+                                                            newSet.add(project.id);
+                                                            setSelectedIds(newSet);
+                                                        }
+                                                    }}
+                                                    onMouseDown={(e) => {
+                                                        if (project.locked) return;
+                                                        handleMouseDown(e, project, 'move')
+                                                    }}
+                                                    onDoubleClick={() => setEditingProject(project)}
+                                                >
+                                                    <div
+                                                        className="w-full h-full opacity-20 rounded-md"
+                                                        style={{
+                                                            backgroundColor: (() => {
+                                                                if (settings?.enableCustomProjectColors && project.color) return project.color;
+                                                                return settings?.typeColors?.[project.type] || "#3b82f6";
+                                                            })()
+                                                        }}
+                                                    ></div>
+                                                    <div className="absolute inset-0 flex items-center px-2 gap-1">
+                                                        {project.locked && (
+                                                            <div className="bg-background/80 p-0.5 rounded-full shadow-sm">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-lock text-muted-foreground"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                                                            </div>
+                                                        )}
+                                                        <span className="font-semibold text-xs text-foreground truncate w-full select-none">
                                                             {project.name}
-                                                        </ContextMenu.Label>
-                                                        <ContextMenu.Item
-                                                            className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent focus:bg-accent text-foreground"
-                                                            onSelect={() => setEditingProject(project)}
-                                                        >
-                                                            <Settings className="mr-2 h-4 w-4" />
-                                                            Edit Settings
-                                                        </ContextMenu.Item>
-                                                        <ContextMenu.Separator className="my-1 h-px bg-border" />
-                                                        <ContextMenu.Item
-                                                            className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-destructive/10 focus:bg-destructive/10 text-destructive"
-                                                            onSelect={() => handleProjectDelete(project.id)}
-                                                        >
-                                                            <Trash className="mr-2 h-4 w-4" />
-                                                            Delete Project
-                                                        </ContextMenu.Item>
-                                                    </>
-                                                )}
-                                            </ContextMenu.Content>
-                                        </ContextMenu.Portal>
-                                    </ContextMenu.Root>
+                                                        </span>
+                                                    </div>
+
+                                                    {!project.locked && (
+                                                        <>
+                                                            <div className="absolute left-0 top-0 bottom-0 w-3 cursor-w-resize hover:bg-foreground/5 rounded-l-md" onMouseDown={(e) => handleMouseDown(e, project, 'resize-left')} />
+                                                            <div className="absolute right-0 top-0 bottom-0 w-3 cursor-e-resize hover:bg-foreground/5 rounded-r-md" onMouseDown={(e) => handleMouseDown(e, project, 'resize-right')} />
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </ContextMenu.Trigger>
+                                            <ContextMenu.Portal>
+                                                <ContextMenu.Content
+                                                    className="min-w-[200px] bg-popover text-popover-foreground rounded-lg shadow-xl border border-border p-1 z-50 animate-in fade-in zoom-in-95 duration-100"
+                                                    onMouseDown={(e) => e.stopPropagation()}
+                                                    onMouseUp={(e) => e.stopPropagation()}
+                                                >
+                                                    <ContextMenu.Label className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                                                        {project.name}
+                                                    </ContextMenu.Label>
+                                                    <ContextMenu.Item
+                                                        className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent focus:bg-accent text-foreground"
+                                                        onSelect={() => setEditingProject(project)}
+                                                    >
+                                                        <Settings className="mr-2 h-4 w-4" />
+                                                        Edit Settings
+                                                    </ContextMenu.Item>
+                                                    <ContextMenu.Separator className="my-1 h-px bg-border" />
+                                                    <ContextMenu.Item
+                                                        className="relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-destructive/10 focus:bg-destructive/10 text-destructive"
+                                                        onSelect={() => handleProjectDelete(project.id)}
+                                                    >
+                                                        <Trash className="mr-2 h-4 w-4" />
+                                                        Delete Project
+                                                    </ContextMenu.Item>
+                                                </ContextMenu.Content>
+                                            </ContextMenu.Portal>
+                                        </ContextMenu.Root>
+                                    )}
                                 </div>
                             );
                         })}
@@ -672,6 +852,7 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                 onClose={() => setEditingProject(null)}
                 onSave={handleProjectUpdate}
                 onDelete={handleProjectDelete}
+                onManageTypes={onOpenSettings}
             />
         </div>
     );

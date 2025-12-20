@@ -8,9 +8,10 @@ import { useTimelineStore } from "@/hooks/useTimelineStore";
 import { useQuestStore } from "@/hooks/useQuestStore";
 import { GoalSettingModal } from "./GoalSettingModal";
 import { Project } from "@/types";
-import { format, parseISO, isWithinInterval, startOfDay, endOfDay, subDays, isSameWeek } from "date-fns";
+import { format, parseISO, isSameWeek, isSameDay } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 interface CalendarNavProps {
     onSelect?: (date: Date) => void;
@@ -22,11 +23,6 @@ interface CalendarNavProps {
 export function CalendarNav({ onSelect, focusedProject, navigationSignal }: CalendarNavProps) {
     const [viewMode, setViewMode] = useState<'calendar' | 'quest'>('calendar');
     const { streak } = useQuestStore();
-    // Note: useQuestStore definition seen earlier didn't export setters for streak, only todos. 
-    // We might need to just accept we can't update streak easily without modifying store, 
-    // or we assume useQuestStore has a `set` or we ignore streak update for this step.
-    // Actually, I'll just keep reading streak and assume it's managed elsewhere or I'll add `incrementStreak` later.
-    // For now, I'll just read it.
 
     const [date, setDate] = useState<Date | undefined>(new Date());
     const [displayedMonth, setDisplayedMonth] = useState<Date>(new Date());
@@ -39,18 +35,16 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
     const [newQuestText, setNewQuestText] = useState("");
     const [showDifficultyAlert, setShowDifficultyAlert] = useState(false);
     const [monthlyLogs, setMonthlyLogs] = useState<Record<string, any>>({}); // Store monthly logs
-    const [forceUnlockGoals, setForceUnlockGoals] = useState(false); // State to allow editing goals if stuck
 
     // Derive Current Quest from Monthly Goal
     const today = new Date();
-    const currentMonthKey = format(today, 'yyyy-MM');
-    // Check if goal was updated this month
-    const goalUpdatedThisMonth = settings?.focusGoals?.monthlyUpdatedAt &&
-        format(new Date(settings.focusGoals.monthlyUpdatedAt), 'yyyy-MM') === currentMonthKey;
+    // Check if quest was updated TODAY
+    const questUpdatedToday = settings?.focusGoals?.dailyQuestUpdatedAt &&
+        isSameDay(new Date(settings.focusGoals.dailyQuestUpdatedAt), today);
 
     // Effective Quest
-    const activeQuestText = (goalUpdatedThisMonth && settings?.focusGoals?.monthly) ? settings.focusGoals.monthly : null;
-    const activeQuestCreatedAt = (goalUpdatedThisMonth) ? settings?.focusGoals?.monthlyUpdatedAt : null;
+    const activeQuestText = (questUpdatedToday && settings?.focusGoals?.dailyQuest) ? settings.focusGoals.dailyQuest : null;
+    const activeQuestCreatedAt = (questUpdatedToday) ? settings?.focusGoals?.dailyQuestUpdatedAt : null;
 
     // Check if TODAY is completed
     const todayKey = format(today, 'yyyy-MM-dd');
@@ -92,41 +86,11 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
     }, [displayedMonth]);
 
 
-    // Check for Inactivity (2 days missed)
-    useEffect(() => {
-        const checkInactivity = async () => {
-            if (!(window as any).ipcRenderer) return;
-
-            const today = new Date();
-            const yesterday = subDays(today, 1);
-            const dayBefore = subDays(today, 2);
-
-            const monthStr = format(today, 'yyyy-MM');
-
-            try {
-                const logs = await (window as any).ipcRenderer.getMonthlyLog(monthStr);
-                if (!logs) return;
-
-                const yKey = format(yesterday, 'yyyy-MM-dd');
-                const dbKey = format(dayBefore, 'yyyy-MM-dd');
-
-                const yLog = logs[yKey];
-                const dbLog = logs[dbKey];
-
-                const yFailed = !yLog || !yLog.stats?.questAchieved;
-                const dbFailed = !dbLog || !dbLog.stats?.questAchieved;
-
-                if (yFailed && dbFailed) {
-                    setShowDifficultyAlert(true);
-                }
-            } catch (e) {
-                console.error("Failed to check inactivity", e);
-            }
-        };
-
-        // Run only once on mount
-        checkInactivity();
-    }, []);
+    // Inactivity check disabled by user request
+    // useEffect(() => {
+    //     const checkInactivity = async () => { ... }
+    //     checkInactivity();
+    // }, []);
 
     const handleSetQuest = async () => {
         if (!newQuestText.trim()) {
@@ -139,8 +103,10 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                 ...settings,
                 focusGoals: {
                     ...settings.focusGoals,
-                    monthly: newQuestText,
-                    monthlyUpdatedAt: Date.now(),
+                    dailyQuest: newQuestText,
+                    dailyQuestUpdatedAt: Date.now(),
+                    monthly: settings.focusGoals?.monthly || "", // preserve monthly
+                    monthlyUpdatedAt: settings.focusGoals?.monthlyUpdatedAt, // preserve monthly
                     weekly: settings.focusGoals?.weekly || "", // preserve weekly
                     weeklyUpdatedAt: settings.focusGoals?.weeklyUpdatedAt // preserve weekly
                 }
@@ -184,8 +150,38 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
     };
 
     const handleSelect = (d: Date | undefined) => {
+        if (!d) return;
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const selected = new Date(d);
+        selected.setHours(0, 0, 0, 0);
+
+        // Logic check: Is it in the past?
+        if (selected.getTime() < today.getTime()) {
+            const dateKey = format(d, 'yyyy-MM-dd');
+            const log = monthlyLogs[dateKey];
+
+            // Check if we have meaningful data (todos, screenshots, or quest stats)
+            const hasData = log && (
+                (log.todos && log.todos.length > 0) ||
+                (log.screenshots && log.screenshots.length > 0) ||
+                (log.stats && log.stats.questAchieved) ||
+                (log.closingNote)
+            );
+
+            if (!hasData) {
+                toast("No archive data found for this date.", {
+                    description: "You didn't record any activity on this day."
+                });
+                // Do NOT call onSelect -> Modal won't open
+                setDate(d);
+                return;
+            }
+        }
+
         setDate(d);
-        if (d && onSelect) onSelect(d);
+        if (onSelect) onSelect(d);
     };
 
     const handleGoToday = () => {
@@ -206,22 +202,20 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
     // Range Highlight Logic
     const projectRangeMatcher = (date: Date) => {
         if (!focusedProject) return false;
-        const start = startOfDay(parseISO(focusedProject.startDate));
-        const end = endOfDay(parseISO(focusedProject.endDate));
-        return isWithinInterval(date, { start, end });
+        const currentStr = format(date, 'yyyy-MM-dd');
+        return currentStr >= focusedProject.startDate && currentStr <= focusedProject.endDate;
     };
 
     // Selected Range Highlight Logic
     const selectedProjectRangeMatcher = (date: Date) => {
         if (selectedIds.size === 0) return false;
+        const currentStr = format(date, 'yyyy-MM-dd');
 
         // Find visible projects that are selected
         const selectedProjects = projects.filter(p => selectedIds.has(p.id));
 
         return selectedProjects.some(p => {
-            const start = startOfDay(parseISO(p.startDate));
-            const end = endOfDay(parseISO(p.endDate));
-            return isWithinInterval(date, { start, end });
+            return currentStr >= p.startDate && currentStr <= p.endDate;
         });
     };
 
@@ -304,8 +298,8 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 months: "flex flex-col w-full h-full",
                                 month: "w-full h-full flex flex-col",
                                 caption: "flex justify-start items-center mb-4 px-2 shrink-0 relative h-8",
-                                caption_label: "text-lg font-serif font-bold text-foreground tracking-tight pl-1",
-                                nav: "flex items-center gap-1 absolute right-16 top-0 bottom-0",
+                                caption_label: "text-base font-serif font-bold text-foreground tracking-tight pl-1",
+                                nav: "flex items-center gap-1 absolute right-1 top-0 bottom-0",
                                 nav_button: "h-7 w-7 bg-transparent p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all flex items-center justify-center border border-transparent hover:border-border",
                                 nav_button_previous: "static",
                                 nav_button_next: "static",
@@ -330,16 +324,28 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                     const dateKey = format(d, 'yyyy-MM-dd');
                                     const log = monthlyLogs[dateKey];
                                     const isQuestAchieved = log?.stats?.questAchieved;
+                                    const hasData = log && (
+                                        (log.todos && log.todos.length > 0) ||
+                                        (log.screenshots && log.screenshots.length > 0) ||
+                                        (log.sessions && log.sessions.length > 0) ||
+                                        log.closingNote
+                                    );
 
                                     return (
                                         <div className="w-full h-full flex flex-col items-center relative">
-                                            <span className="z-10 font-medium">{d.getDate()}</span>
-                                            {isWorkDay(d) && (
-                                                <div className="mt-1 w-1 h-1 bg-primary rounded-full opacity-80"></div>
+                                            <span className={cn("z-10 font-medium", isQuestAchieved ? "text-orange-500 font-bold" : "")}>{d.getDate()}</span>
+                                            {isWorkDay(d) && !isQuestAchieved && (
+                                                <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-primary/20 rounded-full"></div>
                                             )}
+
+                                            {/* Data Indicator (Dot) */}
+                                            {hasData && !isQuestAchieved && (
+                                                <div className="mt-1 w-1 h-1 bg-foreground/50 rounded-full"></div>
+                                            )}
+
                                             {/* Quest Achieved Checkmark */}
                                             {isQuestAchieved && (
-                                                <div className="mt-0.5 z-20 text-orange-500 dark:text-orange-400 animate-in zoom-in spin-in-90 duration-300 text-[20px]">
+                                                <div className="mt-0.5 z-20 text-orange-500 dark:text-orange-400 animate-in zoom-in spin-in-90 duration-300 text-[20px] drop-shadow-sm">
                                                     🔥
                                                 </div>
                                             )}
@@ -363,19 +369,19 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
 
                         {/* Add Mode Overlay */}
                         {isAdding && (
-                            <div className="absolute inset-0 bg-background/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-6 animate-in fade-in zoom-in-95 rounded-2xl border border-border">
-                                <h4 className="text-2xl font-black mb-6 text-violet-500 font-serif">New Objective</h4>
+                            <div className="absolute inset-0 bg-background/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95 rounded-2xl border border-border overflow-hidden">
+                                <h4 className="text-xl font-black mb-4 text-violet-500 font-serif text-center">New Objective</h4>
                                 <Input
                                     autoFocus
-                                    placeholder="What must be done for this month?"
+                                    placeholder="What is your main focus?"
                                     value={newQuestText}
                                     onChange={(e) => setNewQuestText(e.target.value)}
                                     onKeyDown={handleKeyDown}
-                                    className="text-center text-xl h-14 mb-6 shadow-xl border-violet-500/30 focus-visible:ring-violet-500 bg-card"
+                                    className="text-center text-lg h-12 mb-6 shadow-xl border-violet-500/30 focus-visible:ring-violet-500 bg-card w-full max-w-[90%]"
                                 />
-                                <div className="flex gap-4 w-full max-w-xs">
-                                    <Button variant="outline" size="lg" className="flex-1" onClick={() => setIsAdding(false)}>Cancel</Button>
-                                    <Button size="lg" className="flex-1 bg-violet-600 hover:bg-violet-700 font-bold" onClick={handleSetQuest}>Accept Quest for {format(new Date(), 'MMMM')}</Button>
+                                <div className="flex flex-col gap-3 w-full max-w-[90%]">
+                                    <Button size="lg" className="w-full bg-violet-600 hover:bg-violet-700 font-bold shadow-lg shadow-violet-500/20" onClick={handleSetQuest}>Accept Quest</Button>
+                                    <Button variant="ghost" size="sm" className="w-full text-muted-foreground hover:bg-transparent hover:text-foreground" onClick={() => setIsAdding(false)}>Cancel</Button>
                                 </div>
                             </div>
                         )}
@@ -438,10 +444,10 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 </div>
                                 <h3 className="text-xl font-bold text-foreground mb-2">No Active Quest</h3>
                                 <p className="text-sm text-muted-foreground max-w-xs mx-auto mb-8">
-                                    You have not set a specific goal for this month yet.
+                                    You have not set a specific goal for today yet.
                                 </p>
                                 <Button onClick={() => setIsAdding(true)} variant="default" className="rounded-full px-8">
-                                    <Plus className="w-4 h-4 mr-2" /> Set Monthly Quest
+                                    <Plus className="w-4 h-4 mr-2" /> Set Daily Quest
                                 </Button>
                             </div>
                         )}
@@ -479,7 +485,6 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                     variant="outline"
                     className="w-full border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 text-primary font-bold tracking-wide shadow-sm relative"
                     onClick={() => {
-                        setForceUnlockGoals(false); // Normal open
                         setShowGoalModal(true);
                     }}
                 >
@@ -494,11 +499,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
 
             <GoalSettingModal
                 open={showGoalModal}
-                onOpenChange={(val) => {
-                    setShowGoalModal(val);
-                    if (!val) setForceUnlockGoals(false); // Reset on close
-                }}
-                forceUnlock={forceUnlockGoals}
+                onOpenChange={setShowGoalModal}
             />
 
             {/* Difficulty Alert Dialog */}
@@ -518,7 +519,6 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                             I'll Try Harder
                         </Button>
                         <Button onClick={() => {
-                            setForceUnlockGoals(true); // Unlock for edit
                             setShowGoalModal(true);
                             setShowDifficultyAlert(false);
                         }} className="bg-violet-600 hover:bg-violet-700">

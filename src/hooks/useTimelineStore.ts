@@ -65,7 +65,6 @@ export const useTimelineStore = create<TimelineStore>((set, get) => ({
         // Use passed IDs or fall back to current selection
         // We defer to passed IDs because local selection state might have cleared if user clicked outside
         const targetIds = idsToDelete || get().selectedIds;
-
         if (targetIds.size === 0) return;
 
         set({ isDeleting: true });

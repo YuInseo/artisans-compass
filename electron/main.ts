@@ -6,9 +6,32 @@ import fs from 'node:fs'
 import { dialog } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
+// @ts-ignore
+import * as dotenv from 'dotenv';
 
-// const require = createRequire(import.meta.url)
+// Load .env file (in packaged app, it's at app root)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const envPath = app.isPackaged
+  ? path.join(process.resourcesPath, '..', '.env')
+  : path.join(__dirname, '..', '.env');
+
+// Load .env if it exists
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+  console.log('[Main] Loaded .env from:', envPath);
+} else {
+  console.warn('[Main] .env file not found at:', envPath);
+}
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  log.error('Uncaught Exception:', error);
+});
+
+// Register custom protocol 'app://' as privileged/standard
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'app', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
+]);
 
 // The built directory structure
 process.env.APP_ROOT = path.join(__dirname, '..')
@@ -24,19 +47,27 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 
 let win: BrowserWindow | null
 
 function createWindow() {
-  // Resolve correct dist path at runtime
+  // In packaged app, __dirname points to dist-electron inside app.asar
+  // So we go up one level to get to app.asar root, then into dist
   if (app.isPackaged) {
-    RENDERER_DIST = path.join(process.resourcesPath, 'app.asar', 'dist')
+    // __dirname = app.asar/dist-electron, so ../dist = app.asar/dist
+    RENDERER_DIST = path.join(__dirname, '..', 'dist')
     process.env.VITE_PUBLIC = RENDERER_DIST
   }
 
+  console.log('[Main] __dirname:', __dirname);
+  console.log('[Main] RENDERER_DIST:', RENDERER_DIST);
+  console.log('[Main] app.isPackaged:', app.isPackaged);
+
   win = new BrowserWindow({
-    icon: path.join(process.env.VITE_PUBLIC, 'electron-vite.svg'),
+    icon: path.join(process.env.VITE_PUBLIC, 'appLOGO.ico'),
     titleBarStyle: 'hidden',
     width: 1500,
     height: 900,
     show: false, // Don't show until ready
-    backgroundColor: '#1a1a1a', // Fallback background color
+    backgroundColor: '#00000000', // Fully transparent
+    transparent: true,
+    frame: false, // Needed for transparent window on some platforms, keeping existing titleBarStyle logic in mind
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
     },
@@ -51,15 +82,20 @@ function createWindow() {
     win?.webContents.send('main-process-message', (new Date).toLocaleString())
   })
 
-  // Enable DevTools for debugging
-  win.webContents.openDevTools();
-
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
+    win.webContents.openDevTools();
   } else {
-    // Log the path for debugging
-    console.log('[Main] Loading:', path.join(RENDERER_DIST, 'index.html'));
-    win.loadFile(path.join(RENDERER_DIST, 'index.html'))
+    const indexPath = path.join(RENDERER_DIST, 'index.html');
+    console.log('[Main] Loading:', indexPath);
+
+    if (app.isPackaged) {
+      // Use custom 'app://' protocol to load resources
+      // This bypasses file:// protocol restrictions and robustly handles paths with spaces
+      win.loadURL('app://./index.html');
+    } else {
+      win.loadFile(indexPath);
+    }
   }
 }
 
@@ -272,11 +308,40 @@ function setupAutoUpdater() {
     });
   });
 
+  // Manual update check handler
+  ipcMain.handle('check-for-updates', async () => {
+    try {
+      return await autoUpdater.checkForUpdates();
+    } catch (error) {
+      console.error('Failed to check for updates:', error);
+      throw error;
+    }
+  });
+
+  // Quit and Install handler
+  ipcMain.handle('quit-and-install', () => {
+    autoUpdater.quitAndInstall();
+  });
+
   // Check for updates (will notify if found)
   autoUpdater.checkForUpdatesAndNotify();
 }
 
 app.whenReady().then(() => {
+  // Handle 'app://' protocol
+  protocol.handle('app', (req) => {
+    const url = new URL(req.url);
+    // Request for app://./index.html parses to pathname '/index.html'
+    // Remove leading slash to join correctly
+    let pathName = url.pathname;
+    if (pathName.startsWith('/')) pathName = pathName.slice(1);
+
+    const filePath = path.join(RENDERER_DIST, decodeURIComponent(pathName));
+    // console.log('[App Protocol] Serving:', filePath);
+
+    return net.fetch(pathToFileURL(filePath).toString());
+  });
+
   // Robust 'media' protocol handler
   protocol.handle('media', async (req) => {
     let rawPath = req.url.replace(/^media:\/\//i, '');

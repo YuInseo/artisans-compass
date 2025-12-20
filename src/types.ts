@@ -3,6 +3,8 @@ export interface AppSettings {
     idleThresholdSeconds: number; // default: 10
     backupPaths: string[]; // list of directories
     projectTags: string[]; // ["Main", "Sub", "Practice"]
+    typeColors?: Record<string, string>; // { "Main": "#3b82f6", ... }
+    enableCustomProjectColors?: boolean; // default: false
     defaultProjectDurationDays: number; // default: 14
     visibleProjectRows: number;
     hasCompletedOnboarding: boolean;
@@ -13,6 +15,8 @@ export interface AppSettings {
     focusGoals?: {
         monthly: string;
         weekly: string;
+        dailyQuest?: string;
+        dailyQuestUpdatedAt?: number;
         monthlyUpdatedAt?: number;
         weeklyUpdatedAt?: number;
     };
@@ -40,6 +44,7 @@ export interface Project {
     endDate: string; // ISO Date "YYYY-MM-DD"
     isCompleted: boolean;
     locked?: boolean;
+    color?: string; // Hex code or tailwind class
 }
 
 export interface Session {

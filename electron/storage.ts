@@ -10,6 +10,8 @@ export interface AppSettings {
     idleThresholdSeconds: number;
     backupPaths: string[];
     projectTags: string[];
+    typeColors?: Record<string, string>;
+    enableCustomProjectColors?: boolean;
     defaultProjectDurationDays: number;
     screenshotIntervalSeconds: number; // New config
     screenshotPath?: string; // Custom directory
@@ -52,14 +54,20 @@ export interface DailyLogData {
 // --- Default Data ---
 
 export const DEFAULT_SETTINGS: AppSettings = {
-    targetProcessPatterns: ["CLIPStudioPaint", "Photoshop", "Code", "Chrome"],
+    targetProcessPatterns: [],
     idleThresholdSeconds: 10,
     backupPaths: [],
     projectTags: ["Main", "Sub", "Practice"],
+    typeColors: {
+        "Main": "#3b82f6",
+        "Sub": "#22c55e",
+        "Practice": "#eab308"
+    },
+    enableCustomProjectColors: false,
     defaultProjectDurationDays: 14,
     screenshotIntervalSeconds: 10, // TEMPORARY TESTING: 10 seconds
     timelapseDurationSeconds: 5,
-    visibleProjectRows: 8,
+    visibleProjectRows: 3,
     hasCompletedOnboarding: false,
     widgetOpacity: 0.95,
     focusGoals: {
@@ -100,7 +108,8 @@ export function readJson<T>(filePath: string, defaultValue: T): T {
             return defaultValue;
         }
         const data = fs.readFileSync(filePath, 'utf-8');
-        return JSON.parse(data);
+        const parsed = JSON.parse(data);
+        return (parsed === null || parsed === undefined) ? defaultValue : parsed;
     } catch (error) {
         console.error(`Error reading ${filePath}:`, error);
         return defaultValue;

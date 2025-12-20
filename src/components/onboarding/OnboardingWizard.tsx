@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Check, ChevronRight, Sparkles, ArrowRight } from "lucide-react";
 import { useDataStore } from "@/hooks/useDataStore";
+import { useTodoStore } from "@/hooks/useTodoStore";
 import { Project } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import { format, addDays } from "date-fns";
@@ -24,29 +25,12 @@ const COMMON_APPS = [
 
 export function OnboardingWizard({ isOpen, onComplete }: OnboardingWizardProps) {
     const { settings, saveSettings, saveProjects } = useDataStore();
+    const { setActiveProjectId } = useTodoStore();
     const [step, setStep] = useState(1);
 
-    // Step 2 State
-    const [selectedApps, setSelectedApps] = useState<string[]>([]);
-    const [customApp, setCustomApp] = useState("");
+    // ... (rest of state)
 
-    // Step 3 State
-    const [projectName, setProjectName] = useState("My First Project");
-
-    const toggleApp = (proc: string) => {
-        if (selectedApps.includes(proc)) {
-            setSelectedApps(selectedApps.filter(p => p !== proc));
-        } else {
-            setSelectedApps([...selectedApps, proc]);
-        }
-    };
-
-    const handleAddCustomApp = () => {
-        if (customApp && !selectedApps.includes(customApp)) {
-            setSelectedApps([...selectedApps, customApp]);
-            setCustomApp("");
-        }
-    };
+    // ...
 
     const handleFinish = async () => {
         // 1. Save Settings
@@ -68,12 +52,14 @@ export function OnboardingWizard({ isOpen, onComplete }: OnboardingWizardProps) 
             endDate: format(addDays(new Date(), 14), 'yyyy-MM-dd'),
             isCompleted: false
         };
-        await saveProjects([newProject]); // Assuming overwrite for first run, or append? better append if logic allows, but 'saveProjects' replaces. 
-        // Logic in useDataStore: 'saveProjects' calls 'ipc.saveProjects' which overwrites file.
-        // Since it's onboarding, overwriting or initial set is fine.
+        await saveProjects([newProject]);
+
+        // 3. Set as Active Project for DailyPanel Dropdown
+        setActiveProjectId(newProject.id);
 
         onComplete();
     };
+
 
     return (
         <Dialog open={isOpen} onOpenChange={() => { }}>
@@ -131,19 +117,27 @@ export function OnboardingWizard({ isOpen, onComplete }: OnboardingWizardProps) 
                                 <h2 className="text-xl font-bold text-foreground mb-2">What tools do you use?</h2>
                                 <p className="text-sm text-muted-foreground mb-6">Select the applications to track automatically.</p>
 
-                                <div className="grid grid-cols-2 gap-3 mb-6">
-                                    {COMMON_APPS.map(app => (
-                                        <div
-                                            key={app.process}
-                                            onClick={() => toggleApp(app.process)}
-                                            className={`p-3 rounded-lg border-2 cursor-pointer transition-all flex items-center gap-3 ${selectedApps.includes(app.process) ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 bg-card'}`}
-                                        >
-                                            <div className={`w-5 h-5 rounded flex items-center justify-center ${selectedApps.includes(app.process) ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-                                                {selectedApps.includes(app.process) && <Check className="w-3 h-3" />}
+                                <div className="grid grid-cols-2 gap-3 mb-6 max-h-[250px] overflow-y-auto custom-scrollbar pr-1">
+                                    {/* Combined List: Running Apps First, then Common Apps (deduped) */}
+                                    {(() => {
+                                        // 1. Get running apps (fetched via useEffect)
+                                        // We need state for this.
+                                        return [...runningApps, ...COMMON_APPS.filter(c => !runningApps.some(r => r.process === c.process))].map(app => (
+                                            <div
+                                                key={app.process}
+                                                onClick={() => toggleApp(app.process)}
+                                                className={`p-3 rounded-lg border-2 cursor-pointer transition-all flex items-center gap-3 ${selectedApps.includes(app.process) ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 bg-card'}`}
+                                            >
+                                                <div className={`w-5 h-5 rounded flex items-center justify-center ${selectedApps.includes(app.process) ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
+                                                    {selectedApps.includes(app.process) && <Check className="w-3 h-3" />}
+                                                </div>
+                                                <div className="flex flex-col overflow-hidden">
+                                                    <span className="text-sm font-medium text-foreground truncate" title={app.name}>{app.name}</span>
+                                                    {app.process !== app.name && <span className="text-[10px] text-muted-foreground truncate" title={app.process}>{app.process}</span>}
+                                                </div>
                                             </div>
-                                            <span className="text-sm font-medium text-foreground">{app.name}</span>
-                                        </div>
-                                    ))}
+                                        ))
+                                    })()}
                                 </div>
 
                                 <div className="mt-auto">

@@ -1,6 +1,6 @@
 import { TimeTableGraph } from "./TimeTableGraph";
 import { Session, Todo, Project } from "@/types";
-import { ChevronRight, Sparkles, Ghost, Lock, Unlock, Plus, Moon, Sun } from "lucide-react";
+import { ChevronRight, Sparkles, Ghost, Lock, Unlock, Plus, Moon, Sun, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -32,9 +32,22 @@ import { todosToBlocks, blocksToTodos, customSchema } from "@/utils/blocknote-ut
 interface DailyPanelProps {
     onEndDay: (todos: Todo[], screenshots: string[]) => void;
     projects?: Project[];
+    isSidebarOpen?: boolean; // Prop from App
 }
 
-export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
+export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: DailyPanelProps) {
+    // Responsive Logic: Compact Mode ONLY if NOT widget mode
+    // Compact Mode = (Sidebar is Open OR Screen Width < 1280)
+    // Actually, user requested: "Narrow Width OR Calendar Expanded"
+    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+
+    useEffect(() => {
+        const handleResize = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+
     // Use Store
     const {
         projectTodos,
@@ -46,13 +59,45 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
     const todos = useMemo(() => projectTodos[activeProjectId] || [], [projectTodos, activeProjectId]);
 
     const { settings, isWidgetMode, setWidgetMode, saveSettings } = useDataStore();
+
+    const isCompactMode = !isWidgetMode && ((isSidebarOpen && windowWidth < 1500) || windowWidth < 1280);
     const [isWidgetLocked, setIsWidgetLocked] = useState(false);
     const [isPinned, setIsPinned] = useState(false);
     const { theme, setTheme } = useTheme();
     const headerRef = useRef<HTMLDivElement>(null);
     const editorContentRef = useRef<HTMLDivElement>(null);
+    const isUpdating = useRef(false);
 
+    // Auto-Deselect Logic: If the active project moves out of "Today", deselect it.
+    // Auto-Select Logic: Ensure a valid project is selected for "Today"
+    useEffect(() => {
+        const today = new Date();
+        const todayStr = format(today, 'yyyy-MM-dd');
 
+        let nextId = activeProjectId;
+
+        // 1. Validate Current Selection
+        if (nextId) {
+            const currentProject = projects.find(p => p.id === nextId);
+            if (!currentProject || todayStr < currentProject.startDate || todayStr > currentProject.endDate) {
+                nextId = ""; // Invalid
+            }
+        }
+
+        // 2. Auto-Select if Empty (or became Invalid) default behavior
+        if (!nextId) {
+            // Find any project that covers today
+            const candidate = projects.find(p => todayStr >= p.startDate && todayStr <= p.endDate);
+            if (candidate) {
+                nextId = candidate.id;
+            }
+        }
+
+        // 3. Update Store if Changed
+        if (nextId !== activeProjectId) {
+            setActiveProjectId(nextId || "");
+        }
+    }, [projects, activeProjectId, setActiveProjectId]);
 
     // Dynamic Widget Height Logic
     useEffect(() => {
@@ -113,12 +158,87 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
         schema: customSchema,
     });
 
+    // Handle Project Switch / External Updates
+    // If todos change from outside (e.g. switching project), we need to update editor.
+    // But BlockNote is uncontrolled... we use replaceBlocks.
+    useEffect(() => {
+        if (!editor || !editor.document) return;
+
+        // Check if content differs significantly to avoid cursor jump?
+        // Ideally we only do this when switching projects.
+        // For now, let's just replace if project ID changed (which changes 'todos' dependency)
+        // But 'todos' changes on every keystroke due to setTodos updating store... infinite loop risk!
+
+        // Better: Key the BlockNoteView or use a separate "load" effect.
+        // Current implementation re-renders DailyPanel when 'todos' changes?
+        // Lines 46: const todos = useMemo...
+
+        // Actually, let's rely on the keying or just careful updates.
+        // For now, focusing on the arrow key fix.
+
+    }, [todos]);
+
+    // Manual Arrow Navigation (Restored & Improved)
+    useEffect(() => {
+        const container = editorContentRef.current;
+        if (!container || !editor) return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Manual Navigation Override for Arrow Keys
+            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                const selection = editor.getTextCursorPosition();
+                if (selection) {
+                    // Helper to flatten blocks (Recursively)
+                    const getFlatBlocks = (blocks: any[]): any[] => {
+                        let flat: any[] = [];
+                        for (const b of blocks) {
+                            flat.push(b);
+                            if (b.children && b.children.length > 0) {
+                                flat = flat.concat(getFlatBlocks(b.children));
+                            }
+                        }
+                        return flat;
+                    };
+
+                    const flat = getFlatBlocks(editor.document);
+                    const idx = flat.findIndex(b => b.id === selection.block.id);
+
+                    if (idx !== -1) {
+                        if (e.key === "ArrowUp") {
+                            // Move to previous block (end)
+                            if (idx > 0) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                editor.setTextCursorPosition(flat[idx - 1], 'end');
+                                editor.focus();
+                            }
+                        } else if (e.key === "ArrowDown") {
+                            // Move to next block (start) (or end? Standard is usually keeping X position, but start is safe)
+                            if (idx < flat.length - 1) {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                editor.setTextCursorPosition(flat[idx + 1], 'start');
+                                editor.focus();
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        // Capture phase to ensure we handle it before BlockNote swallows it
+        container.addEventListener("keydown", handleKeyDown, { capture: true });
+        return () => container.removeEventListener("keydown", handleKeyDown, { capture: true });
+    }, [editor]);
     // Native Event Listener for Key Handling (Fixes Enter/Backspace issues + Widget Locking)
     useEffect(() => {
         const container = editorContentRef.current;
         if (!container) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Priority 0: IME Composition (Korean, etc)
+            if (e.isComposing) return;
+
             // Priority 1: Widget Locking
             if (isWidgetMode && isWidgetLocked) {
                 if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) return;
@@ -140,12 +260,17 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
                     if (text === "") {
                         e.preventDefault();
                         e.stopPropagation();
+
+                        const newId = window.crypto.randomUUID();
                         editor.insertBlocks(
-                            [{ type: "checkListItem", props: { checked: false } }],
+                            [{ id: newId, type: "checkListItem", props: { checked: false } }],
                             selection.block,
                             "after"
                         );
-                        // editor.focus(); // Ensure focus remains
+                        requestAnimationFrame(() => {
+                            editor.setTextCursorPosition(newId, 'start');
+                            editor.focus();
+                        });
                     }
                 }
             }
@@ -203,7 +328,9 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
 
         // We replace blocks. This might trigger onChange, but we can verify.
         // To be safe, we can clear and insert.
+        isUpdating.current = true;
         editor.replaceBlocks(editor.document, newBlocks as any);
+        setTimeout(() => isUpdating.current = false, 0);
 
     }, [activeProjectId]); // Dependencies: Only when Project ID changes (and we access latest 'todos' via closure/render cycle) 
     // Wait, if 'todos' is computed from projectTodos, we might need to be careful.
@@ -216,7 +343,9 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
     useEffect(() => {
         if (lastProjectId.current !== activeProjectId) {
             const newBlocks = todos.length > 0 ? todosToBlocks(todos) : [{ type: "checkListItem", content: "" }];
+            isUpdating.current = true;
             editor.replaceBlocks(editor.document, newBlocks as any);
+            setTimeout(() => isUpdating.current = false, 0);
             lastProjectId.current = activeProjectId;
         }
     }, [activeProjectId, todos, editor]); // Including todos is risky if keys update. 
@@ -233,13 +362,16 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
         if (todos.length > 0 && isEditorEmpty) {
             const blocks = todosToBlocks(todos);
             // @ts-ignore
+            isUpdating.current = true;
             editor.replaceBlocks(editor.document, blocks);
+            setTimeout(() => isUpdating.current = false, 0);
         }
     }, [todos, editor]);
 
     useEffect(() => {
         // Sync Editor changes to Store
         const unsubscribe = editor.onChange(() => {
+            if (isUpdating.current) return;
             const blocks = editor.document as any; // Cast to any to avoid strict schema type mismatch with persistence helper
             const newTodos = blocksToTodos(blocks);
             // We avoid infinite loop by check? 
@@ -306,7 +438,7 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
 
     return (
         <div
-            className="h-full w-full flex flex-row overflow-hidden text-foreground font-sans transition-colors duration-300"
+            className="h-full w-full flex flex-row text-foreground font-sans transition-colors duration-300"
             style={{
                 backgroundColor: isWidgetMode
                     ? `hsl(var(--card) / ${settings?.widgetOpacity ?? 0.95})`
@@ -314,7 +446,7 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
             }}
         >
             {/* Split Content */}
-            <div className="flex-1 flex px-6 pb-4 pt-4 overflow-hidden gap-6">
+            <div className={cn("flex-1 flex gap-6", isWidgetMode ? "px-2 pt-2 pb-2" : "px-6 py-4")}>
                 {/* Left Panel: Focus List */}
                 <div
                     className={cn("flex flex-col overflow-hidden relative transition-all duration-300 min-w-[300px]", isWidgetMode ? "w-full" : "flex-1")}
@@ -323,12 +455,35 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
                     <div ref={headerRef} className="shrink-0">
                         {isWidgetMode && (
                             <>
-                                <div className="h-9 bg-muted/80 border-b border-border flex items-center justify-between px-2 select-none mb-2 backdrop-blur-sm" style={{ WebkitAppRegion: 'drag' } as any}>
-                                    <div className="flex items-center gap-2">
-                                        <Sparkles className="w-3.5 h-3.5 text-primary/70" />
-                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Focus Widget</span>
+                                <div className="h-9 bg-muted/80 border-b border-border flex items-center justify-between pl-3 pr-2 select-none mb-2 backdrop-blur-sm" style={{ WebkitAppRegion: 'drag' } as any}>
+                                    <div className="flex items-center gap-2 min-w-0 flex-1 mr-2 no-drag" style={{ WebkitAppRegion: 'no-drag' } as any}>
+                                        <div className="h-6">
+                                            <Select value={activeProjectId} onValueChange={setActiveProjectId}>
+                                                <SelectTrigger className="h-6 w-full max-w-[180px] bg-transparent border-none p-0 text-xs font-bold text-muted-foreground hover:text-foreground focus:ring-0 shadow-none uppercase tracking-widest gap-1">
+                                                    <Sparkles className="w-3.5 h-3.5 text-primary/70 shrink-0 mr-1" />
+                                                    <SelectValue placeholder="SELECT PROJECT">
+                                                        {projects.find(p => p.id === activeProjectId)?.name || "FOCUS WIDGET"}
+                                                    </SelectValue>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {(() => {
+                                                        const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                        const activeProjects = projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
+
+                                                        return (
+                                                            <>
+                                                                {activeProjects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
+                                                                {activeProjects.map(p => (
+                                                                    <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>
+                                                                ))}
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-1">
+                                    <div className="flex items-center gap-0.5 shrink-0">
                                         <Button
                                             variant="ghost"
                                             size="icon"
@@ -355,11 +510,11 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
                                             <PopoverContent className="w-60 p-4" side="bottom" align="end">
                                                 <div className="space-y-2">
                                                     <div className="flex items-center justify-between">
-                                                        <h4 className="font-medium leading-none text-sm">Transparency</h4>
-                                                        <span className="text-xs text-muted-foreground">{Math.round((settings?.widgetOpacity || 1) * 100)}%</span>
+                                                        <h4 className="font-medium leading-none text-sm">Opacity</h4>
+                                                        <span className="text-xs text-muted-foreground">{Math.round((settings?.widgetOpacity ?? 1) * 100)}%</span>
                                                     </div>
                                                     <Slider
-                                                        min={0.2}
+                                                        min={0}
                                                         max={1.0}
                                                         step={0.05}
                                                         value={[settings?.widgetOpacity ?? 0.95]}
@@ -435,7 +590,7 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
                             </>
                         )}
 
-                        {!isWidgetMode && (
+                        {!isWidgetMode && projects.length > 0 && (
                             <div className="flex items-end justify-between mb-6 px-1 shrink-0">
                                 <div className="flex items-center gap-2">
                                     <div>
@@ -455,12 +610,19 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
                                                 <SelectValue placeholder="Select Project" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="none">No Project</SelectItem>
-                                                {projects.length > 0 ? projects.map(p => (
-                                                    <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                                )) : (
-                                                    <div className="p-2 text-sm text-muted-foreground italic">No projects</div>
-                                                )}
+                                                {(() => {
+                                                    const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                    const activeProjects = projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
+
+                                                    return (
+                                                        <>
+                                                            {activeProjects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
+                                                            {activeProjects.map(p => (
+                                                                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                            ))}
+                                                        </>
+                                                    );
+                                                })()}
                                             </SelectContent>
                                         </Select>
                                     </div>
@@ -481,59 +643,147 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
                         )}
                     </div> {/* End Header Wrapper */}
 
-                    {/* Editor Area (Scrollable) */}
-                    <div className={cn(
-                        "relative pr-2 custom-scrollbar",
-                        isWidgetMode ? "flex-1 overflow-y-auto pb-6" : "flex-1 overflow-y-auto pb-20"
-                    )}>
-                        {/* Content Wrapper for Measure & Lock Logic */}
-                        <div
-                            ref={editorContentRef}
-                        // Native listener attached via ref below handles keys better than React events here
-                        >
-                            <BlockNoteView
-                                editor={editor}
-                                theme={theme === 'dark' ? 'dark' : 'light'}
-                                className={cn("daily-focus-theme", isWidgetMode ? "min-h-[50px]" : "min-h-[200px]")}
-                                slashMenu={false}
-                                formattingToolbar={false}
-                                onChange={() => {
-                                    // FORCE CHECKBOX MODE:
-                                    // Only convert paragraph to checkbox if it has content.
-                                    // This allows "Backspace to delete" flow (which goes Checkbox -> Empty Paragraph -> Delete).
-                                    const selection = editor.getTextCursorPosition();
-                                    if (selection && selection.block.type === "paragraph") {
-                                        const text = Array.isArray(selection.block.content)
-                                            ? selection.block.content.map(c => c.type === 'text' ? c.text : '').join('')
-                                            : '';
+                    {/* Editor Area (Scrollable) - Only show if projects exist or in widget mode */}
+                    {(isWidgetMode || (projects.length > 0 && activeProjectId && activeProjectId !== 'none')) ? (
+                        <div className={cn(
+                            "relative pr-2 custom-scrollbar",
+                            isWidgetMode ? "flex-1 overflow-y-auto pb-6" : "flex-1 overflow-y-auto pb-20"
+                        )}>
+                            {/* Content Wrapper for Measure & Lock Logic */}
+                            <div
+                                ref={editorContentRef}
+                                onKeyDownCapture={(e) => {
+                                    if (e.key === 'Backspace' && editor) {
+                                        const selection = editor.getTextCursorPosition();
+                                        if (selection && selection.block.type === 'checkListItem') {
+                                            const text = Array.isArray(selection.block.content)
+                                                ? selection.block.content.map(c => c.type === 'text' ? c.text : '').join('')
+                                                : '';
 
-                                        if (text.length > 0) {
+                                            // If empty, manually delete the block to prevent "convert to paragraph" fallback
+                                            if (text.length === 0) {
+                                                e.preventDefault();
+
+                                                const currentBlockId = selection.block.id;
+
+                                                // Helper to find block and its context in the tree
+                                                const findBlockContext = (blocks: any[], id: string, parent: any = null): any => {
+                                                    for (let i = 0; i < blocks.length; i++) {
+                                                        if (blocks[i].id === id) {
+                                                            return { block: blocks[i], index: i, parent, siblings: blocks };
+                                                        }
+                                                        if (blocks[i].children && blocks[i].children.length > 0) {
+                                                            const result = findBlockContext(blocks[i].children, id, blocks[i]);
+                                                            if (result) return result;
+                                                        }
+                                                    }
+                                                    return null;
+                                                };
+
+                                                const context = findBlockContext(editor.document, currentBlockId);
+
+                                                if (context) {
+                                                    const { index, siblings, parent } = context;
+
+                                                    // Determine target to focus
+                                                    let targetBlockId = null;
+
+                                                    if (index > 0) {
+                                                        // Has previous sibling
+                                                        const prevSibling = siblings[index - 1];
+                                                        // Navigate to last deep child of prevSibling if it exists (like Notion)
+                                                        let candidate = prevSibling;
+                                                        while (candidate.children && candidate.children.length > 0 && candidate.props?.isCollapsed !== true) {
+                                                            candidate = candidate.children[candidate.children.length - 1];
+                                                        }
+                                                        targetBlockId = candidate.id;
+                                                    } else if (parent) {
+                                                        // No previous sibling, go to parent
+                                                        targetBlockId = parent.id;
+                                                    }
+
+                                                    if (targetBlockId) {
+                                                        editor.setTextCursorPosition(targetBlockId, 'end');
+                                                        // If has children, promote them (replace parent with children)
+                                                        if (selection.block.children.length > 0) {
+                                                            editor.replaceBlocks([selection.block], selection.block.children);
+                                                        } else {
+                                                            editor.removeBlocks([selection.block]);
+                                                        }
+                                                    } else {
+                                                        // Top of document?
+                                                        if (selection.block.children.length > 0) {
+                                                            // If deleting top block with children, replace it with children
+                                                            // blocknote usually handles focus if active block is removed, but to be safe:
+                                                            // We might want focus on first child? Let's treat replaceBlocks as sufficient 
+                                                            // or set focus explicitly to first child ID if needed?
+                                                            // Actually replaceBlocks usually returns the new blocks. 
+                                                            // Let's just do the replacement.
+                                                            editor.replaceBlocks([selection.block], selection.block.children);
+                                                        } else {
+                                                            editor.removeBlocks([selection.block]);
+                                                        }
+                                                    }
+                                                } else {
+                                                    // Fallback
+                                                    editor.removeBlocks([selection.block]);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }}
+                            >
+                                <BlockNoteView
+                                    editor={editor}
+                                    theme={theme === 'dark' ? 'dark' : 'light'}
+                                    className={cn("daily-focus-theme", isWidgetMode ? "min-h-[50px]" : "min-h-[200px]")}
+                                    slashMenu={false}
+                                    formattingToolbar={false}
+                                    onChange={() => {
+                                        // FORCE CHECKBOX MODE:
+                                        // Only convert paragraph to checkbox if it has content or if we want to enforce it.
+                                        // NOTE: The Backspace handler above handles the deletion case.
+                                        // Here we just ensure any accidentally created paragraphs become checkboxes.
+                                        const selection = editor.getTextCursorPosition();
+                                        if (selection && selection.block.type === "paragraph") {
                                             editor.updateBlock(selection.block, {
                                                 type: "checkListItem",
                                                 props: { checked: false }
                                             });
                                         }
-                                    }
 
-                                    // Sync Editor changes to Store
-                                    const blocks = editor.document as any;
-                                    const newTodos = blocksToTodos(blocks);
-                                    setTodos(newTodos, true);
-                                }}
-                            />
+                                        if (selection && selection.block.type === "paragraph") {
+                                            editor.updateBlock(selection.block, {
+                                                type: "checkListItem",
+                                                props: { checked: false }
+                                            });
+                                        }
+                                    }}
+                                />
 
-                            {/* Optional: Add button if empty */}
-                            {editor.document.length === 0 && (
-                                <Button
-                                    variant="ghost"
-                                    className="w-full mt-2 text-muted-foreground border-dashed border"
-                                    onClick={handleAddRoot}
-                                >
-                                    <Plus className="w-4 h-4 mr-2" /> Add First Task
-                                </Button>
-                            )}
-                        </div> {/* End Content Wrapper */}
-                    </div>
+                                {/* Optional: Add button if empty */}
+                                {editor.document.length === 0 && (
+                                    <Button
+                                        variant="ghost"
+                                        className="w-full mt-2 text-muted-foreground border-dashed border"
+                                        onClick={handleAddRoot}
+                                    >
+                                        <Plus className="w-4 h-4 mr-2" /> Add First Task
+                                    </Button>
+                                )}
+                            </div> {/* End Content Wrapper */}
+                        </div>
+                    ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground pb-20 animate-in fade-in zoom-in-95 duration-300">
+                            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
+                                <Sparkles className="w-8 h-8 text-muted-foreground/50" />
+                            </div>
+                            <h3 className="font-serif text-lg font-medium text-foreground mb-1">Ready to Craft?</h3>
+                            <p className="text-sm">Select a project above to start planning your day.</p>
+                        </div>
+                    )}
+
+                    {/* End Day Button */}
 
                     {/* End Day Button */}
                     {!isWidgetMode && (
@@ -571,51 +821,76 @@ export function DailyPanel({ onEndDay, projects = [] }: DailyPanelProps) {
                     )}
                 </div>
 
-                {/* Right Panel: TimeTable */}
+                {/* Right Panel: TimeTable (Responsive) */}
                 {
                     !isWidgetMode && (
-                        <div className="hidden lg:flex w-[320px] flex-col shrink-0 h-full animate-in fade-in slide-in-from-right-4 duration-300">
-                            <div className="flex items-end justify-between mb-6 px-1 shrink-0">
-                                <div>
-                                    <h2 className="text-2xl font-bold text-foreground font-serif tracking-tight">Time Table</h2>
-                                    <p className="text-sm text-transparent font-medium mt-1 select-none">.</p>
-                                </div>
-                            </div>
-                            <div className="flex-1 border border-border rounded-xl bg-muted/10 overflow-hidden shadow-sm">
-                                <TimeTableGraph
-                                    sessions={liveSession ? [...sessions, liveSession] : sessions}
-                                    date={new Date()}
-                                />
-                            </div>
+                        <div className={cn(
+                            "flex-col shrink-0 h-full transition-transform duration-300 ease-in-out w-[320px] z-20",
+                            isCompactMode
+                                ? "absolute right-0 top-0 bottom-0 translate-x-[calc(100%-24px)] hover:translate-x-0 group"
+                                : "hidden lg:flex animate-in fade-in slide-in-from-right-4 bg-background/50 backdrop-blur"
+                        )}>
+                            <div className="relative w-full h-full flex flex-row">
+                                {/* Visual Handle (Only in Compact Mode) */}
+                                {isCompactMode && (
+                                    <div className="shrink-0 w-6 h-full flex items-center justify-center cursor-pointer bg-muted/80 hover:bg-muted border-l border-t border-b border-border rounded-l-md shadow-sm transition-colors mt-4 mb-4"
+                                        style={{ height: 'calc(100% - 32px)' }}
+                                    >
+                                        <div className="flex flex-col gap-1.5 items-center opacity-50 group-hover:opacity-100 transition-opacity">
+                                            <ChevronLeft className="w-4 h-4" />
+                                        </div>
+                                    </div>
+                                )}
 
-                            {liveSession && (
-                                <div className="mt-4 p-4 border border-blue-500/30 bg-blue-500/5 rounded-xl shadow-sm animate-in fade-in slide-in-from-bottom-2">
-                                    <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1 flex items-center gap-2">
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                                        </span>
-                                        Working on...
+                                {/* Main Content Panel */}
+                                <div className={cn(
+                                    "flex-1 h-full bg-background/95 backdrop-blur border-l border-border shadow-2xl overflow-hidden flex flex-col px-4 py-4",
+                                    !isCompactMode && "bg-transparent border-none shadow-none"
+                                )}>
+                                    <div className="flex items-end justify-between mb-6 px-1 shrink-0">
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-foreground font-serif tracking-tight">Time Table</h2>
+                                            <p className="text-sm text-transparent font-medium mt-1 select-none">.</p>
+                                        </div>
                                     </div>
-                                    <div className="text-lg font-bold text-foreground truncate" title={liveSession.process}>
-                                        {liveSession.process}
+                                    <div className="flex-1 border border-border rounded-xl bg-muted/10 overflow-hidden shadow-sm">
+                                        <TimeTableGraph
+                                            sessions={liveSession ? [...sessions, liveSession] : sessions}
+                                            date={new Date()}
+                                        />
                                     </div>
-                                    <div className="text-2xl font-mono font-medium text-blue-600 dark:text-blue-400 mt-1">
-                                        {(() => {
-                                            const s = liveSession.duration;
-                                            const h = Math.floor(s / 3600);
-                                            const m = Math.floor((s % 3600) / 60);
-                                            const sec = s % 60;
-                                            return `${h > 0 ? `${h}h ` : ''}${m}m ${sec} s`;
-                                        })()}
-                                    </div>
+
+                                    {liveSession && (
+                                        <div className="mt-4 p-4 border border-blue-500/30 bg-blue-500/5 rounded-xl shadow-sm animate-in fade-in slide-in-from-bottom-2">
+                                            <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1 flex items-center gap-2">
+                                                <span className="relative flex h-2 w-2">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                                                </span>
+                                                Working on...
+                                            </div>
+                                            <div className="text-lg font-bold text-foreground truncate" title={liveSession.process}>
+                                                {liveSession.process}
+                                                <span className="block text-sm font-normal text-muted-foreground mt-0.5 font-mono">
+                                                    {/* Simple timer display since we can't import StopwatchTicker easily right now without seeing imports, or assuming it is available logic */}
+                                                    {(() => {
+                                                        const totalSeconds = sessions.reduce((acc, s) => acc + s.duration, 0) + liveSession.duration;
+                                                        const h = Math.floor(totalSeconds / 3600);
+                                                        const m = Math.floor((totalSeconds % 3600) / 60);
+                                                        const s = totalSeconds % 60;
+                                                        return `${h}h ${m}m ${s}s`;
+                                                    })()}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            )}
+                            </div>
                         </div>
                     )
                 }
 
-            </div>
-        </div>
+            </div >
+        </div >
     );
 }

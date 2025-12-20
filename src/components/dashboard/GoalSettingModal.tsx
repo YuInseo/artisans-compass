@@ -4,25 +4,20 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea"; // Or Input if single line, but goals can be long
 import { Target, Calendar, CalendarClock } from "lucide-react";
-import { isSameWeek } from "date-fns";
 
 interface GoalSettingModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }
 
-export function GoalSettingModal({ open, onOpenChange, forceUnlock = false }: GoalSettingModalProps & { forceUnlock?: boolean }) {
+export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) {
     const { settings, saveSettings } = useDataStore();
     const [monthlyGoal, setMonthlyGoal] = useState("");
     const [weeklyGoal, setWeeklyGoal] = useState("");
 
-    // Lock Logic
-    const isMonthlyLocked = !forceUnlock && settings?.focusGoals?.monthlyUpdatedAt &&
-        new Date(settings.focusGoals.monthlyUpdatedAt).getMonth() === new Date().getMonth() &&
-        new Date(settings.focusGoals.monthlyUpdatedAt).getFullYear() === new Date().getFullYear();
-
-    const isWeeklyLocked = !forceUnlock && settings?.focusGoals?.weeklyUpdatedAt &&
-        isSameWeek(new Date(settings.focusGoals.weeklyUpdatedAt), new Date(), { weekStartsOn: settings.startOfWeek === 'monday' ? 1 : 0 });
+    // Lock Logic (DISABLED as per user request to never lock)
+    const isMonthlyLocked = false;
+    const isWeeklyLocked = false;
 
     // Load initial values
     useEffect(() => {
@@ -69,16 +64,16 @@ export function GoalSettingModal({ open, onOpenChange, forceUnlock = false }: Go
                 </DialogHeader>
 
                 <div className="flex flex-col gap-6 py-4">
-                    {/* Monthly Goal - Red Theme */}
+                    {/* Monthly Goal - Violet Theme */}
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between text-red-600 dark:text-red-400 font-bold text-sm tracking-wide uppercase">
+                        <div className="flex items-center justify-between text-violet-600 dark:text-violet-400 font-bold text-sm tracking-wide uppercase">
                             <div className="flex items-center gap-2">
                                 <Calendar className="w-4 h-4" />
                                 Monthly Goal
                             </div>
                             {/* Lock indicator */}
                             {isMonthlyLocked && (
-                                <span className="text-[10px] bg-red-100 dark:bg-red-900/30 px-2 py-0.5 rounded-full flex items-center gap-1 opacity-80 animate-in fade-in">
+                                <span className="text-[10px] bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 rounded-full flex items-center gap-1 opacity-80 animate-in fade-in">
                                     Locked for this month
                                 </span>
                             )}
@@ -89,9 +84,9 @@ export function GoalSettingModal({ open, onOpenChange, forceUnlock = false }: Go
                                 onChange={(e) => setMonthlyGoal(e.target.value)}
                                 placeholder="Example: Mastering Human Anatomy..."
                                 disabled={!!isMonthlyLocked}
-                                className="min-h-[100px] text-lg font-medium border-red-200 focus:border-red-500 bg-red-50/50 dark:bg-red-950/20 dark:border-red-900 resize-none disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                                className="min-h-[100px] text-lg font-medium border-violet-200 focus:border-violet-500 bg-violet-50/50 dark:bg-violet-950/20 dark:border-violet-900 resize-none disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                             />
-                            <div className="absolute top-0 right-0 w-1 h-full bg-red-500 rounded-r-md opacity-20 pointer-events-none" />
+                            <div className="absolute top-0 right-0 w-1 h-full bg-violet-500 rounded-r-md opacity-20 pointer-events-none" />
                         </div>
                     </div>
 

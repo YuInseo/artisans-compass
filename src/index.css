@@ -5,60 +5,70 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 240 10% 3.9%;
+    --foreground: 0 0% 3.9%;
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 3.9%;
+    --card-foreground: 0 0% 3.9%;
     --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 3.9%;
-    --primary: 240 5.9% 10%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
     --primary-foreground: 0 0% 98%;
-    --secondary: 240 4.8% 95.9%;
-    --secondary-foreground: 240 5.9% 10%;
-    --muted: 240 4.8% 95.9%;
-    --muted-foreground: 240 3.8% 46.1%;
-    --accent: 240 4.8% 95.9%;
-    --accent-foreground: 240 5.9% 10%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 5.9% 90%;
-    --input: 240 5.9% 90%;
-    --ring: 240 10% 3.9%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
     --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
   }
 
   .dark {
     /* Neutral Gray Theme (Soft, No Blue) */
-    --background: 0 0% 9%;
+    --background: 0 0% 3.9%;
     /* #171717 */
-    --foreground: 0 0% 95%;
+    --foreground: 0 0% 98%;
     /* #f2f2f2 */
 
-    --card: 0 0% 13%;
+    --card: 0 0% 3.9%;
     /* #212121 */
-    --card-foreground: 0 0% 95%;
+    --card-foreground: 0 0% 98%;
 
-    --popover: 0 0% 9%;
-    --popover-foreground: 0 0% 95%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
 
-    --primary: 0 0% 95%;
+    --primary: 0 0% 98%;
     --primary-foreground: 0 0% 9%;
 
-    --secondary: 0 0% 15%;
+    --secondary: 0 0% 14.9%;
     /* #262626 */
-    --secondary-foreground: 0 0% 95%;
+    --secondary-foreground: 0 0% 98%;
 
-    --muted: 0 0% 15%;
-    --muted-foreground: 0 0% 65%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
 
-    --accent: 0 0% 15%;
-    --accent-foreground: 0 0% 95%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
 
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 95%;
+    --destructive-foreground: 0 0% 98%;
 
-    --border: 0 0% 15%;
-    --input: 0 0% 15%;
-    --ring: 0 0% 83.9%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
   }
 }
 
@@ -154,4 +164,222 @@ div[data-content-type="block-group"],
   display: none !important;
   opacity: 0 !important;
   pointer-events: none !important;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --radius: 0.5rem;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+  }
+
+  .dark {
+    /* Neutral Gray Theme (Soft, No Blue) */
+    --background: 0 0% 3.9%;
+    /* #171717 */
+    --foreground: 0 0% 98%;
+    /* #f2f2f2 */
+
+    --card: 0 0% 3.9%;
+    /* #212121 */
+    --card-foreground: 0 0% 98%;
+
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+
+    --secondary: 0 0% 14.9%;
+    /* #262626 */
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-transparent text-foreground;
+  }
+}
+
+@layer utilities {
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/20 rounded-full transition-colors;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/40;
+  }
+
+  /* Smooth Scrolling */
+  .custom-scrollbar {
+    scroll-behavior: smooth;
+  }
+}
+
+/* BlockNote Customization */
+
+/* Hide vertical indentation lines globally */
+/* Hide vertical indentation lines globally */
+/* Hide vertical indentation lines globally */
+.bn-block-group,
+.bn-editor .bn-block-group,
+div[data-content-type="block-group"],
+.bn-block-group[data-indent],
+[class*="bn-block-group"],
+.bn-block-group * {
+  border-left: none !important;
+  border-left-width: 0 !important;
+  border-color: transparent !important;
+  border-left-style: none !important;
+}
+
+/* Remove Focus Ring from Checkboxes */
+.mantine-Checkbox-input:focus,
+.mantine-Checkbox-input:focus-visible,
+input[type="checkbox"]:focus,
+input[type="checkbox"]:focus-visible,
+.bn-checkbox:focus,
+.bn-checkbox:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: var(--muted-foreground) !important;
+  ring: 0 !important;
+}
+
+/* Hide ONLY the Plus Button in Side Menu */
+.bn-side-menu .bn-add-block-button,
+div[role="button"][aria-label="Add block"],
+.bn-side-menu>div:first-child:not([draggable="true"]) {
+  /* Often the plus button is the first child or distinct from dragging */
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+}
+
+/* Ensure Side Menu itself is visible for dragging */
+.bn-side-menu {
+  display: flex !important;
+  opacity: 1 !important;
+  width: auto !important;
+  pointer-events: auto !important;
+}
+
+/* Hide any active block indicator lines if present */
+.bn-block-content {
+  border-left: none !important;
+}
+
+/* Custom Dark Theme Wrapper */
+.bn-custom-dark {
+  /* Override BlockNote CSS Variables for Dark Theme */
+  --bn-colors-editor-background: #09090b;
+  /* zinc-950 */
+  --bn-colors-editor-text: #f4f4f5;
+  /* zinc-100 */
+  --bn-colors-menu-background: #18181b;
+  /* zinc-900 */
+  --bn-colors-menu-text: #f4f4f5;
+
+  background-color: var(--bn-colors-editor-background) !important;
+  color: var(--bn-colors-editor-text) !important;
+}
+
+/* Ensure editor content inherits correctly */
+.bn-custom-dark .bn-editor {
+  background-color: transparent !important;
+}
+
+/* 1. Selective Side Menu: Show Drag Handle, Hide Plus Button */
+.bn-side-menu {
+  display: flex !important;
+  /* Ensure menu shell is visible */
+}
+
+/* Hide the Plus Button specifically */
+/* BlockNote generic selector for the Add Block button in side menu */
+/* It is often a button with an SVG of a plus sign or specific class */
+.bn-side-menu button:has(svg.lucide-plus),
+.bn-side-menu [role="button"][aria-label="Add block"],
+.bn-side-menu .bn-add-block-button {
+  display: none !important;
+}
+
+/* 2. Hide Context Menu (The dropdown that appears when clicking the Drag Handle) */
+/* We want dragging to work, but clicking to do nothing (or show nothing) */
+/* WARNING: Removed div[data-radix-popper-content-wrapper] as it hides ALL app dropdowns */
+.bn-menu-dropdown,
+.mantine-Menu-dropdown,
+.bn-side-menu-dropdown {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-transparent text-foreground;
+  }
 }

@@ -20,6 +20,7 @@ interface TodoItemProps {
     isDragging?: boolean;
     checkboxVisibility?: 'high' | 'low';
     isLocked?: boolean;
+    onNavigate?: (direction: 'up' | 'down', id: string) => void;
 }
 
 export const TodoItem: React.FC<TodoItemProps> = ({
@@ -36,7 +37,8 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     dragHandleProps,
     isDragging,
     checkboxVisibility = 'high',
-    isLocked = false
+    isLocked = false,
+    onNavigate
 }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -54,6 +56,7 @@ export const TodoItem: React.FC<TodoItemProps> = ({
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (isLocked) return;
+        if (e.nativeEvent.isComposing) return;
 
         if (e.key === 'Enter') {
             e.preventDefault();
@@ -65,9 +68,13 @@ export const TodoItem: React.FC<TodoItemProps> = ({
             } else {
                 onIndent(todo.id);
             }
-        } else if (e.key === 'Backspace' && todo.text === '') {
-            e.preventDefault();
             onDelete(todo.id);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            onNavigate?.('up', todo.id);
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            onNavigate?.('down', todo.id);
         }
     };
 

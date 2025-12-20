@@ -21,9 +21,10 @@ interface DailyArchiveViewProps {
     timelapseDurationSeconds?: number;
     checkboxVisibility?: 'high' | 'low';
     onClose?: () => void;
+    hideCloseButton?: boolean;
 }
 
-export function DailyArchiveView({ date, todos: initialTodos, screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, checkboxVisibility = 'high', onClose }: DailyArchiveViewProps) {
+export function DailyArchiveView({ date, todos: initialTodos, screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, checkboxVisibility = 'high', onClose, hideCloseButton = false }: DailyArchiveViewProps) {
     const [todos, setTodos] = useState<Todo[]>(initialTodos);
     const [dynamicScreenshots, setDynamicScreenshots] = useState<string[]>(initialScreenshots);
 
@@ -269,12 +270,14 @@ export function DailyArchiveView({ date, todos: initialTodos, screenshots: initi
                     </div>
 
                     {/* Close Button Attached Below */}
-                    <button
-                        onClick={onClose}
-                        className="w-full py-3 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-bold text-sm transition-colors uppercase tracking-wider border border-primary/20"
-                    >
-                        Close Archive
-                    </button>
+                    {!hideCloseButton && onClose && (
+                        <button
+                            onClick={onClose}
+                            className="w-full py-3 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-bold text-sm transition-colors uppercase tracking-wider border border-primary/20"
+                        >
+                            Close Archive
+                        </button>
+                    )}
 
                     {/* Quest Clear */}
                     {stats.questAchieved && (

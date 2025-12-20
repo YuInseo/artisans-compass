@@ -21,7 +21,7 @@ import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
 import { X, Cloud, Check, Moon, Sun, Monitor, Eye, EyeOff } from "lucide-react";
 import { AppSettings } from "@/types"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { cn } from "@/lib/utils"
 
 interface SettingsModalProps {
@@ -29,13 +29,194 @@ interface SettingsModalProps {
     onOpenChange?: (open: boolean) => void;
     settings: AppSettings | null;
     onSaveSettings: (settings: AppSettings) => Promise<void>;
+    defaultTab?: SettingsTab; // Optional default tab
 }
+
+import {
+    DndContext,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    DragEndEvent
+} from '@dnd-kit/core';
+import {
+    arrayMove,
+    SortableContext,
+    sortableKeyboardCoordinates,
+    useSortable,
+    verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { GripVertical, Pencil } from 'lucide-react';
 
 type SettingsTab = 'general' | 'appearance' | 'timeline' | 'tracking' | 'integrations';
 
-export function SettingsModal({ open, onOpenChange, settings, onSaveSettings }: SettingsModalProps) {
+// Sortable Item Component
+// Sortable Item Component
+function SortableProjectType({ id, tag, color, isDefault, onDelete, onColorChange, onRename }: {
+    id: string,
+    tag: string,
+    color: string,
+    isDefault: boolean,
+    onDelete: () => void,
+    onColorChange: (color: string) => void,
+    onRename: (newName: string) => void
+}) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging
+    } = useSortable({ id });
+
+    const [isEditing, setIsEditing] = useState(false);
+    const [editName, setEditName] = useState(tag);
+
+    const [localColor, setLocalColor] = useState(color);
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Sync local color with prop color (upstream changes)
+    useEffect(() => {
+        setLocalColor(color);
+    }, [color]);
+
+    const handleColorChange = (newColor: string) => {
+        setLocalColor(newColor);
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        timeoutRef.current = setTimeout(() => {
+            onColorChange(newColor);
+        }, 100); // 100ms debounce to prevent render lag
+    };
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        zIndex: isDragging ? 50 : 'auto',
+        opacity: isDragging ? 0.5 : 1,
+    };
+
+    const handleSave = () => {
+        if (editName.trim() && editName !== tag) {
+            onRename(editName.trim());
+        }
+        setIsEditing(false);
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            className="flex items-center gap-4 bg-background p-2 rounded border border-border/40 group"
+        >
+            <div {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground">
+                <GripVertical className="w-4 h-4" />
+            </div>
+
+            {/* Color Picker Popover/Input */}
+            <div className="relative group/picker w-8 h-8 flex-shrink-0">
+                <div
+                    className="absolute inset-0 rounded-full border-2 border-transparent ring-2 ring-offset-1 transition-transform group-hover/picker:scale-110 pointer-events-none"
+                    style={{ backgroundColor: localColor }}
+                />
+                <input
+                    type="color"
+                    value={localColor}
+                    onChange={(e) => handleColorChange(e.target.value)}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                    title="Change Color"
+                />
+            </div>
+
+            <div className="flex-1 flex items-center gap-2">
+                {isEditing ? (
+                    <div className="flex items-center gap-2 flex-1">
+                        <Input
+                            value={editName}
+                            onChange={(e) => setEditName(e.target.value)}
+                            className="h-7 text-sm"
+                            autoFocus
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') handleSave();
+                                if (e.key === 'Escape') {
+                                    setEditName(tag);
+                                    setIsEditing(false);
+                                }
+                            }}
+                            onBlur={handleSave}
+                        />
+                    </div>
+                ) : (
+                    <>
+                        <span className="font-medium text-sm">{tag}</span>
+                        {isDefault && (
+                            <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded uppercase tracking-wide">
+                                (Default)
+                            </span>
+                        )}
+                    </>
+                )}
+            </div>
+
+            <div className="flex items-center">
+                {/* Rename Trigger */}
+                {!isEditing && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => setIsEditing(true)}
+                    >
+                        <Pencil className="w-3.5 h-3.5" />
+                    </Button>
+                )}
+
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                    onClick={onDelete}
+                >
+                    <X className="w-4 h-4" />
+                </Button>
+            </div>
+        </div>
+    );
+}
+
+export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, defaultTab = 'general' }: SettingsModalProps) {
     const { setTheme, theme } = useTheme()
-    const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+    const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab);
+
+    // Sync activeTab with defaultTab when open changes
+    useEffect(() => {
+        if (open) {
+            setActiveTab(defaultTab);
+        }
+    }, [open, defaultTab]);
+
+    const sensors = useSensors(
+        useSensor(PointerSensor),
+        useSensor(KeyboardSensor, {
+            coordinateGetter: sortableKeyboardCoordinates,
+        })
+    );
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || !settings?.projectTags) return;
+
+        if (active.id !== over.id && settings) {
+            const oldIndex = settings.projectTags.indexOf(active.id as string);
+            const newIndex = settings.projectTags.indexOf(over.id as string);
+            const newTags = arrayMove(settings.projectTags, oldIndex, newIndex);
+            onSaveSettings({ ...settings, projectTags: newTags });
+        }
+    };
+
 
     // General Tab State
     const [newAppInput, setNewAppInput] = useState("");
@@ -43,6 +224,9 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings }: 
 
     // Tracking Tab State
     const [screenSources, setScreenSources] = useState<{ id: string, name: string, thumbnail: string }[]>([]);
+
+    // Timeline Tab State
+    const [newTypeInput, setNewTypeInput] = useState("");
 
     const fetchRunningApps = async () => {
         if ((window as any).ipcRenderer) {
@@ -151,7 +335,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings }: 
                     <span className="text-[10px] font-bold text-muted-foreground uppercase opacity-0 group-hover:opacity-100 transition-opacity">Esc</span>
                 </div>
 
-                <ScrollArea className="flex-1 px-10 py-[60px]">
+                <ScrollArea className="h-full px-10 py-[60px]">
                     <div className="max-w-[700px] pb-20">
                         {/* Tab Content */}
                         {activeTab === 'general' && (
@@ -429,6 +613,118 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings }: 
                                 </div>
 
                                 <div className="grid gap-8">
+                                    {/* Project Types & Colors Section */}
+                                    <div className="space-y-4">
+                                        <div className="flex flex-col gap-1">
+                                            <div className="flex items-center justify-between">
+                                                <h5 className="text-base font-semibold text-foreground">Project Types & Colors</h5>
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        id="custom-colors"
+                                                        checked={settings.enableCustomProjectColors || false}
+                                                        onChange={(e) => onSaveSettings({ ...settings, enableCustomProjectColors: e.target.checked })}
+                                                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                                    />
+                                                    <Label htmlFor="custom-colors" className="text-sm font-normal text-muted-foreground cursor-pointer select-none">
+                                                        Allow custom colors per project
+                                                    </Label>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-muted-foreground pb-2">
+                                                The top-most project tag will be the default for new projects. Drag to reorder.
+                                            </p>
+                                        </div>
+
+                                        <div className="bg-muted/30 p-4 rounded-lg space-y-4">
+                                            <div className="space-y-2 max-h-[300px] overflow-y-auto px-1 custom-scrollbar">
+                                                <DndContext
+                                                    sensors={sensors}
+                                                    collisionDetection={closestCenter}
+                                                    onDragEnd={handleDragEnd}
+                                                >
+                                                    <SortableContext
+                                                        items={settings.projectTags || []}
+                                                        strategy={verticalListSortingStrategy}
+                                                    >
+                                                        {(settings.projectTags || ["Main", "Sub", "Practice"]).map((tag, index) => (
+                                                            <SortableProjectType
+                                                                key={tag}
+                                                                id={tag}
+                                                                tag={tag}
+                                                                color={settings.typeColors?.[tag] || "#3b82f6"}
+                                                                isDefault={index === 0}
+                                                                onColorChange={(newColor) => {
+                                                                    const newColors = { ...(settings.typeColors || {}), [tag]: newColor };
+                                                                    onSaveSettings({ ...settings, typeColors: newColors });
+                                                                }}
+                                                                onRename={(newName) => {
+                                                                    if (newName && !settings.projectTags.includes(newName)) {
+                                                                        const updatedTags = settings.projectTags.map(t => t === tag ? newName : t);
+                                                                        const updatedColors = { ...settings.typeColors };
+                                                                        if (updatedColors[tag]) {
+                                                                            updatedColors[newName] = updatedColors[tag];
+                                                                            delete updatedColors[tag];
+                                                                        }
+                                                                        onSaveSettings({ ...settings, projectTags: updatedTags, typeColors: updatedColors });
+                                                                    }
+                                                                }}
+                                                                onDelete={() => {
+                                                                    if (confirm(`Delete project type "${tag}"?`)) {
+                                                                        const updatedTags = settings.projectTags.filter(t => t !== tag);
+                                                                        const updatedColors = { ...settings.typeColors };
+                                                                        delete updatedColors[tag];
+                                                                        onSaveSettings({ ...settings, projectTags: updatedTags, typeColors: updatedColors });
+                                                                    }
+                                                                }}
+                                                            />
+                                                        ))}
+                                                    </SortableContext>
+                                                </DndContext>
+                                            </div>
+
+                                            {/* Add New Type */}
+                                            <div className="flex gap-2 pt-2">
+                                                <Input
+                                                    placeholder="New Type Name..."
+                                                    value={newTypeInput}
+                                                    onChange={(e) => setNewTypeInput(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' && newTypeInput.trim()) {
+                                                            const tag = newTypeInput.trim();
+                                                            if (!settings.projectTags.includes(tag)) {
+                                                                onSaveSettings({
+                                                                    ...settings,
+                                                                    projectTags: [...settings.projectTags, tag],
+                                                                    typeColors: { ...(settings.typeColors || {}), [tag]: "#808080" } // Default gray
+                                                                });
+                                                                setNewTypeInput("");
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="h-9 bg-background"
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    disabled={!newTypeInput.trim()}
+                                                    onClick={() => {
+                                                        const tag = newTypeInput.trim();
+                                                        if (tag && !settings.projectTags.includes(tag)) {
+                                                            onSaveSettings({
+                                                                ...settings,
+                                                                projectTags: [...settings.projectTags, tag],
+                                                                typeColors: { ...(settings.typeColors || {}), [tag]: "#808080" }
+                                                            });
+                                                            setNewTypeInput("");
+                                                        }
+                                                    }}
+                                                >
+                                                    Add
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                     <div className="flex flex-col gap-3">
                                         <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">Visible Project Rows</Label>
                                         <div className="flex items-center gap-4 bg-muted/30 p-4 rounded-lg">

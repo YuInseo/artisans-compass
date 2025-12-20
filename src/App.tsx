@@ -15,28 +15,66 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { SettingsModal } from '@/components/settings-modal';
 import { Todo, Project } from "@/types";
 import { useDataStore } from "@/hooks/useDataStore";
+import { useTodoStore } from "@/hooks/useTodoStore";
+import { Toaster } from "@/components/ui/sonner";
 
 // Placeholder for List View (can be moved to separate file later)
 import { ProjectList } from '@/components/dashboard/ProjectList';
+import { toast } from 'sonner';
 
 function App() {
-  // Prevent Refresh (Ctrl+R, F5)
+  // Prevent Refresh (Ctrl+R, F5) logic moved to main listener below
+  const { settings, saveSettings, loading, projects, searchQuery, undo: dataUndo, redo: dataRedo, lastActionTime: dataTime } = useDataStore();
+  const { undo: todoUndo, redo: todoRedo, lastActionTime: todoTime } = useTodoStore();
+
+
+
+  const [isRitualOpen, setIsRitualOpen] = useState(false);
+  const [showInspiration, setShowInspiration] = useState(true);
+  const [currentStats, setCurrentStats] = useState({ totalSeconds: 0, questAchieved: false, screenshotCount: 0 });
+
+  // Sidebar State (Lifted for Responsiveness)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Undo/Redo Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+      // Undo: Ctrl+Z
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && !e.shiftKey) {
+        e.preventDefault();
+        // Global Undo Coordination
+        if (todoTime > dataTime) {
+          toast.info("Undo: Task Action");
+          todoUndo();
+        } else {
+          toast.info("Undo: Project Action");
+          dataUndo();
+        }
+      }
+      // Redo: Ctrl+Shift+Z or Ctrl+Y
+      if ((e.ctrlKey || e.metaKey) && ((e.code === 'KeyZ' && e.shiftKey) || e.code === 'KeyY')) {
+        e.preventDefault();
+        // Global Redo Coordination
+        if (todoTime > dataTime) {
+          toast.info("Redo: Task Action");
+          todoRedo();
+        } else {
+          toast.info("Redo: Project Action");
+          dataRedo();
+        }
+      }
+
+      // Prevent Refresh (Ctrl+R, F5)
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyR') {
         e.preventDefault();
       }
-      if (e.key === 'F5') {
+      if (e.code === 'F5') {
         e.preventDefault();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-  const { settings, saveSettings, loading, projects } = useDataStore();
-  const [isRitualOpen, setIsRitualOpen] = useState(false);
-  const [showInspiration, setShowInspiration] = useState(true);
-  const [currentStats, setCurrentStats] = useState({ totalSeconds: 0, questAchieved: false, screenshotCount: 0 });
+  }, [dataUndo, dataRedo, todoUndo, todoRedo, dataTime, todoTime]);
 
   // Archive State
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
@@ -44,7 +82,7 @@ function App() {
   const [lastSessionTodos, setLastSessionTodos] = useState<Todo[]>([]);
   const [viewMode, setViewMode] = useState<'timeline' | 'list'>('timeline');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [settingsTab, setSettingsTab] = useState<'general' | 'timeline' | 'tracking' | 'integrations'>('general'); // State for initial tab
   const [focusedProject, setFocusedProject] = useState<Project | null>(null);
 
   // Navigation Signal State
@@ -52,6 +90,11 @@ function App() {
 
   const handleNavigate = (date: Date) => {
     setNavigationSignal({ date, timestamp: Date.now() });
+  };
+
+  const handleOpenSettings = (tab: 'general' | 'timeline' | 'tracking' | 'integrations' = 'general') => {
+    setSettingsTab(tab);
+    setIsSettingsOpen(true);
   };
 
   // Calculate dynamic timeline height: (Rows * RowHeight) + HeaderHeight (+ buffer)
@@ -163,21 +206,26 @@ function App() {
         onClose={() => setShowInspiration(false)}
       />
       <AppLayout
+        isSidebarOpen={isSidebarOpen}
+        setIsSidebarOpen={setIsSidebarOpen}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenSettings={() => handleOpenSettings('general')}
         timelineHeight={timelineHeight}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
         focusedProject={focusedProject}
         onFocusProject={setFocusedProject}
         timeline={
           viewMode === 'timeline'
-            ? <TimelineSection searchQuery={searchQuery} focusedProject={focusedProject} navigationSignal={navigationSignal} />
+            ? <TimelineSection
+              searchQuery={searchQuery}
+              focusedProject={focusedProject}
+              navigationSignal={navigationSignal}
+              onOpenSettings={handleOpenSettings}
+            />
             : <ProjectList searchQuery={searchQuery} />
         }
         calendar={<CalendarNav onSelect={handleDateSelect} focusedProject={focusedProject} onNavigate={handleNavigate} navigationSignal={navigationSignal} />}
-        dailyPanel={<DailyPanel onEndDay={handleOpenRitual} projects={projects} />}
+        dailyPanel={<DailyPanel onEndDay={handleOpenRitual} projects={projects} isSidebarOpen={isSidebarOpen} />}
       />
       <ClosingRitualModal
         isOpen={isRitualOpen}
@@ -198,8 +246,10 @@ function App() {
         onOpenChange={setIsSettingsOpen}
         settings={settings}
         onSaveSettings={saveSettings}
+        defaultTab={settingsTab}
       />
-    </ThemeProvider >
+      <Toaster />
+    </ThemeProvider>
   );
 }
 

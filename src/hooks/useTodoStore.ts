@@ -24,9 +24,20 @@ interface TodoStore {
     moveTodo: (activeId: string, overId: string) => void;
 
     // Persistence
+    // Persistence
     loadTodos: () => Promise<void>;
     saveTodos: () => Promise<void>;
+
+    // Undo/Redo
+    history: Record<string, Todo[]>[];
+    future: Record<string, Todo[]>[];
+    lastActionTime: number;
+    undo: () => void;
+    redo: () => void;
+    addToHistory: () => void;
 }
+
+// ... imports ...
 
 // Helper to save to IPC
 const saveToIPC = async (projectTodos: Record<string, Todo[]>) => {
@@ -39,13 +50,13 @@ const saveToIPC = async (projectTodos: Record<string, Todo[]>) => {
 
         logs[dateStr] = {
             ...todayLog,
-            projectTodos // Save the whole map
+            projectTodos
         };
         await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
     }
 };
 
-// --- Helpers (Same as before) ---
+// --- Helpers ---
 const insertNode = (list: Todo[], parentId: string | null, afterId: string | null, newNode: Todo): Todo[] => {
     if (parentId === null && afterId === null) return [...list, newNode];
     if (parentId === null) {
@@ -144,24 +155,56 @@ const unindentNode = (list: Todo[], id: string): Todo[] => {
     return res.success ? res.nodes : list;
 };
 
-// --- Store Creation ---
-
 export const useTodoStore = create<TodoStore>()(
     persist(
         (set, get) => ({
             projectTodos: {},
             activeProjectId: 'none',
 
+            history: [],
+            future: [],
+            lastActionTime: 0,
+
+            addToHistory: () => {
+                const { projectTodos, history } = get();
+                const newHistory = [...history, projectTodos].slice(-50);
+                set({ history: newHistory, future: [], lastActionTime: Date.now() });
+            },
+
+            undo: () => {
+                const { history, future, projectTodos } = get();
+                if (history.length === 0) return;
+
+                const previous = history[history.length - 1];
+                const newHistory = history.slice(0, -1);
+
+                set({ projectTodos: previous, history: newHistory, future: [...future, projectTodos], lastActionTime: Date.now() });
+                saveToIPC(previous);
+            },
+
+            redo: () => {
+                const { history, future, projectTodos } = get();
+                if (future.length === 0) return;
+
+                const next = future[future.length - 1];
+                const newFuture = future.slice(0, -1);
+
+                set({ projectTodos: next, history: [...history, projectTodos], future: newFuture, lastActionTime: Date.now() });
+                saveToIPC(next);
+            },
+
             setActiveProjectId: (id) => set({ activeProjectId: id }),
 
             setTodos: (todos, shouldSave = true) => {
-                const { activeProjectId, projectTodos } = get();
+                const { activeProjectId, projectTodos, addToHistory } = get();
+                if (shouldSave) addToHistory(); // Only snapshot if this is a "saveable" event, likely user interaction
                 const newProjectTodos = { ...projectTodos, [activeProjectId]: todos };
                 set({ projectTodos: newProjectTodos });
                 if (shouldSave) saveToIPC(newProjectTodos);
             },
 
             addTodo: (text, parentId = null, afterId = null) => {
+                get().addToHistory();
                 const newId = uuidv4();
                 const newNode: Todo = { id: newId, text, completed: false, children: [] };
 
@@ -196,6 +239,7 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             updateTodo: (id, updates) => {
+                get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
                 const currentTodos = projectTodos[activeProjectId] || [];
 
@@ -207,6 +251,7 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             deleteTodo: (id) => {
+                get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
                 const currentTodos = projectTodos[activeProjectId] || [];
 
@@ -218,6 +263,7 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             indentTodo: (id) => {
+                get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
                 const currentTodos = projectTodos[activeProjectId] || [];
 
@@ -229,6 +275,7 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             unindentTodo: (id) => {
+                get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
                 const currentTodos = projectTodos[activeProjectId] || [];
 
@@ -240,6 +287,7 @@ export const useTodoStore = create<TodoStore>()(
             },
 
             moveTodo: (_activeId, _overId) => {
+                get().addToHistory();
                 // Keep implementation minimal for now
             },
 
