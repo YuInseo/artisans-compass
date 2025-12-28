@@ -3,42 +3,78 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Check, ChevronRight, Sparkles, ArrowRight } from "lucide-react";
+import { Check, ChevronRight, Sparkles, ArrowRight, Plus } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { Project } from "@/types";
 import { v4 as uuidv4 } from "uuid";
 import { format, addDays } from "date-fns";
+import { useTranslation } from "react-i18next";
 
 interface OnboardingWizardProps {
     isOpen: boolean;
     onComplete: () => void;
 }
 
-const COMMON_APPS = [
-    { name: "CLIP Studio Paint", process: "CLIPStudioPaint" },
-    { name: "Photoshop", process: "Photoshop" },
-    { name: "Aseprite", process: "Aseprite" },
-    { name: "Blender", process: "blender" },
-    { name: "VS Code", process: "Code" },
-];
+const COMMON_APPS: { name: string; process: string }[] = [];
 
 export function OnboardingWizard({ isOpen, onComplete }: OnboardingWizardProps) {
+    const { t } = useTranslation();
     const { settings, saveSettings, saveProjects } = useDataStore();
     const { setActiveProjectId } = useTodoStore();
     const [step, setStep] = useState(1);
+    const [selectedApps, setSelectedApps] = useState<string[]>([]);
+    const [runningApps, setRunningApps] = useState<{ name: string, process: string }[]>([]);
+    const [customApp, setCustomApp] = useState("");
+    const [projectName, setProjectName] = useState("My First Project");
+    const [startDate, setStartDate] = useState<Date>(new Date());
+    const [endDate, setEndDate] = useState<Date>(addDays(new Date(), 14));
 
-    // ... (rest of state)
+    useEffect(() => {
+        if (isOpen && step === 2) {
+            if ((window as any).ipcRenderer) {
+                (window as any).ipcRenderer.invoke('get-running-apps').then((apps: any[]) => {
+                    setRunningApps(apps || []);
+                });
+            }
+        }
+    }, [isOpen, step]);
 
-    // ...
+    const toggleApp = (process: string) => {
+        setSelectedApps(prev =>
+            prev.includes(process)
+                ? prev.filter(p => p !== process)
+                : [...prev, process]
+        );
+    };
+
+    const handleAddCustomApp = () => {
+        if (!customApp.trim()) return;
+        setSelectedApps(prev => [...prev, customApp.trim()]);
+        setCustomApp("");
+    };
 
     const handleFinish = async () => {
-        // 1. Save Settings
-        if (settings) {
-            const newPatterns = Array.from(new Set([...settings.targetProcessPatterns, ...selectedApps]));
+        // 1. Save Settings (Robust)
+        let currentSettings = settings;
+        if (!currentSettings && (window as any).ipcRenderer) {
+            try {
+                currentSettings = await (window as any).ipcRenderer.invoke('get-settings');
+            } catch (e) {
+                console.error("Failed to fetch settings during onboarding", e);
+            }
+        }
+
+        if (currentSettings) {
+            const existingPatterns = currentSettings.targetProcessPatterns || [];
+            const newPatterns = Array.from(new Set([...existingPatterns, ...selectedApps]));
+
             await saveSettings({
-                ...settings,
-                targetProcessPatterns: newPatterns.length > 0 ? newPatterns : ["CLIPStudioPaint"],
+                ...currentSettings,
+                targetProcessPatterns: newPatterns.length > 0 ? newPatterns : existingPatterns,
                 hasCompletedOnboarding: true
             });
         }
@@ -48,150 +84,190 @@ export function OnboardingWizard({ isOpen, onComplete }: OnboardingWizardProps) 
             id: uuidv4(),
             name: projectName,
             type: "Main",
-            startDate: format(new Date(), 'yyyy-MM-dd'),
-            endDate: format(addDays(new Date(), 14), 'yyyy-MM-dd'),
+            startDate: format(startDate, 'yyyy-MM-dd'),
+            endDate: format(endDate, 'yyyy-MM-dd'),
             isCompleted: false
         };
         await saveProjects([newProject]);
 
-        // 3. Set as Active Project for DailyPanel Dropdown
+        // 3. Set as Active Project
         setActiveProjectId(newProject.id);
 
         onComplete();
     };
 
-
     return (
         <Dialog open={isOpen} onOpenChange={() => { }}>
-            <DialogContent className="sm:max-w-2xl bg-card p-0 overflow-hidden gap-0 rounded-2xl shadow-2xl border-border">
-                <div className="flex h-[500px]">
-                    {/* Sidebar / Progress */}
-                    <div className="w-1/3 bg-slate-900 text-white p-8 flex flex-col justify-between relative overflow-hidden dark:bg-black/40">
-                        <div className="relative z-10">
-                            <h2 className="text-xl font-bold font-serif mb-6 flex items-center gap-2">
-                                <Sparkles className="w-5 h-5 text-blue-400" />
-                                Artisan's Compass
-                            </h2>
-                            <div className="flex items-center gap-4 mb-6">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-500 ${step >= 1 ? 'bg-primary text-primary-foreground shadow-lg scale-100' : 'bg-muted text-muted-foreground scale-90'}`}>1</div>
-                                <div className={`flex items-center gap-3 text-sm ${step === 1 ? 'text-primary-foreground font-bold' : 'text-muted-foreground'}`}>
-                                    <span>Welcome</span>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4 mb-6">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-500 ${step >= 2 ? 'bg-primary text-primary-foreground shadow-lg scale-100' : 'bg-muted text-muted-foreground scale-90'}`}>2</div>
-                                <div className={`flex items-center gap-3 text-sm ${step === 2 ? 'text-primary-foreground font-bold' : 'text-muted-foreground'}`}>
-                                    <span>Tool Stack</span>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-4">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all duration-500 ${step >= 3 ? 'bg-primary text-primary-foreground shadow-lg scale-100' : 'bg-muted text-muted-foreground scale-90'}`}>3</div>
-                                <div className={`flex items-center gap-3 text-sm ${step === 3 ? 'text-primary-foreground font-bold' : 'text-muted-foreground'}`}>
-                                    <span>First Voyage</span>
-                                </div>
-                            </div>
+            <DialogContent className="sm:max-w-xl bg-background/95 backdrop-blur-xl border-border/50 shadow-2xl p-0 overflow-hidden outline-none duration-500">
+                <div className="relative p-8 min-h-[480px] flex flex-col">
 
-                            {/* Decorative Circle */}
-                            <div className="absolute -bottom-20 -right-20 w-64 h-64 bg-blue-600/20 rounded-full blur-3xl z-0 pointer-events-none"></div>
+                    {/* Background decoration */}
+                    <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-60 h-60 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
+
+                    {/* Step Indicator */}
+                    <div className="flex justify-center mb-8 relative z-10">
+                        <div className="flex items-center gap-3 bg-muted/50 p-1.5 rounded-full backdrop-blur-sm">
+                            {[1, 2, 3].map((s) => (
+                                <div
+                                    key={s}
+                                    className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${step === s ? 'bg-primary scale-125' : step > s ? 'bg-primary/50' : 'bg-muted-foreground/30'}`}
+                                />
+                            ))}
                         </div>
                     </div>
 
-                    {/* Content Area */}
-                    <div className="flex-1 p-10 flex flex-col bg-background/50">
+                    {/* Content */}
+                    <div className="flex-1 flex flex-col relative z-10">
                         {step === 1 && (
-                            <div className="flex-1 flex flex-col justify-center animate-in fade-in slide-in-from-right-4">
-                                <h1 className="text-3xl font-bold text-foreground mb-4">Craft Your Journey.</h1>
-                                <p className="text-muted-foreground leading-relaxed mb-8">
-                                    Artisan's Compass helps you separate <b>Doing</b> from <b>Thinking</b>.
-                                    <br /><br />
-                                    We'll track your immersion time automatically so you can focus on creating.
-                                </p>
-                                <Button onClick={() => setStep(2)} className="w-fit rounded-full px-8 h-12 bg-primary text-primary-foreground hover:bg-primary/90 shadow-lg group">
-                                    Let's Begin <ChevronRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
-                                </Button>
-                            </div>
-                        )}
-
-                        {step === 2 && (
-                            <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-4">
-                                <h2 className="text-xl font-bold text-foreground mb-2">What tools do you use?</h2>
-                                <p className="text-sm text-muted-foreground mb-6">Select the applications to track automatically.</p>
-
-                                <div className="grid grid-cols-2 gap-3 mb-6 max-h-[250px] overflow-y-auto custom-scrollbar pr-1">
-                                    {/* Combined List: Running Apps First, then Common Apps (deduped) */}
-                                    {(() => {
-                                        // 1. Get running apps (fetched via useEffect)
-                                        // We need state for this.
-                                        return [...runningApps, ...COMMON_APPS.filter(c => !runningApps.some(r => r.process === c.process))].map(app => (
-                                            <div
-                                                key={app.process}
-                                                onClick={() => toggleApp(app.process)}
-                                                className={`p-3 rounded-lg border-2 cursor-pointer transition-all flex items-center gap-3 ${selectedApps.includes(app.process) ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 bg-card'}`}
-                                            >
-                                                <div className={`w-5 h-5 rounded flex items-center justify-center ${selectedApps.includes(app.process) ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>
-                                                    {selectedApps.includes(app.process) && <Check className="w-3 h-3" />}
-                                                </div>
-                                                <div className="flex flex-col overflow-hidden">
-                                                    <span className="text-sm font-medium text-foreground truncate" title={app.name}>{app.name}</span>
-                                                    {app.process !== app.name && <span className="text-[10px] text-muted-foreground truncate" title={app.process}>{app.process}</span>}
-                                                </div>
-                                            </div>
-                                        ))
-                                    })()}
+                            <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6 animate-in fade-in slide-in-from-right-8 duration-500">
+                                <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-2">
+                                    <Sparkles className="w-8 h-8 text-primary" />
+                                </div>
+                                <div className="space-y-2">
+                                    <h1 className="text-3xl font-bold tracking-tight">{t('onboarding.welcome')}</h1>
+                                    <p className="text-muted-foreground text-lg max-w-sm mx-auto">
+                                        {t('onboarding.description')}
+                                    </p>
                                 </div>
 
-                                <div className="mt-auto">
-                                    <Label className="text-xs text-muted-foreground uppercase tracking-wider mb-2 block">Add Custom Process (.exe)</Label>
-                                    <div className="flex gap-2">
-                                        <Input
-                                            placeholder="e.g. Maya"
-                                            value={customApp}
-                                            onChange={(e) => setCustomApp(e.target.value)}
-                                            className="bg-card"
-                                        />
-                                        <Button onClick={handleAddCustomApp} variant="outline" size="icon" className="shrink-0"><PlusIcon className="w-4 h-4" /></Button>
-                                    </div>
-                                </div>
-
-                                <div className="flex justify-end mt-8">
-                                    <Button onClick={() => setStep(3)} disabled={selectedApps.length === 0} className="rounded-full px-8 h-11 bg-primary text-primary-foreground hover:bg-primary/90 shadow-md">
-                                        Next
+                                <div className="pt-8">
+                                    <Button size="lg" onClick={() => setStep(2)} className="rounded-full px-8 h-12 text-base shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all">
+                                        {t('onboarding.startSetup')} <ChevronRight className="w-4 h-4 ml-2" />
                                     </Button>
                                 </div>
                             </div>
                         )}
 
-                        {step === 3 && (
-                            <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-4">
-                                <h2 className="text-xl font-bold text-foreground mb-2">Start your first voyage.</h2>
-                                <p className="text-sm text-muted-foreground mb-8">Create a project to visualize your timeline.</p>
+                        {step === 2 && (
+                            <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-8 duration-500">
+                                <div className="mb-6 text-center">
+                                    <h2 className="text-2xl font-bold mb-2">{t('onboarding.selectTools')}</h2>
+                                    <p className="text-muted-foreground">{t('onboarding.toolsDescription')}</p>
+                                </div>
 
-                                <div className="bg-card p-6 rounded-xl border border-border shadow-sm space-y-4">
-                                    <div>
-                                        <Label className="mb-2 block">Project Name</Label>
+                                <div className="grid grid-cols-2 sm:grid-cols-2 gap-3 mb-6 max-h-[240px] overflow-y-auto custom-scrollbar p-1">
+                                    {/* Running Apps + Common Apps */}
+                                    {[...runningApps, ...COMMON_APPS.filter(c => !runningApps.some(r => r.process === c.process))].map(app => (
+                                        <div
+                                            key={app.process}
+                                            onClick={() => toggleApp(app.process)}
+                                            className={`
+                                                group relative p-3 rounded-xl border cursor-pointer transition-all duration-200 flex items-center gap-3
+                                                ${selectedApps.includes(app.process)
+                                                    ? 'border-primary bg-primary/5 shadow-sm'
+                                                    : 'border-border/50 bg-card/50 hover:border-primary/50 hover:bg-card'
+                                                }
+                                            `}
+                                        >
+                                            <div className={`
+                                                w-8 h-8 rounded-lg flex items-center justify-center transition-colors
+                                                ${selectedApps.includes(app.process)
+                                                    ? 'bg-primary text-primary-foreground'
+                                                    : 'bg-muted text-muted-foreground group-hover:bg-muted/80'
+                                                }
+                                            `}>
+                                                {selectedApps.includes(app.process) ? <Check className="w-4 h-4" /> : <div className="w-2 h-2 rounded-full bg-current opacity-50" />}
+                                            </div>
+                                            <div className="flex flex-col overflow-hidden text-left">
+                                                <span className="text-sm font-semibold truncate">{app.name}</span>
+                                                <span className="text-[10px] text-muted-foreground truncate opacity-70">{app.process}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="mt-auto space-y-4">
+                                    <div className="relative">
+                                        <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+                                            <Plus className="h-4 w-4 text-muted-foreground" />
+                                        </div>
+                                        <Input
+                                            placeholder={t('onboarding.addCustom')}
+                                            value={customApp}
+                                            onChange={(e) => setCustomApp(e.target.value)}
+                                            onKeyDown={(e) => e.key === 'Enter' && handleAddCustomApp()}
+                                            className="pl-9 bg-muted/30 border-border/50 focus:bg-background transition-all"
+                                        />
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={handleAddCustomApp}
+                                            className="absolute right-1 top-1 h-8 px-3"
+                                            disabled={!customApp.trim()}
+                                        >
+                                            {t('onboarding.add')}
+                                        </Button>
+                                    </div>
+
+                                    <div className="flex justify-between items-center pt-2">
+                                        <Button variant="ghost" onClick={() => setStep(1)} className="text-muted-foreground hover:text-foreground">{t('onboarding.back')}</Button>
+                                        <Button onClick={() => setStep(3)} disabled={selectedApps.length === 0} className="rounded-full px-8">
+                                            {t('onboarding.nextStep')}
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {step === 3 && (
+                            <div className="flex-1 flex flex-col animate-in fade-in slide-in-from-right-8 duration-500">
+                                <div className="mb-8 text-center">
+                                    <h2 className="text-2xl font-bold mb-2">{t('onboarding.nameVoyage')}</h2>
+                                    <p className="text-muted-foreground">{t('onboarding.voyageDescription')}</p>
+                                </div>
+
+                                <div className="bg-card/50 backdrop-blur-sm p-6 rounded-2xl border border-border/50 shadow-sm space-y-6">
+                                    <div className="space-y-2">
+                                        <Label className="text-sm font-medium ml-1">{t('onboarding.projectTitle')}</Label>
                                         <Input
                                             value={projectName}
                                             onChange={(e) => setProjectName(e.target.value)}
-                                            className="text-lg font-medium border-border focus:border-ring h-12"
+                                            className="text-lg h-12 bg-background border-border/60 focus:ring-2 ring-primary/20 transition-all font-medium"
+                                            placeholder={t('onboarding.projectPlaceholder')}
+                                            autoFocus
                                         />
                                     </div>
 
-                                    <div className="flex gap-4 pt-2">
-                                        <div className="flex-1 bg-muted p-3 rounded-lg border border-border">
-                                            <Label className="text-xs text-muted-foreground mb-1 block">Start Date</Label>
-                                            <div className="font-mono text-sm">{format(new Date(), 'MMM dd')}</div>
+                                    <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border border-border/30 text-sm text-muted-foreground">
+                                        <div className="flex-1 flex flex-col gap-1">
+                                            <span className="text-xs uppercase tracking-wider opacity-70 text-center mb-1">{t('onboarding.start')}</span>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant="outline" className={cn("w-full justify-center text-center font-mono font-medium h-9 bg-background/50 hover:bg-background border-border/50", !startDate && "text-muted-foreground")}>
+                                                        {startDate ? format(startDate, "MMM dd") : <span>{t('onboarding.pickDate')}</span>}
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="start">
+                                                    <Calendar mode="single" selected={startDate} onSelect={(date) => date && setStartDate(date)} initialFocus />
+                                                </PopoverContent>
+                                            </Popover>
                                         </div>
-                                        <div className="flex items-center text-muted-foreground"><ArrowRight className="w-4 h-4" /></div>
-                                        <div className="flex-1 bg-muted p-3 rounded-lg border border-border">
-                                            <Label className="text-xs text-muted-foreground mb-1 block">Deadline (Goal)</Label>
-                                            <div className="font-mono text-sm">{format(addDays(new Date(), 14), 'MMM dd')}</div>
+                                        <ArrowRight className="w-4 h-4 opacity-30 mt-6" />
+                                        <div className="flex-1 flex flex-col gap-1">
+                                            <span className="text-xs uppercase tracking-wider opacity-70 text-center mb-1">{t('onboarding.goal')}</span>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant="outline" className={cn("w-full justify-center text-center font-mono font-medium h-9 bg-background/50 hover:bg-background border-border/50", !endDate && "text-muted-foreground")}>
+                                                        {endDate ? format(endDate, "MMM dd") : <span>{t('onboarding.pickDate')}</span>}
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0" align="start">
+                                                    <Calendar mode="single" selected={endDate} onSelect={(date) => date && setEndDate(date)} initialFocus />
+                                                </PopoverContent>
+                                            </Popover>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="flex justify-end mt-auto">
-                                    <Button onClick={handleFinish} disabled={!projectName.trim()} className="rounded-full px-8 h-12 bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg shadow-blue-500/20 font-semibold group">
-                                        Launch Compass <Sparkles className="w-4 h-4 ml-2 group-hover:rotate-12 transition-transform" />
+                                <div className="flex justify-between items-center mt-auto pt-6">
+                                    <Button variant="ghost" onClick={() => setStep(2)} className="text-muted-foreground hover:text-foreground">{t('onboarding.back')}</Button>
+                                    <Button
+                                        onClick={handleFinish}
+                                        disabled={!projectName.trim()}
+                                        className="rounded-full px-8 h-11 bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:-translate-y-0.5 transition-all duration-300"
+                                    >
+                                        {t('onboarding.launch')} <Sparkles className="w-4 h-4 ml-2" />
                                     </Button>
                                 </div>
                             </div>
@@ -203,11 +279,3 @@ export function OnboardingWizard({ isOpen, onComplete }: OnboardingWizardProps) 
     );
 }
 
-function PlusIcon({ className }: { className?: string }) {
-    return (
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-            <path d="M5 12h14" />
-            <path d="M12 5v14" />
-        </svg>
-    );
-}

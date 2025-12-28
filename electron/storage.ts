@@ -1,6 +1,7 @@
 import { app, ipcMain } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
+import log from 'electron-log';
 
 // --- Default Data ---
 
@@ -14,6 +15,7 @@ export interface AppSettings {
     enableCustomProjectColors?: boolean;
     defaultProjectDurationDays: number;
     screenshotIntervalSeconds: number; // New config
+    enableScreenshots?: boolean;
     screenshotPath?: string; // Custom directory
     timelapseDurationSeconds: number;
     visibleProjectRows: number;
@@ -25,7 +27,8 @@ export interface AppSettings {
         monthlyUpdatedAt?: number;
         weeklyUpdatedAt?: number;
     };
-    screenshotMode?: 'window' | 'screen' | 'process';
+    startOfWeek?: string;
+    screenshotMode?: 'window' | 'screen' | 'process' | 'active-app';
     screenshotDisplayId?: string;
     screenshotTargetProcess?: string;
     googleDriveTokens?: {
@@ -34,6 +37,18 @@ export interface AppSettings {
         expiryDate: number;
         email?: string;
     };
+    notionTokens?: {
+        accessToken: string;
+        workspaceName?: string;
+        workspaceIcon?: string;
+        botId?: string;
+        databaseId?: string;
+    };
+    notionConfig?: {
+        clientId: string;
+        clientSecret: string;
+    };
+    autoUpdate?: boolean;
 }
 
 export interface Session {
@@ -77,8 +92,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
         weeklyUpdatedAt: 0
     },
     screenshotMode: 'window',
+    startOfWeek: 'sunday',
+    enableScreenshots: true,
     screenshotDisplayId: '',
-    screenshotTargetProcess: ''
+    screenshotTargetProcess: '',
+    autoUpdate: false
 };
 
 // --- Storage Paths ---
@@ -111,7 +129,7 @@ export function readJson<T>(filePath: string, defaultValue: T): T {
         const parsed = JSON.parse(data);
         return (parsed === null || parsed === undefined) ? defaultValue : parsed;
     } catch (error) {
-        console.error(`Error reading ${filePath}:`, error);
+        log.error(`[Storage] Error reading ${filePath}:`, error);
         return defaultValue;
     }
 }
@@ -122,15 +140,95 @@ export function writeJson(filePath: string, data: any) {
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+        fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8');
         return true;
     } catch (error) {
-        console.error(`Error writing ${filePath}:`, error);
+        log.error(`[Storage] Error writing ${filePath}:`, error);
         return false;
     }
 }
 
 // --- Handlers ---
+
+// Internal function to standardise saving, backing up, and syncing
+export function saveDailyLogInternal(dateStr: string, newData: any) {
+    const yearMonth = dateStr.slice(0, 7); // "YYYY-MM"
+    const filePath = getDailyLogPath(yearMonth);
+    const currentData = readJson(filePath, {}) as Record<string, any>;
+
+    // Get existing day data or init
+    const dayData = currentData[dateStr] || {
+        sessions: [],
+        todos: [],
+        stats: { totalWorkSeconds: 0, questAchieved: false },
+        assets: [],
+        isRestDay: false
+    };
+
+    // Merge logic
+    const mergedData = {
+        ...dayData,
+        ...newData,
+        stats: {
+            ...dayData.stats,
+            ...(newData.stats || {})
+        },
+        // Arrays should probably be replaced if provided in newData, or we can't delete items.
+        // Assuming newData contains the AUTHORITATIVE arrays if present.
+        sessions: newData.sessions || dayData.sessions,
+        todos: newData.todos || dayData.todos,
+        screenshots: newData.screenshots || dayData.screenshots
+    };
+
+    currentData[dateStr] = mergedData;
+
+    const saved = writeJson(filePath, currentData);
+
+    if (saved) {
+        // --- Backup Hook ---
+        try {
+            const settings = readJson(getSettingsPath(), DEFAULT_SETTINGS);
+            if (settings.backupPaths && settings.backupPaths.length > 0) {
+                const fileName = path.basename(filePath);
+                settings.backupPaths.forEach(backupDir => {
+                    try {
+                        if (!fs.existsSync(backupDir)) return;
+                        const destPath = path.join(backupDir, fileName);
+                        fs.copyFileSync(filePath, destPath);
+                    } catch (e) {
+                        console.error(`Backup failed for ${backupDir}:`, e);
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Backup trigger failed", e);
+        }
+
+        // --- Notion Sync Hook ---
+        // DISABLED: Prevents aggressive syncing on every screenshot/background save.
+        // Sync is now handled manually via 'manual-sync-notion' in App.tsx (Closing Ritual).
+        /*
+        try {
+            const settings = readJson(getSettingsPath(), DEFAULT_SETTINGS);
+            if (settings.notionTokens?.accessToken && settings.notionTokens?.databaseId) {
+                // Fire and forget - don't await/block
+                import('./notion-ops').then(mod => {
+                    mod.syncDailyLog(
+                        settings.notionTokens!.accessToken,
+                        settings.notionTokens!.databaseId!,
+                        dateStr,
+                        mergedData
+                    );
+                }).catch(err => log.error("[Storage] Failed to load notion-ops", err));
+            }
+        } catch (e) {
+            log.error("[Storage] Notion hook error", e);
+        }
+        */
+    }
+
+    return saved;
+}
 
 export function setupStorageHandlers() {
     // Settings
@@ -164,36 +262,7 @@ export function setupStorageHandlers() {
     });
 
     ipcMain.handle('save-daily-log', (_, dateStr, newData) => {
-        // dateStr: "YYYY-MM-DD"
-        // newData: Partial object to merge, e.g. { stats: { questAchieved: true } }
-
-        const yearMonth = dateStr.slice(0, 7); // "YYYY-MM"
-        const filePath = getDailyLogPath(yearMonth);
-        const currentData = readJson(filePath, {}) as Record<string, any>;
-
-        // Get existing day data or init
-        const dayData = currentData[dateStr] || {
-            sessions: [],
-            todos: [],
-            stats: { totalWorkSeconds: 0, questAchieved: false },
-            assets: [],
-            isRestDay: false
-        };
-
-        // Merge logic (Deep merge might be better but simple merge for now)
-        // Specific handling for stats merge if needed
-        const mergedData = {
-            ...dayData,
-            ...newData,
-            stats: {
-                ...dayData.stats,
-                ...(newData.stats || {})
-            }
-        };
-
-        currentData[dateStr] = mergedData;
-
-        return writeJson(filePath, currentData);
+        return saveDailyLogInternal(dateStr, newData);
     });
 
     // Also expose a helper to get data path for debugging

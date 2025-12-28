@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>GPU Worker</title>
+</head>
+
+<body>
+    <canvas id="canvas" style="display: none;"></canvas>
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false }); // Optimize for no transparency
+
+        ipcRenderer.on('PROCESS_IMAGE', async (event, data) => {
+            // data: { imageBuffer, bounds, displayBounds, requestId }
+            const { imageBuffer, bounds, displayBounds, requestId } = data;
+
+            try {
+                // Create bitmap from buffer
+                const blob = new Blob([imageBuffer]);
+                const bitmap = await createImageBitmap(blob);
+
+                // --- 1. Calculate Crop Coordinates with DPI Scaling ---
+                const monitorX = displayBounds ? displayBounds.x : 0;
+                const monitorY = displayBounds ? displayBounds.y : 0;
+                const monitorW = displayBounds ? displayBounds.width : bitmap.width;
+                const monitorH = displayBounds ? displayBounds.height : bitmap.height;
+
+                // Calculate Scale Factors (Physical / Logical)
+                const scaleX = bitmap.width / monitorW;
+                const scaleY = bitmap.height / monitorH;
+
+                console.log(`[GPU Debug] Bitmap: ${bitmap.width}x${bitmap.height}, Monitor Logical: ${monitorW}x${monitorH}, Scale: ${scaleX.toFixed(3)}x${scaleY.toFixed(3)}`);
+
+                // Relative coordinates on the monitor image (Logical)
+                const relX_Logical = bounds.x - monitorX;
+                const relY_Logical = bounds.y - monitorY;
+
+                console.log(`[GPU Debug] Window Bounds: ${bounds.x},${bounds.y} (${bounds.width}x${bounds.height}). Monitor Origin: ${monitorX},${monitorY}`);
+                console.log(`[GPU Debug] Rel Logical: ${relX_Logical},${relY_Logical}`);
+
+                // Convert to Physical Coordinates
+                let relX = relX_Logical * scaleX;
+                let relY = relY_Logical * scaleY;
+                let targetW = bounds.width * scaleX;
+                let targetH = bounds.height * scaleY;
+
+                // --- HEURISTIC SAFETY NET FOR 4K/8K ---
+                // If scaled coordinates push us out of bounds, but unscaled (Logical) ones fit,
+                // it implies the input bounds might already be Physical (Active-Win weirdness on High DPI).
+                const isScaledOutOfBounds = (relX > bitmap.width || relY > bitmap.height || relX + targetW > bitmap.width + 100); // +100 tolerance
+                if (isScaledOutOfBounds) {
+                    const isUnscaledInBounds = (relX_Logical >= 0 && relY_Logical >= 0 && relX_Logical < bitmap.width);
+                    if (isUnscaledInBounds) {
+                        console.warn(`[GPU Safety] Scaled coords OOB (${relX.toFixed(1)} > ${bitmap.width}). Falling back to Unscaled (assuming Physical input).`);
+                        relX = relX_Logical;
+                        relY = relY_Logical;
+                        targetW = bounds.width;
+                        targetH = bounds.height;
+                    }
+                }
+
+                console.log(`[GPU Debug] Physical Target: ${relX.toFixed(1)},${relY.toFixed(1)}`);
+
+                // Clamp start coordinates to be non-negative
+                let srcX = Math.max(0, relX);
+                let srcY = Math.max(0, relY);
+
+                const xOffset = srcX - relX;
+                let srcW = targetW - xOffset;
+
+                // Clamp to image dimensions
+                if (srcX + srcW > bitmap.width) {
+                    srcW = bitmap.width - srcX;
+                }
+
+                const yOffset = srcY - relY;
+                let srcH = targetH - yOffset;
+                if (srcY + srcH > bitmap.height) {
+                    srcH = bitmap.height - srcY;
+                }
+
+                if (srcW <= 0 || srcH <= 0) {
+                    throw new Error("Invalid crop dimensions");
+                }
+
+                // --- 2. GPU Draw ---
+                canvas.width = srcW;
+                canvas.height = srcH;
+
+                // Draw only the cropped portion
+                ctx.drawImage(bitmap, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+
+                // --- 3. Export ---
+                // Quality 0.8 is standard good balance
+                const dataURL = canvas.toDataURL('image/jpeg', 0.8);
+
+                // Remove prefix "data:image/jpeg;base64,"
+                const base64Data = dataURL.replace(/^data:image\/jpeg;base64,/, "");
+
+                ipcRenderer.send('PROCESS_IMAGE_DONE', { success: true, base64Data, requestId });
+
+                // Cleanup
+                bitmap.close();
+
+            } catch (err) {
+                console.error("GPU Worker Error:", err);
+                ipcRenderer.send('PROCESS_IMAGE_DONE', { success: false, error: err.message, requestId });
+            }
+        });
+    </script>
+</body>
+
+</html>

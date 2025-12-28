@@ -1,15 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Play, Clock, CheckCircle2, Check } from "lucide-react";
-import { Todo, Session } from "@/types";
+import { Todo, Session, Project } from "@/types";
 import { TimeTableGraph } from "./TimeTableGraph";
 import { format } from "date-fns";
 import { ScreenshotSlider } from "./ScreenshotSlider";
 import { ArchiveBlockNote } from "./ArchiveBlockNote";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 interface DailyArchiveViewProps {
     date: Date;
     todos: Todo[];
+    projectTodos?: Record<string, Todo[]>;
+    projects?: Project[];
     screenshots: string[];
     sessions: Session[];
     stats: {
@@ -24,14 +33,27 @@ interface DailyArchiveViewProps {
     hideCloseButton?: boolean;
 }
 
-export function DailyArchiveView({ date, todos: initialTodos, screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, checkboxVisibility = 'high', onClose, hideCloseButton = false }: DailyArchiveViewProps) {
-    const [todos, setTodos] = useState<Todo[]>(initialTodos);
+import { useTranslation } from "react-i18next";
+
+export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, checkboxVisibility = 'high', onClose, hideCloseButton = false }: DailyArchiveViewProps) {
+    const { t } = useTranslation();
+    const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
+
+    // Filter todos based on selected project
+    const filteredTodos = useMemo(() => {
+        if (selectedProjectId === "all" || !projectTodos || Object.keys(projectTodos).length === 0) {
+            return initialTodos;
+        }
+        return projectTodos[selectedProjectId] || [];
+    }, [selectedProjectId, projectTodos, initialTodos]);
+
+    const [todos, setTodos] = useState<Todo[]>(filteredTodos);
     const [dynamicScreenshots, setDynamicScreenshots] = useState<string[]>(initialScreenshots);
 
-    // Sync props to state if they change externally (optional, but good for stability)
+    // Sync filteredTodos to state when project selection or data changes
     useEffect(() => {
-        setTodos(initialTodos);
-    }, [initialTodos]);
+        setTodos(filteredTodos);
+    }, [filteredTodos]);
 
     // Dynamic Screenshot Loading
     useEffect(() => {
@@ -196,34 +218,60 @@ export function DailyArchiveView({ date, todos: initialTodos, screenshots: initi
         </div>
     );
 
+    const hasScreenshots = dynamicScreenshots.length > 0;
+
     return (
         <div className={`h-full flex divide-x divide-border ${className}`}>
-            {/* Column 1: Visual (Timelapse) - Flex 5 (Left) */}
-            <div className="flex-[5] min-w-0 p-6 flex flex-col bg-[#09090b] relative group/visual justify-center">
-                <div className="absolute top-6 left-6 flex items-center gap-2 z-10">
-                    <h3 className="text-sm font-bold text-white/50 flex items-center gap-2 uppercase tracking-wider backdrop-blur-md bg-black/30 px-3 py-1 rounded-full border border-white/10">
-                        <Play className="w-3.5 h-3.5 text-primary" />
-                        Visual Recap
+            {/* Column 1: Visual (Timelapse) - Flex 5 (Left) - Conditional */}
+            {hasScreenshots && (
+                <div className="flex-[5] min-w-0 p-6 flex flex-col bg-[#09090b] relative group/visual justify-center">
+                    <div className="absolute top-6 left-6 flex items-center gap-2 z-10">
+                        <h3 className="text-sm font-bold text-white/50 flex items-center gap-2 uppercase tracking-wider backdrop-blur-md bg-black/30 px-3 py-1 rounded-full border border-white/10">
+                            <Play className="w-3.5 h-3.5 text-primary" />
+                            {t('calendar.visualRecap')}
+                        </h3>
+                    </div>
+
+                    <div className="w-full aspect-video max-h-[80%] relative rounded-xl overflow-hidden border border-white/10 bg-black shadow-2xl">
+                        <ScreenshotSlider
+                            images={dynamicScreenshots}
+                            durationSeconds={timelapseDurationSeconds}
+                            className="w-full h-full object-contain"
+                        />
+                    </div>
+                </div>
+            )}
+
+            {/* Column 2: Today's Focus/Journey Archive - Flex 4 or grow */}
+            <div className={cn(
+                "min-w-0 p-8 flex flex-col bg-[#121212] text-white border-l border-white/5",
+                hasScreenshots ? "flex-[4]" : "flex-[6]" // Take more space if no visual
+            )}>
+                <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-xs font-bold text-zinc-500 flex items-center gap-2 uppercase tracking-widest">
+                        {t('calendar.journeyLog')}
                     </h3>
+                    {/* Project Selector */}
+                    {projects.length > 0 && (
+                        <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                            <SelectTrigger className="w-[160px] h-7 text-xs bg-zinc-800 border-zinc-700 text-zinc-300">
+                                <SelectValue placeholder={t('sidebar.allProjects')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">{t('sidebar.allProjects')}</SelectItem>
+                                {projects.map(p => (
+                                    <SelectItem key={p.id} value={p.id}>
+                                        <span className="flex items-center gap-2">
+                                            <span className={`w-2 h-2 rounded-full`} style={{ backgroundColor: p.color || '#3b82f6' }} />
+                                            {p.name}
+                                        </span>
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
                 </div>
-
-                <div className="w-full aspect-video max-h-[80%] relative rounded-xl overflow-hidden border border-white/10 bg-black shadow-2xl">
-                    <ScreenshotSlider
-                        images={dynamicScreenshots}
-                        durationSeconds={timelapseDurationSeconds}
-                        className="w-full h-full object-contain"
-                    />
-
-
-                </div>
-            </div>
-
-            {/* Column 2: Today's Focus/Journey Archive - Flex 4 (Center - Dark Theme) */}
-            <div className="flex-[4] min-w-0 p-8 flex flex-col bg-[#121212] text-white border-l border-white/5">
-                <h3 className="text-xs font-bold text-zinc-500 flex items-center gap-2 mb-1 uppercase tracking-widest">
-                    JOURNEY LOG
-                </h3>
-                <div className="text-3xl font-bold text-white mb-8 font-serif tracking-tight">
+                <div className="text-3xl font-bold text-white mb-8 tracking-tight">
                     {format(date, 'MMM dd, yyyy')}
                 </div>
 
@@ -241,19 +289,22 @@ export function DailyArchiveView({ date, todos: initialTodos, screenshots: initi
                         </div>
                     ) : (
                         <div className="text-zinc-600 text-sm italic mt-10 text-center">
-                            No focus points recorded.
+                            {t('calendar.noActivity')}
                         </div>
                     )}
                 </div>
             </div>
 
-            {/* Column 3: Time Table (Vertical) - Flex 3 */}
-            <div className="flex-[3] min-w-0 p-0 flex flex-col bg-card overflow-hidden border-l border-border">
+            {/* Column 3: Time Table (Vertical) - Flex 3 or 4 */}
+            <div className={cn(
+                "min-w-0 p-0 flex flex-col bg-card overflow-hidden border-l border-border",
+                hasScreenshots ? "flex-[3]" : "flex-[4]"
+            )}>
                 {/* Header */}
                 <div className="p-4 bg-card border-b border-border flex justify-between items-center shrink-0">
                     <h3 className="text-sm font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
                         <Clock className="w-4 h-4 text-blue-500" />
-                        Time Table
+                        {t('dashboard.timeTable')}
                     </h3>
                 </div>
 
@@ -265,7 +316,7 @@ export function DailyArchiveView({ date, todos: initialTodos, screenshots: initi
                 <div className="p-4 pt-2 flex flex-col gap-3 bg-card shrink-0 pb-6 border-t border-border mt-auto">
                     {/* Total Work */}
                     <div className="bg-muted border border-border rounded-2xl p-4 flex flex-col items-center justify-center shadow-sm">
-                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">Total Work</div>
+                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">{t('calendar.totalWork')}</div>
                         <div className="text-2xl text-foreground font-black font-mono tracking-tight">{formatTime(stats.totalSeconds)}</div>
                     </div>
 
@@ -275,7 +326,7 @@ export function DailyArchiveView({ date, todos: initialTodos, screenshots: initi
                             onClick={onClose}
                             className="w-full py-3 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-bold text-sm transition-colors uppercase tracking-wider border border-primary/20"
                         >
-                            Close Archive
+                            {t('calendar.closeArchive')}
                         </button>
                     )}
 
@@ -283,7 +334,7 @@ export function DailyArchiveView({ date, todos: initialTodos, screenshots: initi
                     {stats.questAchieved && (
                         <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-4 flex items-center justify-center gap-2 shadow-sm">
                             <CheckCircle2 className="w-5 h-5 text-green-600 fill-green-100 dark:text-green-400 dark:fill-green-900" />
-                            <span className="text-sm font-extrabold text-green-700 dark:text-green-400 tracking-wide">QUEST CLEAR</span>
+                            <span className="text-sm font-extrabold text-green-700 dark:text-green-400 tracking-wide">{t('calendar.questClear')}</span>
                         </div>
                     )}
                 </div>

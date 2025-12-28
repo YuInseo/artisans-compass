@@ -1,6 +1,5 @@
-import { TimeTableGraph } from "./TimeTableGraph";
 import { Session, Todo, Project } from "@/types";
-import { ChevronRight, Sparkles, Ghost, Lock, Unlock, Plus, Moon, Sun, ChevronLeft } from "lucide-react";
+import { Sparkles, Lock, Unlock, Moon, Sun, Eraser, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -8,6 +7,7 @@ import { format } from "date-fns";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useTheme } from "@/components/theme-provider";
+import { useTranslation } from "react-i18next";
 import {
     Select,
     SelectContent,
@@ -21,24 +21,24 @@ import {
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import {
+    ContextMenu,
+    ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 
-import "@blocknote/core/fonts/inter.css";
-import { useCreateBlockNote } from "@blocknote/react";
-import { BlockNoteView } from "@blocknote/shadcn";
-import "@blocknote/shadcn/style.css";
-import { todosToBlocks, blocksToTodos, customSchema } from "@/utils/blocknote-utils";
+import { TodoEditor } from "./TodoEditor";
+import { TimeTableGraph } from "./TimeTableGraph";
 
 
 interface DailyPanelProps {
     onEndDay: (todos: Todo[], screenshots: string[]) => void;
     projects?: Project[];
-    isSidebarOpen?: boolean; // Prop from App
+    isSidebarOpen?: boolean;
 }
 
 export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: DailyPanelProps) {
-    // Responsive Logic: Compact Mode ONLY if NOT widget mode
-    // Compact Mode = (Sidebar is Open OR Screen Width < 1280)
-    // Actually, user requested: "Narrow Width OR Calendar Expanded"
+    const { t } = useTranslation();
     const [windowWidth, setWindowWidth] = useState(window.innerWidth);
 
     useEffect(() => {
@@ -53,9 +53,11 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
         projectTodos,
         activeProjectId,
         setActiveProjectId,
-        setTodos,
-        loadTodos
+        loadTodos,
+        clearUntitledTodos
     } = useTodoStore();
+
+    // Stable Selector for Todos
     const todos = useMemo(() => projectTodos[activeProjectId] || [], [projectTodos, activeProjectId]);
 
     const { settings, isWidgetMode, setWidgetMode, saveSettings } = useDataStore();
@@ -66,25 +68,20 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
     const { theme, setTheme } = useTheme();
     const headerRef = useRef<HTMLDivElement>(null);
     const editorContentRef = useRef<HTMLDivElement>(null);
-    const isUpdating = useRef(false);
 
-    // Auto-Deselect Logic: If the active project moves out of "Today", deselect it.
-    // Auto-Select Logic: Ensure a valid project is selected for "Today"
+
+    // Auto-Select Logic
     useEffect(() => {
-        const today = new Date();
-        const todayStr = format(today, 'yyyy-MM-dd');
-
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
         let nextId = activeProjectId;
 
-        // 1. Validate Current Selection
         if (nextId) {
             const currentProject = projects.find(p => p.id === nextId);
             if (!currentProject || todayStr < currentProject.startDate || todayStr > currentProject.endDate) {
-                nextId = ""; // Invalid
+                nextId = "";
             }
         }
 
-        // 2. Auto-Select if Empty (or became Invalid) default behavior
         if (!nextId) {
             // Find any project that covers today
             const candidate = projects.find(p => todayStr >= p.startDate && todayStr <= p.endDate);
@@ -93,38 +90,51 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
             }
         }
 
-        // 3. Update Store if Changed
         if (nextId !== activeProjectId) {
             setActiveProjectId(nextId || "");
         }
     }, [projects, activeProjectId, setActiveProjectId]);
 
     // Dynamic Widget Height Logic
+    const lastHeightRef = useRef<number>(0);
+    const resizeTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
     useEffect(() => {
         if (!isWidgetMode || !headerRef.current || !editorContentRef.current || !(window as any).ipcRenderer) return;
 
         const calculateAndResize = () => {
             const headerHeight = headerRef.current?.offsetHeight || 0;
             const contentHeight = editorContentRef.current?.offsetHeight || 0;
-            // Add padding (pt-4 + pb-4 = 32px roughly from parent container)
-            // Parent div (line 192) has py-4 (16+16=32).
             const totalHeight = headerHeight + contentHeight + 40;
 
             const maxHeight = settings?.widgetMaxHeight || 800;
             const finalHeight = Math.min(totalHeight, maxHeight);
 
-            (window as any).ipcRenderer.send('resize-widget', { width: 435, height: finalHeight });
+            // Only send resize if height has changed significantly (prevent loops)
+            if (Math.abs(finalHeight - lastHeightRef.current) > 2) {
+                lastHeightRef.current = finalHeight;
+                (window as any).ipcRenderer.send('resize-widget', { width: 435, height: finalHeight });
+            }
         };
 
         const observer = new ResizeObserver(() => {
-            // Debounce or just run? Run is fine.
-            calculateAndResize();
+            // Debounce resize calls to prevent flickering and IPC flooding
+            if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
+            resizeTimeoutRef.current = setTimeout(() => {
+                calculateAndResize();
+            }, 100);
         });
 
         observer.observe(headerRef.current);
         observer.observe(editorContentRef.current);
 
-        return () => observer.disconnect();
+        // Initial sizing
+        calculateAndResize();
+
+        return () => {
+            observer.disconnect();
+            if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
+        };
     }, [isWidgetMode, todos, settings?.widgetMaxHeight]);
 
     const togglePin = async () => {
@@ -136,251 +146,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
 
     const [sessions, setSessions] = useState<Session[]>([]);
     const [screenshots, setScreenshots] = useState<string[]>([]);
-    const [isConfirmingEnd, setIsConfirmingEnd] = useState(false);
-
-    // --- IPC & Initial Load ---
     const [liveSession, setLiveSession] = useState<Session | null>(null);
-
-    // Initial blocks from store (memoized to prevent re-init)
-    const initialBlocks = useMemo(() => {
-        if (todos.length > 0) {
-            return todosToBlocks(todos);
-        }
-        return [{
-            type: "checkListItem",
-            content: ""
-        }];
-    }, []); // Only on mount/first load logic? 
-    // We rely on `loadTodos` having run or store being hydrated.
-
-    const editor = useCreateBlockNote({
-        initialContent: initialBlocks as any,
-        schema: customSchema,
-    });
-
-    // Handle Project Switch / External Updates
-    // If todos change from outside (e.g. switching project), we need to update editor.
-    // But BlockNote is uncontrolled... we use replaceBlocks.
-    useEffect(() => {
-        if (!editor || !editor.document) return;
-
-        // Check if content differs significantly to avoid cursor jump?
-        // Ideally we only do this when switching projects.
-        // For now, let's just replace if project ID changed (which changes 'todos' dependency)
-        // But 'todos' changes on every keystroke due to setTodos updating store... infinite loop risk!
-
-        // Better: Key the BlockNoteView or use a separate "load" effect.
-        // Current implementation re-renders DailyPanel when 'todos' changes?
-        // Lines 46: const todos = useMemo...
-
-        // Actually, let's rely on the keying or just careful updates.
-        // For now, focusing on the arrow key fix.
-
-    }, [todos]);
-
-    // Manual Arrow Navigation (Restored & Improved)
-    useEffect(() => {
-        const container = editorContentRef.current;
-        if (!container || !editor) return;
-
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Manual Navigation Override for Arrow Keys
-            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-                const selection = editor.getTextCursorPosition();
-                if (selection) {
-                    // Helper to flatten blocks (Recursively)
-                    const getFlatBlocks = (blocks: any[]): any[] => {
-                        let flat: any[] = [];
-                        for (const b of blocks) {
-                            flat.push(b);
-                            if (b.children && b.children.length > 0) {
-                                flat = flat.concat(getFlatBlocks(b.children));
-                            }
-                        }
-                        return flat;
-                    };
-
-                    const flat = getFlatBlocks(editor.document);
-                    const idx = flat.findIndex(b => b.id === selection.block.id);
-
-                    if (idx !== -1) {
-                        if (e.key === "ArrowUp") {
-                            // Move to previous block (end)
-                            if (idx > 0) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                editor.setTextCursorPosition(flat[idx - 1], 'end');
-                                editor.focus();
-                            }
-                        } else if (e.key === "ArrowDown") {
-                            // Move to next block (start) (or end? Standard is usually keeping X position, but start is safe)
-                            if (idx < flat.length - 1) {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                editor.setTextCursorPosition(flat[idx + 1], 'start');
-                                editor.focus();
-                            }
-                        }
-                    }
-                }
-            }
-        };
-
-        // Capture phase to ensure we handle it before BlockNote swallows it
-        container.addEventListener("keydown", handleKeyDown, { capture: true });
-        return () => container.removeEventListener("keydown", handleKeyDown, { capture: true });
-    }, [editor]);
-    // Native Event Listener for Key Handling (Fixes Enter/Backspace issues + Widget Locking)
-    useEffect(() => {
-        const container = editorContentRef.current;
-        if (!container) return;
-
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Priority 0: IME Composition (Korean, etc)
-            if (e.isComposing) return;
-
-            // Priority 1: Widget Locking
-            if (isWidgetMode && isWidgetLocked) {
-                if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'].includes(e.key)) return;
-                if ((e.metaKey || e.ctrlKey) && e.key === 'c') return;
-
-                e.preventDefault();
-                e.stopPropagation();
-                return;
-            }
-
-            // Priority 2: Force Checkbox Behavior
-            if (e.key === "Enter" && !e.shiftKey) {
-                const selection = editor.getTextCursorPosition();
-                if (selection && selection.block.type === "checkListItem") {
-                    const text = Array.isArray(selection.block.content)
-                        ? selection.block.content.map(c => c.type === 'text' ? c.text : '').join('')
-                        : '';
-
-                    if (text === "") {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        const newId = window.crypto.randomUUID();
-                        editor.insertBlocks(
-                            [{ id: newId, type: "checkListItem", props: { checked: false } }],
-                            selection.block,
-                            "after"
-                        );
-                        requestAnimationFrame(() => {
-                            editor.setTextCursorPosition(newId, 'start');
-                            editor.focus();
-                        });
-                    }
-                }
-            }
-            if (e.key === "Backspace") {
-                const selection = editor.getTextCursorPosition();
-                if (selection && selection.block.type === "checkListItem") {
-                    const text = Array.isArray(selection.block.content)
-                        ? selection.block.content.map(c => c.type === 'text' ? c.text : '').join('')
-                        : '';
-
-                    if (text === "") {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        // Smart Deletion: Un-nest children if they exist
-                        if (selection.block.children.length > 0) {
-                            editor.insertBlocks(selection.block.children as any, selection.block, "after");
-                        }
-
-                        editor.removeBlocks([selection.block]);
-                    }
-                }
-            }
-        };
-
-        // Also handle Paste/Cut for locking
-        const handleCutPaste = (e: ClipboardEvent) => {
-            if (isWidgetMode && isWidgetLocked) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-        }
-
-        container.addEventListener("keydown", handleKeyDown, { capture: true });
-        container.addEventListener("paste", handleCutPaste, { capture: true });
-        container.addEventListener("cut", handleCutPaste, { capture: true });
-
-        return () => {
-            container.removeEventListener("keydown", handleKeyDown, { capture: true });
-            container.removeEventListener("paste", handleCutPaste, { capture: true });
-            container.removeEventListener("cut", handleCutPaste, { capture: true });
-        };
-    }, [editor, isWidgetMode, isWidgetLocked]);
-
-    // Sync Editor when Project Changes
-    useEffect(() => {
-        // Basic check to see if we really need to update blocks?
-        // Actually, preventing loop is key.
-        // We only want to replace if the content is DIFFERENT from what editor has.
-        // But converting blocks->todos->blocks is lossy/complex comparison.
-        // Simplest: If activeProjectId changed, definitely replace.
-        // But we need to track if this effect run is due to project change.
-
-        const newBlocks = todos.length > 0 ? todosToBlocks(todos) : [{ type: "checkListItem", content: "" }];
-
-        // We replace blocks. This might trigger onChange, but we can verify.
-        // To be safe, we can clear and insert.
-        isUpdating.current = true;
-        editor.replaceBlocks(editor.document, newBlocks as any);
-        setTimeout(() => isUpdating.current = false, 0);
-
-    }, [activeProjectId]); // Dependencies: Only when Project ID changes (and we access latest 'todos' via closure/render cycle) 
-    // Wait, if 'todos' is computed from projectTodos, we might need to be careful.
-    // Actually, we want to run this ONLY when activeProjectId changes. 
-    // So 'todos' in the body is correct, but dependency array should handle the trigger.
-    // React hooks warning might ask for 'todos', but that causes the loop.
-    // We can use a ref to track 'lastProjectId'.
-
-    const lastProjectId = useRef(activeProjectId);
-    useEffect(() => {
-        if (lastProjectId.current !== activeProjectId) {
-            const newBlocks = todos.length > 0 ? todosToBlocks(todos) : [{ type: "checkListItem", content: "" }];
-            isUpdating.current = true;
-            editor.replaceBlocks(editor.document, newBlocks as any);
-            setTimeout(() => isUpdating.current = false, 0);
-            lastProjectId.current = activeProjectId;
-        }
-    }, [activeProjectId, todos, editor]); // Including todos is risky if keys update. 
-    // But with the Ref check, we only execute on ID change.
-
-    // Use effect to handle initial load timing if store wasn't ready
-    useEffect(() => {
-        // HYDRATION FIX: If todos load later (async), populate the editor if it's currently empty.
-        // This prevents the "Disappearing Todos" bug.
-        const currentBlocks = editor.document;
-        // @ts-ignore
-        const isEditorEmpty = currentBlocks.length === 0 || (currentBlocks.length === 1 && (!currentBlocks[0].content || currentBlocks[0].content.length === 0));
-
-        if (todos.length > 0 && isEditorEmpty) {
-            const blocks = todosToBlocks(todos);
-            // @ts-ignore
-            isUpdating.current = true;
-            editor.replaceBlocks(editor.document, blocks);
-            setTimeout(() => isUpdating.current = false, 0);
-        }
-    }, [todos, editor]);
-
-    useEffect(() => {
-        // Sync Editor changes to Store
-        const unsubscribe = editor.onChange(() => {
-            if (isUpdating.current) return;
-            const blocks = editor.document as any; // Cast to any to avoid strict schema type mismatch with persistence helper
-            const newTodos = blocksToTodos(blocks);
-            // We avoid infinite loop by check? 
-            // store.setTodos saves to persistence. 
-            // We pass false to `shouldSave`? No, we want to save.
-            setTodos(newTodos, true);
-        });
-        return unsubscribe;
-    }, [editor, setTodos]);
 
     useEffect(() => {
         loadTodos();
@@ -394,8 +160,6 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                 if (logs && logs[dateStr]) {
                     if (logs[dateStr].sessions) setSessions(logs[dateStr].sessions);
                     if (logs[dateStr].screenshots) setScreenshots(logs[dateStr].screenshots);
-
-                    // Optional: If logs have todos, maybe we should sync them to editor if editor is empty?
                 }
             };
             loadSessionData();
@@ -405,17 +169,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                     setLiveSession(data.currentSession);
                 } else {
                     setLiveSession(null);
-                    const refreshSessions = async () => {
-                        const now = new Date();
-                        const yearMonth = format(now, 'yyyy-MM');
-                        const dateStr = format(now, 'yyyy-MM-dd');
-                        const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
-                        if (logs && logs[dateStr]) {
-                            if (logs[dateStr].sessions) setSessions(logs[dateStr].sessions);
-                            if (logs[dateStr].screenshots) setScreenshots(logs[dateStr].screenshots);
-                        }
-                    };
-                    refreshSessions();
+                    // Refresh data logic...
                 }
             });
 
@@ -425,472 +179,397 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
         }
     }, [loadTodos]);
 
-    // Handle "Add Root Task" manually if needed, or just let user type.
-    const handleAddRoot = () => {
-        editor.insertBlocks(
-            [{ type: "checkListItem", content: "" }],
-            editor.document[editor.document.length - 1],
-            "after"
-        );
-        editor.focus();
-    };
-
 
     return (
-        <div
-            className="h-full w-full flex flex-row text-foreground font-sans transition-colors duration-300"
-            style={{
-                backgroundColor: isWidgetMode
-                    ? `hsl(var(--card) / ${settings?.widgetOpacity ?? 0.95})`
-                    : `hsl(var(--card))`
-            }}
-        >
-            {/* Split Content */}
-            <div className={cn("flex-1 flex gap-6", isWidgetMode ? "px-2 pt-2 pb-2" : "px-6 py-4")}>
-                {/* Left Panel: Focus List */}
+        <ContextMenu>
+            <ContextMenuTrigger asChild>
                 <div
-                    className={cn("flex flex-col overflow-hidden relative transition-all duration-300 min-w-[300px]", isWidgetMode ? "w-full" : "flex-1")}
+                    className="h-full w-full flex flex-row text-foreground font-sans transition-colors duration-300"
+                    style={{
+                        backgroundColor: isWidgetMode
+                            ? (settings?.widgetOpacity === 0 ? 'transparent' : `hsl(var(--card) / ${settings?.widgetOpacity ?? 0.95})`)
+                            : `hsl(var(--card))`
+                    }}
                 >
-                    {/* Header Wrapper for Measure */}
-                    <div ref={headerRef} className="shrink-0">
-                        {isWidgetMode && (
-                            <>
-                                <div className="h-9 bg-muted/80 border-b border-border flex items-center justify-between pl-3 pr-2 select-none mb-2 backdrop-blur-sm" style={{ WebkitAppRegion: 'drag' } as any}>
-                                    <div className="flex items-center gap-2 min-w-0 flex-1 mr-2 no-drag" style={{ WebkitAppRegion: 'no-drag' } as any}>
-                                        <div className="h-6">
-                                            <Select value={activeProjectId} onValueChange={setActiveProjectId}>
-                                                <SelectTrigger className="h-6 w-full max-w-[180px] bg-transparent border-none p-0 text-xs font-bold text-muted-foreground hover:text-foreground focus:ring-0 shadow-none uppercase tracking-widest gap-1">
-                                                    <Sparkles className="w-3.5 h-3.5 text-primary/70 shrink-0 mr-1" />
-                                                    <SelectValue placeholder="SELECT PROJECT">
-                                                        {projects.find(p => p.id === activeProjectId)?.name || "FOCUS WIDGET"}
-                                                    </SelectValue>
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {(() => {
-                                                        const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                                        const activeProjects = projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
-
-                                                        return (
-                                                            <>
-                                                                {activeProjects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
-                                                                {activeProjects.map(p => (
-                                                                    <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>
-                                                                ))}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-0.5 shrink-0">
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
-                                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                                            title="Toggle Theme"
-                                            style={{ WebkitAppRegion: 'no-drag' } as any}
+                    {/* Split Content */}
+                    <div className={cn("flex-1 flex", isWidgetMode ? "gap-6 px-2 pt-2 pb-2" : "gap-6 px-6 py-4 relative")}>
+                        {/* Left Panel: Focus List */}
+                        <div
+                            className={cn("flex flex-col overflow-hidden relative transition-all duration-300 min-w-[300px]", isWidgetMode ? "w-full" : "flex-1")}
+                        >
+                            {/* Header Wrapper for Measure */}
+                            <div ref={headerRef} className="shrink-0">
+                                {isWidgetMode && (
+                                    <>
+                                        <div
+                                            className={cn(
+                                                "h-9 border-b border-border flex items-center justify-between pl-3 pr-2 select-none mb-2 backdrop-blur-sm transition-all duration-300",
+                                                settings?.widgetHeaderAutoHide ? "opacity-0 hover:opacity-100 bg-muted/90" : "bg-muted/80"
+                                            )}
+                                            style={{ WebkitAppRegion: settings?.widgetPositionLocked ? 'no-drag' : 'drag' } as any}
                                         >
-                                            {theme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
-                                        </Button>
+                                            {/* Left: Project Select (Draggable Area with Interactive Children) */}
+                                            <div className="flex items-center gap-2 min-w-0 flex-1 mr-2" style={{ WebkitAppRegion: settings?.widgetPositionLocked ? 'no-drag' : 'drag' } as any}>
+                                                <div className="h-6 flex-1 max-w-[180px]">
+                                                    <Select value={activeProjectId} onValueChange={setActiveProjectId}>
+                                                        <SelectTrigger
+                                                            className="h-6 w-full bg-transparent border-none p-0 text-xs font-bold text-muted-foreground hover:text-foreground focus:ring-0 shadow-none uppercase tracking-widest gap-1 no-drag"
+                                                            style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                        >
+                                                            <Sparkles className="w-3.5 h-3.5 text-primary/70 shrink-0 mr-1" />
+                                                            <SelectValue placeholder={t('dashboard.selectProject').toUpperCase()}>
+                                                                {projects.find(p => p.id === activeProjectId)?.name || t('dashboard.focusWidget')}
+                                                            </SelectValue>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {(() => {
+                                                                const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                                const activeProjects = projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
 
-                                        <Popover>
-                                            <PopoverTrigger asChild>
+                                                                return (
+                                                                    <>
+                                                                        {activeProjects.length === 0 && <SelectItem value="none">{t('dashboard.noProject')}</SelectItem>}
+                                                                        {activeProjects.map(p => (
+                                                                            <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>
+                                                                        ))}
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                            </div>
+
+                                            {/* Right: Controls (Consolidated Menu) */}
+                                            <div className="flex items-center gap-0.5 shrink-0">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive no-drag"
+                                                    onClick={togglePin}
+                                                    title={t('dashboard.unpin')}
+                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin-off"><line x1="2" x2="22" y1="2" y2="22" /><line x1="12" x2="12" y1="17" y2="22" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-.25-.95" /><path d="M15 9.34V6h1a2 2 0 0 0 0-4H7.89" /></svg>
+                                                </Button>
+
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
+                                                    onClick={clearUntitledTodos}
+                                                    title={t('dashboard.clearUntitled')}
                                                     style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                    title="Transparency"
                                                 >
-                                                    <Ghost className="w-3.5 h-3.5" />
+                                                    <Eraser className="w-3.5 h-3.5" />
                                                 </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-60 p-4" side="bottom" align="end">
-                                                <div className="space-y-2">
-                                                    <div className="flex items-center justify-between">
-                                                        <h4 className="font-medium leading-none text-sm">Opacity</h4>
-                                                        <span className="text-xs text-muted-foreground">{Math.round((settings?.widgetOpacity ?? 1) * 100)}%</span>
-                                                    </div>
-                                                    <Slider
-                                                        min={0}
-                                                        max={1.0}
-                                                        step={0.05}
-                                                        value={[settings?.widgetOpacity ?? 0.95]}
-                                                        onValueChange={(val) => {
-                                                            const newOpacity = val[0];
-                                                            if (settings) {
-                                                                saveSettings({ ...settings, widgetOpacity: newOpacity });
-                                                            }
-                                                        }}
-                                                    />
+
+                                                <Popover>
+                                                    <PopoverTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
+                                                            style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-settings-2"><path d="M20 7h-9" /><path d="M14 17H5" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></svg>
+                                                        </Button>
+                                                    </PopoverTrigger>
+                                                    <PopoverContent className="w-72 p-0" side="bottom" align="end">
+                                                        <div className="flex flex-col max-h-[300px]">
+                                                            <div className="p-4 overflow-y-auto custom-scrollbar space-y-4">
+
+                                                                {/* Opacity Slider */}
+                                                                <div className="space-y-2">
+                                                                    <div className="flex items-center justify-between text-xs">
+                                                                        <span className="text-muted-foreground">{t('dashboard.opacity')}</span>
+                                                                        <span>{Math.round((settings?.widgetOpacity ?? 1) * 100)}%</span>
+                                                                    </div>
+                                                                    <Slider
+                                                                        min={0}
+                                                                        max={1.0}
+                                                                        step={0.05}
+                                                                        value={[settings?.widgetOpacity ?? 0.95]}
+                                                                        onValueChange={(val) => settings && saveSettings({ ...settings, widgetOpacity: val[0] })}
+                                                                    />
+                                                                </div>
+
+                                                                <div className="space-y-2">
+                                                                    {/* Theme Toggle */}
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                            {theme === 'dark' ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+                                                                            {t('settings.theme')}
+                                                                        </span>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            className="h-7 text-xs px-2"
+                                                                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                                                                        >
+                                                                            {theme === 'dark' ? 'Dark' : 'Light'}
+                                                                        </Button>
+                                                                    </div>
+
+                                                                    {/* Lock Content */}
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                            {isWidgetLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                                                                            {t('dashboard.lockWidget')}
+                                                                        </span>
+                                                                        <Switch
+                                                                            checked={isWidgetLocked}
+                                                                            onCheckedChange={setIsWidgetLocked}
+                                                                            className="scale-75 origin-right"
+                                                                        />
+                                                                    </div>
+
+                                                                    {/* Lock Position */}
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-anchor"><circle cx="12" cy="5" r="3" /><line x1="12" x2="12" y1="22" y2="8" /><path d="M5 12H2a10 10 0 0 0 20 0h-3" /></svg>
+                                                                            Lock Position
+                                                                        </span>
+                                                                        <Switch
+                                                                            checked={settings?.widgetPositionLocked || false}
+                                                                            onCheckedChange={(checked) => settings && saveSettings({ ...settings, widgetPositionLocked: checked })}
+                                                                            className="scale-75 origin-right"
+                                                                        />
+                                                                    </div>
+
+                                                                    {/* Auto-Hide Header */}
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-panel-top-open"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /><path d="m9 16 3-3 3 3" /></svg>
+                                                                            Auto-hide Header
+                                                                        </span>
+                                                                        <Switch
+                                                                            checked={settings?.widgetHeaderAutoHide || false}
+                                                                            onCheckedChange={(checked) => settings && saveSettings({ ...settings, widgetHeaderAutoHide: checked })}
+                                                                            className="scale-75 origin-right"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+
+                                                            </div>
+                                                        </div>
+                                                    </PopoverContent>
+                                                </Popover>
+                                            </div>
+                                        </div>
+
+
+                                        {/* Custom Widget Header Content */}
+                                        {settings?.widgetDisplayMode === 'quote' && (
+                                            <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
+                                                <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center relative">
+                                                    <p className="text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed">
+                                                        "{[
+                                                            "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
+                                                            "영감은 존재하지만, 일하는 중에 찾아온다.",
+                                                            "완벽함을 두려워하지 마라. 당신은 절대 도달할 수 없을 테니까.",
+                                                            "모든 아이는 예술가다. 문제는 어른이 되어서도 예술가로 남을 수 있느냐다.",
+                                                            "예술은 보이는 것을 재현하는 것이 아니라, 보이게 만드는 것이다.",
+                                                            "단순함은 궁극의 정교함이다.",
+                                                            "그림은 일기를 쓰는 또 다른 방법일 뿐이다.",
+                                                            "재능은 소금과 같다. 빵을 만들 때 소금만으로는 빵이 되지 않지만, 소금 없이는 맛이 나지 않는다.",
+                                                            "어제보다 나은 그림을 그리는 것이 유일한 목표다.",
+                                                            "선의 끝은 없다. 단지 멈출 뿐이다.",
+                                                            "디테일이 완벽을 만들지만, 완벽은 디테일이 아니다.",
+                                                            "예술은 영혼에 묻은 일상의 먼지를 씻어주는 것이다.",
+                                                            "창의성은 전염된다. 그것을 퍼뜨려라.",
+                                                            "위대한 예술은 자연의 모방이 끝나는 곳에서 시작된다.",
+                                                            "빈 캔버스는 세상에서 가장 아름다운 그림이 될 잠재력을 가지고 있다.",
+                                                            "연습은 배신하지 않는다.",
+                                                            "가장 위대한 예술가는 자기 자신을 작품으로 만드는 사람이다.",
+                                                            "미래를 예측하는 가장 좋은 방법은 미래를 창조하는 것이다.",
+                                                            "실패는 성공으로 가는 길의 이정표다.",
+                                                            "열정은 지루함을 이기는 유일한 치료제다.",
+                                                            "당신의 한계를 정하는 것은 오직 당신의 마음뿐이다.",
+                                                            "작은 변화가 큰 차이를 만든다.",
+                                                            "꾸준함은 탁월함을 이긴다.",
+                                                            "걸작은 단번에 만들어지지 않는다.",
+                                                            "예술가는 태어나는 것이 아니라 만들어지는 것이다.",
+                                                            "침묵도 음악의 일부다.",
+                                                            "색채는 영혼에 직접적인 영향을 미치는 힘이다.",
+                                                            "단순하게 생각하라. 그리고 대담하게 표현하라.",
+                                                            "인생은 짧고 예술은 길다.",
+                                                            "몰입은 최고의 휴식이다."
+                                                        ][new Date().getDate() % 30]}"
+                                                    </p>
+                                                    <button
+                                                        onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
+                                                        className="absolute top-1 right-1 p-1 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all no-drag"
+                                                        title="Remove Quote"
+                                                        style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                                    </button>
                                                 </div>
-                                            </PopoverContent>
-                                        </Popover>
+                                            </div>
+                                        )}
 
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
-                                            onClick={() => setIsWidgetLocked(!isWidgetLocked)}
-                                            title={isWidgetLocked ? "Unlock Widget" : "Lock Widget (Checkboxes Only)"}
-                                            style={{ WebkitAppRegion: 'no-drag' } as any}
-                                        >
-                                            {isWidgetLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                                        </Button>
-
-                                        <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
-                                            onClick={togglePin}
-                                            title="Unpin (Restore Full View)"
-                                            style={{ WebkitAppRegion: 'no-drag' } as any}
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin-off"><line x1="2" x2="22" y1="2" y2="22" /><line x1="12" x2="12" y1="17" y2="22" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-.25-.95" /><path d="M15 9.34V6h1a2 2 0 0 0 0-4H7.89" /></svg>
-                                        </Button>
-                                    </div>
-                                </div>
-
-                                {/* Custom Widget Header Content */}
-                                {settings?.widgetDisplayMode === 'quote' && (
-                                    <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2">
-                                        <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center">
-                                            <p className="text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed">
-                                                "{[
-                                                    "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
-                                                    "영감은 존재하지만, 일하는 중에 찾아온다.",
-                                                    "완벽함을 두려워하지 마라. 당신은 절대 도달할 수 없을 테니까.",
-                                                    "모든 아이는 예술가다. 문제는 어른이 되어서도 예술가로 남을 수 있느냐다.",
-                                                    "예술은 보이는 것을 재현하는 것이 아니라, 보이게 만드는 것이다.",
-                                                    "단순함은 궁극의 정교함이다.",
-                                                    "그림은 일기를 쓰는 또 다른 방법일 뿐이다.",
-                                                    "재능은 소금과 같다. 빵을 만들 때 소금만으로는 빵이 되지 않지만, 소금 없이는 맛이 나지 않는다.",
-                                                    "어제보다 나은 그림을 그리는 것이 유일한 목표다.",
-                                                    "선의 끝은 없다. 단지 멈출 뿐이다."
-                                                ][new Date().getDate() % 10]}"
-                                            </p>
-                                        </div>
-                                    </div>
+                                        {settings?.widgetDisplayMode === 'goals' && (
+                                            <div className="mb-4 px-1 grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 group relative">
+                                                <div className="p-2 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+                                                    <div className="text-[10px] font-bold text-blue-600/70 uppercase tracking-wider mb-0.5">{t('dashboard.monthly')}</div>
+                                                    <div className="text-xs font-medium truncate" title={settings.focusGoals?.monthly}>{settings.focusGoals?.monthly || t('dashboard.noGoal')}</div>
+                                                </div>
+                                                <div className="p-2 bg-green-500/5 border border-green-500/20 rounded-lg">
+                                                    <div className="text-[10px] font-bold text-green-600/70 uppercase tracking-wider mb-0.5">{t('dashboard.weekly')}</div>
+                                                    <div className="text-xs font-medium truncate" title={settings.focusGoals?.weekly}>{settings.focusGoals?.weekly || t('dashboard.noGoal')}</div>
+                                                </div>
+                                                <button
+                                                    onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
+                                                    className="absolute -top-1 -right-1 p-1 rounded-full bg-background border border-border shadow-sm text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all z-10 no-drag"
+                                                    title="Remove Goals"
+                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </>
                                 )}
 
-                                {settings?.widgetDisplayMode === 'goals' && (
-                                    <div className="mb-4 px-1 grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2">
-                                        <div className="p-2 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-                                            <div className="text-[10px] font-bold text-blue-600/70 uppercase tracking-wider mb-0.5">Monthly</div>
-                                            <div className="text-xs font-medium truncate" title={settings.focusGoals?.monthly}>{settings.focusGoals?.monthly || "No Goal"}</div>
-                                        </div>
-                                        <div className="p-2 bg-green-500/5 border border-green-500/20 rounded-lg">
-                                            <div className="text-[10px] font-bold text-green-600/70 uppercase tracking-wider mb-0.5">Weekly</div>
-                                            <div className="text-xs font-medium truncate" title={settings.focusGoals?.weekly}>{settings.focusGoals?.weekly || "No Goal"}</div>
-                                        </div>
-                                    </div>
-                                )}
-                            </>
-                        )}
-
-                        {!isWidgetMode && projects.length > 0 && (
-                            <div className="flex items-end justify-between mb-6 px-1 shrink-0">
-                                <div className="flex items-center gap-2">
-                                    <div>
-                                        <h2 className="text-2xl font-bold text-foreground font-serif tracking-tight cursor-pointer hover:text-muted-foreground transition-colors flex items-center gap-2">
-                                            Today's Focus
-                                        </h2>
-                                        <p className="text-sm text-muted-foreground font-medium mt-1">{format(new Date(), 'MMM dd, yyyy')}</p>
-                                    </div>
-                                </div>
-
-                                {/* Controls: Project Dropdown + Pin */}
-                                <div className="flex items-center gap-3">
-                                    {/* Project Dropdown */}
-                                    <div className="relative" style={{ WebkitAppRegion: 'no-drag' } as any}>
-                                        <Select value={activeProjectId} onValueChange={setActiveProjectId}>
-                                            <SelectTrigger className="w-[180px]">
-                                                <SelectValue placeholder="Select Project" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {(() => {
-                                                    const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                                    const activeProjects = projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
-
-                                                    return (
-                                                        <>
-                                                            {activeProjects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
-                                                            {activeProjects.map(p => (
-                                                                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                                            ))}
-                                                        </>
-                                                    );
-                                                })()}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    {/* Pin Button (Only show if NOT in widget mode) */}
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className={cn("h-9 w-9 transition-all", isPinned ? "text-primary bg-primary/10 rotate-45" : "text-muted-foreground hover:text-foreground")}
-                                        onClick={togglePin}
-                                        title={isPinned ? "Unpin (Exit Widget Mode)" : "Pin to Top (Widget Mode)"}
-                                    >
-                                        <span className="sr-only">Pin</span>
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin"><line x1="12" x2="12" y1="17" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
-                                    </Button>
-                                </div>
-                            </div>
-                        )}
-                    </div> {/* End Header Wrapper */}
-
-                    {/* Editor Area (Scrollable) - Only show if projects exist or in widget mode */}
-                    {(isWidgetMode || (projects.length > 0 && activeProjectId && activeProjectId !== 'none')) ? (
-                        <div className={cn(
-                            "relative pr-2 custom-scrollbar",
-                            isWidgetMode ? "flex-1 overflow-y-auto pb-6" : "flex-1 overflow-y-auto pb-20"
-                        )}>
-                            {/* Content Wrapper for Measure & Lock Logic */}
-                            <div
-                                ref={editorContentRef}
-                                onKeyDownCapture={(e) => {
-                                    if (e.key === 'Backspace' && editor) {
-                                        const selection = editor.getTextCursorPosition();
-                                        if (selection && selection.block.type === 'checkListItem') {
-                                            const text = Array.isArray(selection.block.content)
-                                                ? selection.block.content.map(c => c.type === 'text' ? c.text : '').join('')
-                                                : '';
-
-                                            // If empty, manually delete the block to prevent "convert to paragraph" fallback
-                                            if (text.length === 0) {
-                                                e.preventDefault();
-
-                                                const currentBlockId = selection.block.id;
-
-                                                // Helper to find block and its context in the tree
-                                                const findBlockContext = (blocks: any[], id: string, parent: any = null): any => {
-                                                    for (let i = 0; i < blocks.length; i++) {
-                                                        if (blocks[i].id === id) {
-                                                            return { block: blocks[i], index: i, parent, siblings: blocks };
-                                                        }
-                                                        if (blocks[i].children && blocks[i].children.length > 0) {
-                                                            const result = findBlockContext(blocks[i].children, id, blocks[i]);
-                                                            if (result) return result;
-                                                        }
-                                                    }
-                                                    return null;
-                                                };
-
-                                                const context = findBlockContext(editor.document, currentBlockId);
-
-                                                if (context) {
-                                                    const { index, siblings, parent } = context;
-
-                                                    // Determine target to focus
-                                                    let targetBlockId = null;
-
-                                                    if (index > 0) {
-                                                        // Has previous sibling
-                                                        const prevSibling = siblings[index - 1];
-                                                        // Navigate to last deep child of prevSibling if it exists (like Notion)
-                                                        let candidate = prevSibling;
-                                                        while (candidate.children && candidate.children.length > 0 && candidate.props?.isCollapsed !== true) {
-                                                            candidate = candidate.children[candidate.children.length - 1];
-                                                        }
-                                                        targetBlockId = candidate.id;
-                                                    } else if (parent) {
-                                                        // No previous sibling, go to parent
-                                                        targetBlockId = parent.id;
-                                                    }
-
-                                                    if (targetBlockId) {
-                                                        editor.setTextCursorPosition(targetBlockId, 'end');
-                                                        // If has children, promote them (replace parent with children)
-                                                        if (selection.block.children.length > 0) {
-                                                            editor.replaceBlocks([selection.block], selection.block.children);
-                                                        } else {
-                                                            editor.removeBlocks([selection.block]);
-                                                        }
-                                                    } else {
-                                                        // Top of document?
-                                                        if (selection.block.children.length > 0) {
-                                                            // If deleting top block with children, replace it with children
-                                                            // blocknote usually handles focus if active block is removed, but to be safe:
-                                                            // We might want focus on first child? Let's treat replaceBlocks as sufficient 
-                                                            // or set focus explicitly to first child ID if needed?
-                                                            // Actually replaceBlocks usually returns the new blocks. 
-                                                            // Let's just do the replacement.
-                                                            editor.replaceBlocks([selection.block], selection.block.children);
-                                                        } else {
-                                                            editor.removeBlocks([selection.block]);
-                                                        }
-                                                    }
-                                                } else {
-                                                    // Fallback
-                                                    editor.removeBlocks([selection.block]);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }}
-                            >
-                                <BlockNoteView
-                                    editor={editor}
-                                    theme={theme === 'dark' ? 'dark' : 'light'}
-                                    className={cn("daily-focus-theme", isWidgetMode ? "min-h-[50px]" : "min-h-[200px]")}
-                                    slashMenu={false}
-                                    formattingToolbar={false}
-                                    onChange={() => {
-                                        // FORCE CHECKBOX MODE:
-                                        // Only convert paragraph to checkbox if it has content or if we want to enforce it.
-                                        // NOTE: The Backspace handler above handles the deletion case.
-                                        // Here we just ensure any accidentally created paragraphs become checkboxes.
-                                        const selection = editor.getTextCursorPosition();
-                                        if (selection && selection.block.type === "paragraph") {
-                                            editor.updateBlock(selection.block, {
-                                                type: "checkListItem",
-                                                props: { checked: false }
-                                            });
-                                        }
-
-                                        if (selection && selection.block.type === "paragraph") {
-                                            editor.updateBlock(selection.block, {
-                                                type: "checkListItem",
-                                                props: { checked: false }
-                                            });
-                                        }
-                                    }}
-                                />
-
-                                {/* Optional: Add button if empty */}
-                                {editor.document.length === 0 && (
-                                    <Button
-                                        variant="ghost"
-                                        className="w-full mt-2 text-muted-foreground border-dashed border"
-                                        onClick={handleAddRoot}
-                                    >
-                                        <Plus className="w-4 h-4 mr-2" /> Add First Task
-                                    </Button>
-                                )}
-                            </div> {/* End Content Wrapper */}
-                        </div>
-                    ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground pb-20 animate-in fade-in zoom-in-95 duration-300">
-                            <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mb-4">
-                                <Sparkles className="w-8 h-8 text-muted-foreground/50" />
-                            </div>
-                            <h3 className="font-serif text-lg font-medium text-foreground mb-1">Ready to Craft?</h3>
-                            <p className="text-sm">Select a project above to start planning your day.</p>
-                        </div>
-                    )}
-
-                    {/* End Day Button */}
-
-                    {/* End Day Button */}
-                    {!isWidgetMode && (
-                        <div className="absolute bottom-6 right-6 z-10">
-                            {isConfirmingEnd ? (
-                                <div className="flex items-center gap-2 bg-popover p-2 rounded-lg shadow-lg border border-border animate-in fade-in slide-in-from-right-4">
-                                    <span className="text-xs font-medium text-foreground whitespace-nowrap px-2">End Day?</span>
-                                    <Button onClick={() => setIsConfirmingEnd(false)} variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground hover:text-foreground">No</Button>
-                                    <Button onClick={async () => {
-                                        if ((window as any).ipcRenderer) {
-                                            const now = new Date();
-                                            const yearMonth = format(now, 'yyyy-MM');
-                                            const dateStr = format(now, 'yyyy-MM-dd');
-                                            const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
-                                            if (logs && logs[dateStr]) {
-                                                if (logs[dateStr].screenshots) setScreenshots(logs[dateStr].screenshots);
-                                                onEndDay(logs[dateStr].todos || todos, logs[dateStr].screenshots || []);
-                                            } else {
-                                                onEndDay(todos, screenshots);
-                                            }
-                                        } else {
-                                            onEndDay(todos, screenshots);
-                                        }
-                                    }} size="sm" className="bg-red-500 hover:bg-red-600 text-white h-7 text-xs">Yes</Button>
-                                </div>
-                            ) : (
-                                <Button
-                                    onClick={() => setIsConfirmingEnd(true)}
-                                    className="rounded-full shadow-lg bg-primary hover:bg-primary/90 text-primary-foreground px-6 h-12 font-bold transition-all hover:scale-105 active:scale-95"
-                                >
-                                    End Day <ChevronRight className="w-4 h-4 ml-1" />
-                                </Button>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                {/* Right Panel: TimeTable (Responsive) */}
-                {
-                    !isWidgetMode && (
-                        <div className={cn(
-                            "flex-col shrink-0 h-full transition-transform duration-300 ease-in-out w-[320px] z-20",
-                            isCompactMode
-                                ? "absolute right-0 top-0 bottom-0 translate-x-[calc(100%-24px)] hover:translate-x-0 group"
-                                : "hidden lg:flex animate-in fade-in slide-in-from-right-4 bg-background/50 backdrop-blur"
-                        )}>
-                            <div className="relative w-full h-full flex flex-row">
-                                {/* Visual Handle (Only in Compact Mode) */}
-                                {isCompactMode && (
-                                    <div className="shrink-0 w-6 h-full flex items-center justify-center cursor-pointer bg-muted/80 hover:bg-muted border-l border-t border-b border-border rounded-l-md shadow-sm transition-colors mt-4 mb-4"
-                                        style={{ height: 'calc(100% - 32px)' }}
-                                    >
-                                        <div className="flex flex-col gap-1.5 items-center opacity-50 group-hover:opacity-100 transition-opacity">
-                                            <ChevronLeft className="w-4 h-4" />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Main Content Panel */}
-                                <div className={cn(
-                                    "flex-1 h-full bg-background/95 backdrop-blur border-l border-border shadow-2xl overflow-hidden flex flex-col px-4 py-4",
-                                    !isCompactMode && "bg-transparent border-none shadow-none"
-                                )}>
+                                {!isWidgetMode && projects.length > 0 && (
                                     <div className="flex items-end justify-between mb-6 px-1 shrink-0">
-                                        <div>
-                                            <h2 className="text-2xl font-bold text-foreground font-serif tracking-tight">Time Table</h2>
-                                            <p className="text-sm text-transparent font-medium mt-1 select-none">.</p>
+                                        <div className="flex items-center gap-2">
+                                            <div>
+                                                <h2 className="text-2xl font-bold text-foreground tracking-tight cursor-pointer hover:text-muted-foreground transition-colors flex items-center gap-2">
+                                                    {t('dashboard.todayFocus')}
+                                                </h2>
+                                                <p className="text-sm text-muted-foreground font-medium mt-1">{format(new Date(), 'MMM dd, yyyy')}</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Controls: Project Dropdown + Pin */}
+                                        <div className="flex items-center gap-3">
+                                            {/* Project Dropdown */}
+                                            <div className="relative" style={{ WebkitAppRegion: 'no-drag' } as any}>
+                                                <Select value={activeProjectId} onValueChange={setActiveProjectId}>
+                                                    <SelectTrigger className="w-[180px]">
+                                                        <SelectValue placeholder={t('dashboard.selectProject')} />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {(() => {
+                                                            const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                            const activeProjects = projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
+
+                                                            return (
+                                                                <>
+                                                                    {activeProjects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
+                                                                    {activeProjects.map(p => (
+                                                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                                    ))}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            {/* Action Buttons Group */}
+                                            <div className="flex items-center gap-1">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                                    onClick={clearUntitledTodos}
+                                                    title={t('dashboard.clearUntitled')}
+                                                >
+                                                    <Eraser className="w-[18px] h-[18px]" />
+                                                </Button>
+
+                                                {/* Pin Button (Only show if NOT in widget mode) */}
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className={cn("h-9 w-9 transition-all", isPinned ? "text-primary bg-primary/10 rotate-45" : "text-muted-foreground hover:text-foreground")}
+                                                    onClick={togglePin}
+                                                    title={isPinned ? t('dashboard.unpin') : t('dashboard.pin')}
+                                                >
+                                                    <span className="sr-only">Pin</span>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin"><line x1="12" x2="12" y1="17" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
+                                                </Button>
+                                            </div>
                                         </div>
                                     </div>
-                                    <div className="flex-1 border border-border rounded-xl bg-muted/10 overflow-hidden shadow-sm">
-                                        <TimeTableGraph
-                                            sessions={liveSession ? [...sessions, liveSession] : sessions}
-                                            date={new Date()}
+                                )}
+                            </div> {/* End Header Wrapper */}
+
+                            {/* Editor Area (Scrollable) - Only show if projects exist or in widget mode */}
+                            {(isWidgetMode || (projects.length > 0 && activeProjectId && activeProjectId !== 'none')) ? (
+                                <div className={cn(
+                                    "relative pr-2 custom-scrollbar overflow-x-hidden",
+                                    isWidgetMode ? "flex-1 overflow-y-auto pb-6" : "flex-1 overflow-y-auto pb-20"
+                                )}
+                                    style={{ scrollbarGutter: 'stable' }}
+                                >
+                                    {/* Content Wrapper for Measure & Lock Logic */}
+                                    <div
+                                        ref={editorContentRef}
+                                        className="min-h-full"
+                                    >
+                                        <TodoEditor
+                                            activeProjectId={activeProjectId}
+                                            todos={todos}
+                                            isWidgetMode={isWidgetMode}
+                                            isWidgetLocked={isWidgetLocked}
                                         />
                                     </div>
 
-                                    {liveSession && (
-                                        <div className="mt-4 p-4 border border-blue-500/30 bg-blue-500/5 rounded-xl shadow-sm animate-in fade-in slide-in-from-bottom-2">
-                                            <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1 flex items-center gap-2">
-                                                <span className="relative flex h-2 w-2">
-                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
-                                                </span>
-                                                Working on...
-                                            </div>
-                                            <div className="text-lg font-bold text-foreground truncate" title={liveSession.process}>
-                                                {liveSession.process}
-                                                <span className="block text-sm font-normal text-muted-foreground mt-0.5 font-mono">
-                                                    {/* Simple timer display since we can't import StopwatchTicker easily right now without seeing imports, or assuming it is available logic */}
-                                                    {(() => {
-                                                        const totalSeconds = sessions.reduce((acc, s) => acc + s.duration, 0) + liveSession.duration;
-                                                        const h = Math.floor(totalSeconds / 3600);
-                                                        const m = Math.floor((totalSeconds % 3600) / 60);
-                                                        const s = totalSeconds % 60;
-                                                        return `${h}h ${m}m ${s}s`;
-                                                    })()}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
+                                    {/* FOOTER AREA - REMOVED, moving to Right Panel */}
+                                </div>
+                            ) : (
+                                <div className="flex-1 flex items-center justify-center flex-col text-muted-foreground gap-4">
+                                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-2">
+                                        <Sparkles className="w-8 h-8 opacity-20" />
+                                    </div>
+                                    <p className="text-sm">{t('dashboard.noActiveProject')}</p>
+                                    <div className="text-xs opacity-60 max-w-[200px] text-center">
+                                        {t('dashboard.createProjectHint')}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* End Day Floating Button in Left Panel */}
+                            {!isWidgetMode && (projects.length > 0 && activeProjectId && activeProjectId !== 'none') && (
+                                <div className="absolute bottom-6 right-6 z-20 pointer-events-auto">
+                                    <Button
+                                        variant="default"
+                                        size="lg"
+                                        onClick={() => onEndDay(todos, screenshots)}
+                                        className="gap-2 shadow-lg rounded-full"
+                                    >
+                                        <CheckCircle className="w-5 h-5" />
+                                        {t('dashboard.endDay')}
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* RIGHT PANEL - TIMETABLE GRAPH & END DAY */}
+                        {/* Only visible in desktop/non-widget mode */}
+                        {!isWidgetMode && (
+                            <div className={cn(
+                                "shrink-0 border-l border-border/50 flex flex-col transition-all duration-300 ease-in-out bg-background/95 backdrop-blur z-20",
+                                isCompactMode
+                                    ? "absolute right-0 top-0 bottom-0 w-2 hover:w-[300px] shadow-2xl border-l-4 hover:border-l border-primary/50"
+                                    : "w-[300px] relative pl-6"
+                            )}>
+                                <div className={cn("flex-1 pt-4 h-full", isCompactMode ? "opacity-0 hover:opacity-100 transition-opacity duration-300 px-4" : "")}>
+                                    <TimeTableGraph
+                                        sessions={sessions}
+                                        activeProjectId={activeProjectId}
+                                        liveSession={liveSession}
+                                    />
                                 </div>
                             </div>
-                        </div>
-                    )
-                }
-
-            </div >
-        </div >
+                        )}
+                    </div>
+                </div>
+            </ContextMenuTrigger>
+        </ContextMenu >
     );
 }

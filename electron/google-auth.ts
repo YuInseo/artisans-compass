@@ -2,6 +2,7 @@ import { ipcMain, shell, BrowserWindow } from 'electron';
 import http from 'node:http';
 import url from 'node:url';
 import { readJson, writeJson, getSettingsPath, DEFAULT_SETTINGS, AppSettings } from './storage';
+import log from 'electron-log';
 
 // These MUST be set via environment variables - do not hardcode secrets!
 const CLIENT_ID = process.env.CLIENT_ID || "";
@@ -32,7 +33,7 @@ export function setupGoogleAuth() {
                                         email = userData.email;
                                     }
                                 } catch (userInfoError) {
-                                    console.error("Failed to fetch user email", userInfoError);
+                                    log.error("[GoogleAuth] Failed to fetch user email", userInfoError);
                                 }
 
                                 // Save tokens (Backend persistence)
@@ -63,7 +64,7 @@ export function setupGoogleAuth() {
 
                                 resolve({ success: true, email, tokens: driveTokens });
                             } catch (exchangeError) {
-                                console.error("Token Exchange Failed", exchangeError);
+                                log.error("[GoogleAuth] Token Exchange Failed", exchangeError);
                                 res.end(`Authentication failed during token exchange: ${exchangeError}`);
                                 server.close();
                                 reject(exchangeError);
@@ -80,7 +81,7 @@ export function setupGoogleAuth() {
                         }
                     }
                 } catch (e) {
-                    console.error("Auth Callback Error", e);
+                    log.error("[GoogleAuth] Auth Callback Error", e);
                     if (!res.writableEnded) {
                         res.end('Error occurred during authentication.');
                     }
@@ -90,7 +91,7 @@ export function setupGoogleAuth() {
             });
 
             server.on('error', (err) => {
-                console.error('Local Auth Server Error:', err);
+                log.error('[GoogleAuth] Local Auth Server Error:', err);
                 reject(err);
             });
 
@@ -106,8 +107,8 @@ export function setupGoogleAuth() {
                     `access_type=offline&` +
                     `prompt=consent`; // Force consent to get refresh token
 
-                console.log(`[GoogleAuth] Local server listening on port ${port}`);
-                console.log(`[GoogleAuth] Opening: ${authUrl}`);
+                log.info(`[GoogleAuth] Local server listening on port ${port}`);
+                log.info(`[GoogleAuth] Opening auth URL`);
                 shell.openExternal(authUrl);
             });
 

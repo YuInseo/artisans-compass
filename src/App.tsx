@@ -153,11 +153,41 @@ function App() {
       const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
       if (!logs[dateStr]) logs[dateStr] = {};
 
+      console.log("[App] Saving Log - Plan:", plan);
+      console.log("[App] Saving Log - Logs Obj:", logs[dateStr]);
+
       logs[dateStr].closingNote = plan;
       logs[dateStr].todos = lastSessionTodos;
       logs[dateStr].quest_cleared = true;
 
       await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
+
+      // 1.5 Sync to Notion (Manual Trigger)
+      if (settings?.notionTokens?.accessToken && settings?.notionTokens?.databaseId) {
+        const syncData = {
+          ...logs[dateStr],
+          closingNote: plan,
+          quest_cleared: true
+        };
+        // Log to Main Process for visibility
+        (window as any).ipcRenderer.send('log-message', `[App] Triggering Sync. Plan len: ${plan?.length}`);
+
+        console.log("[App] Triggering Sync. Plan length:", plan?.length);
+        console.log("[App] Sync Payload Keys:", Object.keys(syncData));
+        console.log("[App] Payload.closingNote:", syncData.closingNote);
+
+        (window as any).ipcRenderer.invoke('manual-sync-notion', {
+          token: settings.notionTokens.accessToken,
+          databaseId: settings.notionTokens.databaseId,
+          dateStr,
+          data: syncData
+        }).catch((e: any) => {
+          console.error("Notion sync trigger failed", e);
+          (window as any).ipcRenderer.send('log-message', `[App] Sync Failed: ${e.message}`);
+        });
+      } else {
+        (window as any).ipcRenderer.send('log-message', `[App] Sync Skipped: Missing Token/DB. Token: ${!!settings?.notionTokens?.accessToken}, DB: ${!!settings?.notionTokens?.databaseId}`);
+      }
 
       // 2. Save Tomorrow's Todos (Handle Month Boundary)
       if (yearMonth === tmrYearMonth) {
@@ -198,11 +228,11 @@ function App() {
       {settings && !settings.hasCompletedOnboarding && !loading && (
         <OnboardingWizard
           isOpen={true}
-          onComplete={() => saveSettings({ ...settings, hasCompletedOnboarding: true })}
+          onComplete={() => { }}
         />
       )}
       <InspirationModal
-        isOpen={showInspiration}
+        isOpen={showInspiration && !!settings?.hasCompletedOnboarding}
         onClose={() => setShowInspiration(false)}
       />
       <AppLayout

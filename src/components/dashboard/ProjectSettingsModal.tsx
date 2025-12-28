@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDataStore } from "@/hooks/useDataStore";
+import { useTranslation } from "react-i18next";
 
 interface ProjectSettingsModalProps {
     project: Project | null;
@@ -28,6 +29,7 @@ const DEFAULT_COLORS = [
 ];
 
 export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelete, onManageTypes }: ProjectSettingsModalProps) {
+    const { t } = useTranslation();
     const { settings } = useDataStore();
     const [name, setName] = useState(project?.name || "");
     const [type, setType] = useState(project?.type || "Main");
@@ -62,12 +64,12 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelet
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Project Settings</DialogTitle>
+                    <DialogTitle>{t('modals.projectSettings.title')}</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="name" className="text-right">
-                            Name
+                            {t('modals.projectSettings.name')}
                         </Label>
                         <Input
                             id="name"
@@ -78,7 +80,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelet
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="type" className="text-right">
-                            Type
+                            {t('modals.projectSettings.type')}
                         </Label>
                         <div className="col-span-3 flex flex-wrap gap-2 items-center">
                             {(settings?.projectTags || ["Main", "Sub", "Practice"]).map(t => (
@@ -112,17 +114,17 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelet
                                         // But safer to close current specific modal to avoid clutter.
                                         onManageTypes('timeline');
                                     } else {
-                                        alert("Manage Project Types in Global Settings (Gear Icon -> Timeline)");
+                                        alert(t('modals.projectSettings.manageTypesAlert'));
                                     }
                                 }}
                             >
-                                Edit Types...
+                                {t('modals.projectSettings.editTypes')}
                             </Button>
                         </div>
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="status" className="text-right">
-                            Status
+                            {t('modals.projectSettings.status')}
                         </Label>
                         <div className="col-span-3 flex gap-2">
                             <Button
@@ -131,7 +133,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelet
                                 size="sm"
                                 onClick={() => setIsCompleted(false)}
                             >
-                                Active
+                                {t('modals.projectSettings.active')}
                             </Button>
                             <Button
                                 type="button"
@@ -142,13 +144,13 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelet
                                     setLocked(true); // Auto-lock on completion
                                 }}
                             >
-                                Completed
+                                {t('modals.projectSettings.completed')}
                             </Button>
                         </div>
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="locked" className="text-right">
-                            Locked
+                            {t('modals.projectSettings.locked')}
                         </Label>
                         <div className="col-span-3 flex items-center gap-2">
                             <input
@@ -159,7 +161,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelet
                                 className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                             <label htmlFor="locked" className="text-sm text-muted-foreground">
-                                Prevent dragging and resizing
+                                {t('modals.projectSettings.preventDrag')}
                             </label>
                         </div>
                     </div>
@@ -169,7 +171,7 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelet
                     {settings?.enableCustomProjectColors && (
                         <div className="grid grid-cols-4 items-start gap-4">
                             <Label className="text-right pt-2">
-                                Color
+                                {t('modals.projectSettings.color')}
                             </Label>
                             <div className="col-span-3">
                                 <div className="space-y-2">
@@ -188,13 +190,13 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelet
                                             type="button"
                                             className={`w-8 h-8 rounded-full border-2 flex items-center justify-center text-xs font-mono bg-muted text-muted-foreground transition-all ${!color ? 'border-primary ring-2 ring-primary ring-offset-2' : 'border-transparent hover:scale-110'}`}
                                             onClick={() => setColor(undefined)}
-                                            title="Default (Use Type Color)"
+                                            title={t('modals.projectSettings.defaultColor')}
                                         >
                                             /
                                         </button>
                                     </div>
                                     <p className="text-xs text-muted-foreground">
-                                        Overrides the default color for <b>{type}</b> projects.
+                                        {t('modals.projectSettings.overrideColor', { type })}
                                     </p>
                                 </div>
                             </div>
@@ -202,8 +204,8 @@ export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelet
                     )}
                 </div>
                 <DialogFooter>
-                    <Button variant="destructive" onClick={() => { onDelete(project!.id); onClose(); }}>Delete</Button>
-                    <Button onClick={handleSave}>Save changes</Button>
+                    <Button variant="destructive" onClick={() => { onDelete(project!.id); onClose(); }}>{t('modals.projectSettings.delete')}</Button>
+                    <Button onClick={handleSave}>{t('modals.projectSettings.saveChanges')}</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

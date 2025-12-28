@@ -1,12 +1,13 @@
-import { powerMonitor, ipcMain, BrowserWindow, desktopCapturer } from 'electron';
+import { powerMonitor, ipcMain, BrowserWindow } from 'electron';
 // import { WindowPoller } from './window_poller'; // Removed in favor of active-win
 import {
-    readJson, writeJson, getSettingsPath, getDailyLogPath, getUserDataPath,
+    readJson, getSettingsPath, getDailyLogPath, getUserDataPath,
     DEFAULT_SETTINGS, AppSettings, Session, DailyLogData
 } from '../storage';
 import { format } from 'date-fns';
 import path from 'node:path';
 import fs from 'node:fs';
+import log from 'electron-log';
 
 interface TrackingState {
     isIdle: boolean;
@@ -100,14 +101,22 @@ export function setupTracker(win: BrowserWindow) {
         }, interval * 1000);
     };
 
-    scheduleNextScreenshot();
-
-    // Hook into reloadSettings to restart timer immediately if interval changed
-    ipcMain.handle('reload-settings', () => {
+    // Listen for settings updates from Renderer (send style)
+    ipcMain.on('settings-updated', () => {
+        console.log("[Tracker] Settings updated (on), reloading...");
         reloadSettings();
-        // Refund/Restart timer with new interval
+        // Reschedule in case interval changed
         scheduleNextScreenshot();
     });
+
+    // Listen for settings updates from Renderer (invoke style)
+    ipcMain.handle('reload-settings', () => {
+        console.log("[Tracker] Settings updated (handle), reloading...");
+        reloadSettings();
+        scheduleNextScreenshot();
+    });
+
+    scheduleNextScreenshot();
 }
 
 function processSessionLogic() {
@@ -173,69 +182,53 @@ function closeAndSaveSession(session: Session) {
     if (session.duration < 5) return; // Ignore micro-sessions (<5s)
 
     const sessionDate = new Date(session.start);
-    const yearMonth = format(sessionDate, 'yyyy-MM');
-    const filePath = getDailyLogPath(yearMonth);
     const dateKey = format(sessionDate, 'yyyy-MM-dd');
 
+    // We need to read current data to append session
+    // Actually, saveDailyLogInternal logic replaces arrays if provided.
+    // So we need to read, push, then save.
+
+    // Optimization: We can just use saveDailyLogInternal if we can pass a function or if we assume concurrency isn't high.
+    // Let's read first.
+    const yearMonth = format(sessionDate, 'yyyy-MM');
+    const filePath = getDailyLogPath(yearMonth);
     const logData = readJson<Record<string, DailyLogData>>(filePath, {});
 
-    // Initialize day if missing
+    // Ensure day exists
     if (!logData[dateKey]) {
-        logData[dateKey] = {
-            sessions: [],
-            todos: [],
-            quest_cleared: false,
-            screenshots: [],
-            is_rest_day: false
-        };
+        logData[dateKey] = { sessions: [], todos: [], quest_cleared: false, screenshots: [], is_rest_day: false };
     }
 
-    if (!logData[dateKey].sessions) logData[dateKey].sessions = [];
-    logData[dateKey].sessions.push(session);
-    writeJson(filePath, logData);
-    console.log(`Saved session: ${session.process} (${session.duration}s) to ${dateKey}`);
+    const sessions = logData[dateKey].sessions || [];
+    sessions.push(session);
 
-    // Trigger Backup
-    performBackup(filePath);
+    // Use internal save which triggers Sync
+    import('../storage').then(mod => {
+        mod.saveDailyLogInternal(dateKey, { sessions });
+    });
+
+    console.log(`Saved session: ${session.process} (${session.duration}s) to ${dateKey}`);
 }
 
-import { Worker } from 'worker_threads';
+
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-let screenshotWorker: Worker | null = null;
-
-function getScreenshotWorker(): Worker {
-    if (!screenshotWorker) {
-        // Path resolution for worker
-        const workerPath = path.join(__dirname, 'screenshot-worker.js'); // Prod / flattened in main
-        screenshotWorker = new Worker(workerPath);
-
-        screenshotWorker.on('message', (msg) => {
-            if (msg.success) {
-                console.log(`[Worker] Screenshot saved: ${msg.filePath}`);
-            } else {
-                console.error(`[Worker] Failure: ${msg.error}`);
-            }
-        });
-
-        screenshotWorker.on('error', (err) => {
-            console.error('[Worker] Fatal Error:', err);
-        });
-    }
-    return screenshotWorker;
-}
 
 async function captureSmartScreenshot() {
+    if (STATE.settings.enableScreenshots === false) {
+        return;
+    }
+
     try {
         // 1. Get latest active window info
         const activeWin = (await import('active-win')).default;
         const currentWin = await activeWin();
 
         const activeProcess = currentWin?.owner.name || STATE.activeProcess;
-        console.log(`[Screenshot] Checking capture conditions. Active: ${activeProcess}, Mode: ${STATE.settings.screenshotMode}`);
+        log.info(`[Screenshot] Checking capture conditions. Active: ${activeProcess}, Mode: ${STATE.settings.screenshotMode}`);
 
         let shouldCapture = false;
 
@@ -243,17 +236,25 @@ async function captureSmartScreenshot() {
         if (STATE.settings.screenshotMode === 'screen') {
             shouldCapture = true;
         } else if (STATE.settings.screenshotMode === 'window') {
+            shouldCapture = true; // Always capture active monitor
+            log.info(`[Screenshot] Active Window mode (Active Monitor): Capturing`);
+        } else if (STATE.settings.screenshotMode === 'active-app') {
             shouldCapture = true;
-            console.log(`[Screenshot] Active Window mode: Capturing '${activeProcess}'`);
+            log.info(`[Screenshot] Active App mode: Capturing '${activeProcess}' (Unfiltered)`);
         } else if (STATE.settings.screenshotMode === 'process') {
             const targetApp = STATE.settings.screenshotTargetProcess || '';
-            const matchesTarget = targetApp && activeProcess.toLowerCase().includes(targetApp.toLowerCase());
+            const normalizedActive = activeProcess.toLowerCase().replace(/\s+/g, '');
+            const normalizedTarget = targetApp.toLowerCase().replace(/\s+/g, '');
+
+            // Strict Specific App matching
+            const matchesTarget = targetApp && (
+                normalizedActive.includes(normalizedTarget) ||
+                (targetApp.toLowerCase().includes('artisans') && activeProcess.toLowerCase() === 'electron')
+            );
 
             if (matchesTarget) {
                 shouldCapture = true;
-                console.log(`[Screenshot] Target process match found: ${matchesTarget}`);
-            } else {
-                console.log(`[Screenshot] Skipping. Active app '${activeProcess}' does not match target '${targetApp}'.`);
+                log.info(`[Screenshot] Specific App match found: '${activeProcess}'`);
             }
         }
 
@@ -280,47 +281,142 @@ async function captureSmartScreenshot() {
         const fullPath = path.join(screenshotsDir, fileName);
 
         // 2. Capture Logic
-        const isProcessMode = STATE.settings.screenshotMode === 'process' || STATE.settings.screenshotMode === 'window';
+        // window = Smart Screen (No Crop), process/active-app = Window Crop
+        const isProcessMode = STATE.settings.screenshotMode === 'process' || STATE.settings.screenshotMode === 'active-app';
 
         if (!isProcessMode) {
-            // SCREEN MODE: Delegate COMPLETELY to Worker (Zero Main Thread Block)
-            const worker = getScreenshotWorker();
-            console.log('[Screenshot] Delegating full capture to Worker (4K Optimization)');
+            // SCREEN MODE (Fixed or Smart)
+            // SCREEN MODE (Fixed or Smart)
+            // const worker = getScreenshotWorker(); // Moved to Main Thread
+            console.log('[Screenshot] Screen Mode: Capturing via Main Thread');
 
-            worker.postMessage({
-                action: 'CAPTURE_SCREEN',
-                filePath: fullPath
-            });
+            let workerDisplayId = undefined;
 
-            // Optimistic Update of Daily Log (assuming success)
-            // Ideally we wait for worker confirmation, but for UI responsiveness we log it now
-            // or listen to worker response. For simplicity, we assume success or let next cycle pick it up?
-            // Actually daily log needs to be updated.
-            // Let's update daily log here optimistically. 
-            updateDailyLog(fullPath, now);
+            // Logic for Dynamic Monitor (Active Window Mode)
+            if (STATE.settings.screenshotMode === 'window') {
+                if (currentWin && currentWin.bounds) {
+                    try {
+                        const { screen } = await import('electron');
+                        const display = screen.getDisplayMatching(currentWin.bounds as any);
+
+                        // Map Electron Display to Screenshot Display
+                        // @ts-ignore
+                        const screenshot = (await import('screenshot-desktop')).default;
+                        const sDisplays = await screenshot.listDisplays();
+
+                        // Sort to match
+                        const allElectronDisplays = screen.getAllDisplays().sort((a, b) => (a.bounds.y - b.bounds.y) || (a.bounds.x - b.bounds.x));
+                        const currentIdx = allElectronDisplays.findIndex(d => d.id === display.id);
+
+                        if (currentIdx >= 0 && currentIdx < sDisplays.length) {
+                            const sortedScreens = sDisplays.sort((a: any, b: any) => (a.top - b.top) || (a.left - b.left));
+                            workerDisplayId = sortedScreens[currentIdx].id;
+                            console.log(`[Screenshot] Smart Monitor - Matched Display Index: ${currentIdx}, ID: ${workerDisplayId}`);
+                        }
+                    } catch (e) {
+                        console.error("[Screenshot] Failed to determine smart monitor ID:", e);
+                    }
+                }
+            }
+            // Logic for Fixed Monitor
+            else if (STATE.settings.screenshotMode === 'screen' && STATE.settings.screenshotDisplayId) {
+                // Config ID format: "screen:INDEX:0" (e.g., "screen:1:0" for display index 1)
+                const idParts = STATE.settings.screenshotDisplayId.split(':');
+                const displayIndex = parseInt(idParts[1], 10); // Extract index from "screen:INDEX:0"
+
+                console.log(`[Screenshot Debug] Config ID: ${STATE.settings.screenshotDisplayId}, Parsed Index: ${displayIndex}`);
+
+                if (!isNaN(displayIndex)) {
+                    // @ts-ignore
+                    const screenshot = (await import('screenshot-desktop')).default;
+                    const sDisplays = await screenshot.listDisplays();
+
+                    if (displayIndex < sDisplays.length) {
+                        workerDisplayId = sDisplays[displayIndex].id;
+                    }
+                }
+            }
+
+            // 3. Main Thread Capture (Direct)
+            try {
+                // @ts-ignore
+                const screenshot = (await import('screenshot-desktop')).default;
+
+                let imgBuffer;
+                if (workerDisplayId) {
+                    imgBuffer = await screenshot({ screen: workerDisplayId, format: 'jpg' });
+                } else {
+                    imgBuffer = await screenshot({ format: 'jpg' });
+                }
+
+                await fs.promises.writeFile(fullPath, imgBuffer);
+                updateDailyLog(fullPath, now);
+                log.info(`[Screenshot] Screen capture success: ${fullPath}`);
+            } catch (err) {
+                console.error("[Screenshot] Screen capture failed:", err);
+            }
 
             return;
         }
 
-        // WINDOW MODE / PROCESS MODE: Also use Worker + Crop (Avoids desktopCapturer lag)
+        // 1.5 Determine which Display contains the window (For Cropping)
         if (currentWin && currentWin.bounds) {
-            const worker = getScreenshotWorker();
-            console.log('[Screenshot] Delegating Window capture to Worker (Crop Optimization)');
+            const { screen } = await import('electron');
+            try {
+                const display = screen.getDisplayMatching(currentWin.bounds as any);
 
-            worker.postMessage({
-                action: 'CAPTURE_WINDOW',
-                filePath: fullPath,
-                bounds: currentWin.bounds // { x, y, width, height }
-            });
+                // @ts-ignore
+                const screenshot = (await import('screenshot-desktop')).default;
 
-            updateDailyLog(fullPath, now);
-            return;
+                // Robustly find the correct display ID for screenshot-desktop
+                const displays = await screenshot.listDisplays();
+
+                // 1. Try Exact/Fuzzy Coordinate Match
+                let targetDisplay = displays.find((d: any) =>
+                    Math.abs(d.left - display.bounds.x) < 5 && Math.abs(d.top - display.bounds.y) < 5
+                );
+
+                // 2. Fallback: Match by Index
+                if (!targetDisplay) {
+                    const allElectronDisplays = screen.getAllDisplays().sort((a, b) => (a.bounds.y - b.bounds.y) || (a.bounds.x - b.bounds.x));
+                    const currentIdx = allElectronDisplays.findIndex(d => d.id === display.id);
+
+                    if (currentIdx >= 0 && currentIdx < displays.length) {
+                        // Sort screenshot displays by Top then Left to match reading order
+                        const sortedScreens = displays.sort((a: any, b: any) => (a.top - b.top) || (a.left - b.left));
+                        targetDisplay = sortedScreens[currentIdx];
+                    }
+                }
+
+                if (!targetDisplay) {
+                    console.warn(`[Screenshot] No matching display found for coords x:${display.bounds.x} y:${display.bounds.y}. Available:`, displays.map((d: any) => ({ id: d.id, l: d.left, t: d.top })));
+                } else {
+                    console.log(`[Screenshot Debug] Final Selection - Electron x:${display.bounds.x} -> Screenshot L:${targetDisplay.left} ID:${targetDisplay.id}`);
+                }
+
+                const screenId = targetDisplay ? targetDisplay.id : display.id;
+                const imgBuffer = await screenshot({ screen: screenId, format: 'jpg' });
+
+                await sendToGpuWorker({
+                    imageBuffer: imgBuffer,
+                    bounds: currentWin.bounds,
+                    displayBounds: display.bounds,
+                    scaleFactor: display.scaleFactor, // Pass scale factor
+                    filePath: fullPath
+                });
+
+                updateDailyLog(fullPath, now);
+                return;
+            } catch (err) {
+                console.warn("[Screenshot] GPU Worker failed, falling back:", err);
+            }
         }
 
         // Fallback (Rare/Impossible if active-win works): Use desktopCapturer.
         console.log('[Screenshot] active-win bounds missing. Falling back to desktopCapturer.');
 
         const types: ('screen' | 'window')[] = ['window']; // Only window mode falls here
+        const { desktopCapturer } = await import('electron');
         const thumbSize = { width: 960, height: 540 }; // Keep small for performance
 
         const sources = await desktopCapturer.getSources({
@@ -366,10 +462,6 @@ async function captureSmartScreenshot() {
         }
 
         // We have a NativeImage.
-        // We can't send NativeImage to worker easily.
-        // We can send bitmap buffer? Too slow to extract.
-        // For window mode, we accept Main Thread encoding for now, OR:
-        // Main thread toJPEG (small 540p is fast).
         const jpegBuffer = targetSource.thumbnail.toJPEG(70);
         await fs.promises.writeFile(fullPath, jpegBuffer);
 
@@ -391,29 +483,77 @@ function updateDailyLog(fullPath: string, now: Date) {
             if (!logData[dateStr]) {
                 logData[dateStr] = { sessions: [], todos: [], quest_cleared: false, screenshots: [], is_rest_day: false };
             }
-            if (!logData[dateStr].screenshots) logData[dateStr].screenshots = [];
-            logData[dateStr].screenshots.push(fullPath);
-            writeJson(logPath, logData);
+            const screenshots = logData[dateStr].screenshots || [];
+            screenshots.push(fullPath);
+
+            import('../storage').then(mod => {
+                mod.saveDailyLogInternal(dateStr, { screenshots });
+            });
         } catch (e) {
             console.error("Failed to update log", e);
         }
     });
 }
 
-function performBackup(sourceFilePath: string) {
-    const { backupPaths } = STATE.settings;
-    if (!backupPaths || backupPaths.length === 0) return;
 
-    const fileName = path.basename(sourceFilePath);
 
-    backupPaths.forEach(backupDir => {
-        try {
-            if (!fs.existsSync(backupDir)) return;
-            const destPath = path.join(backupDir, fileName);
-            fs.copyFileSync(sourceFilePath, destPath);
-            console.log(`Backed up to: ${destPath}`);
-        } catch (e) {
-            console.error(`Backup failed for ${backupDir}:`, e);
+// --- GPU WORKER MANAGEMENT ---
+let gpuWorkerWin: BrowserWindow | null = null;
+
+async function createGpuWorker() {
+    if (gpuWorkerWin !== null && !gpuWorkerWin.isDestroyed()) return gpuWorkerWin;
+
+    const { BrowserWindow } = await import('electron');
+
+    gpuWorkerWin = new BrowserWindow({
+        show: false,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false, // For simple worker communication
+            backgroundThrottling: false // Important! Keep it active in background
         }
     });
+
+    const workerHtmlPath = path.join(__dirname, 'gpu-worker.html');
+    gpuWorkerWin!.loadFile(workerHtmlPath);
+
+    gpuWorkerWin!.webContents.on('console-message', (_event, _level, message) => {
+        console.log(`[GPU Worker Remote] ${message}`);
+    });
+
+    return gpuWorkerWin;
+}
+
+async function sendToGpuWorker(data: any): Promise<void> {
+    const workerWin = await createGpuWorker();
+    if (!workerWin) throw new Error("Failed to create worker");
+
+    return new Promise((resolve, reject) => {
+        const requestId = Date.now().toString() + Math.random().toString();
+        data.requestId = requestId;
+
+        // One-time listener for this request
+        const responseHandler = (_event: any, response: any) => {
+            if (response.requestId === requestId) {
+                ipcMain.removeListener('PROCESS_IMAGE_DONE', responseHandler);
+                if (response.success) {
+                    const buffer = Buffer.from(response.base64Data, 'base64');
+                    fs.promises.writeFile(data.filePath, buffer)
+                        .then(() => resolve())
+                        .catch(err => reject(err));
+                } else {
+                    reject(new Error(response.error));
+                }
+            }
+        };
+
+        ipcMain.on('PROCESS_IMAGE_DONE', responseHandler);
+        workerWin.webContents.send('PROCESS_IMAGE', data);
+    });
+}
+
+// --- 3. Export ---
+// Export helper if needed
+export function getTrackerState() {
+    return STATE;
 }

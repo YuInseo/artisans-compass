@@ -7,9 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 interface TodoStore {
     projectTodos: Record<string, Todo[]>;
     activeProjectId: string;
-
-    // Derived selector helper (optional, but useful for components)
-    // We can't really do "computed" in the interface, but we can assume consumers select it.
+    previousDayTodos: Record<string, Todo[]>; // For carryover
 
     // Actions
     setActiveProjectId: (id: string) => void;
@@ -22,11 +20,13 @@ interface TodoStore {
     indentTodo: (id: string) => void;
     unindentTodo: (id: string) => void;
     moveTodo: (activeId: string, overId: string) => void;
+    clearUntitledTodos: () => void;
 
-    // Persistence
     // Persistence
     loadTodos: () => Promise<void>;
     saveTodos: () => Promise<void>;
+    loadTodosForDate: (dateStr: string) => Promise<Record<string, Todo[]> | null>;
+    carryOverTodos: (todos: Todo[], projectId: string) => Promise<void>;
 
     // Undo/Redo
     history: Record<string, Todo[]>[];
@@ -50,6 +50,21 @@ const saveToIPC = async (projectTodos: Record<string, Todo[]>) => {
 
         logs[dateStr] = {
             ...todayLog,
+            projectTodos
+        };
+        await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
+    }
+};
+
+// Helper to save to IPC for a SPECIFIC date (used for carryover)
+const saveToIPCForDate = async (targetDateStr: string, projectTodos: Record<string, Todo[]>) => {
+    if ((window as any).ipcRenderer) {
+        const yearMonth = targetDateStr.slice(0, 7); // YYYY-MM
+        const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
+        const existingLog = logs[targetDateStr] || {};
+
+        logs[targetDateStr] = {
+            ...existingLog,
             projectTodos
         };
         await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
@@ -160,6 +175,7 @@ export const useTodoStore = create<TodoStore>()(
         (set, get) => ({
             projectTodos: {},
             activeProjectId: 'none',
+            previousDayTodos: {},
 
             history: [],
             future: [],
@@ -291,6 +307,35 @@ export const useTodoStore = create<TodoStore>()(
                 // Keep implementation minimal for now
             },
 
+            clearUntitledTodos: () => {
+                get().addToHistory();
+                const { activeProjectId, projectTodos } = get();
+                const currentTodos = projectTodos[activeProjectId] || [];
+
+                const cleanNodes = (nodes: Todo[]): Todo[] => {
+                    return nodes
+                        .map(node => ({
+                            ...node,
+                            children: node.children ? cleanNodes(node.children) : []
+                        }))
+                        .filter(node => {
+                            const isEmpty = !node.text || node.text.trim().length === 0;
+                            const hasChildren = node.children && node.children.length > 0;
+                            // Remove if empty AND has no children (after cleaning children)
+                            return !(isEmpty && !hasChildren);
+                        });
+                };
+
+                const nextTodos = cleanNodes(currentTodos);
+
+                // Only save if changes occurred? (Optimization, but optional)
+                // For simplicity, always update.
+                const newProjectTodos = { ...projectTodos, [activeProjectId]: nextTodos };
+
+                set({ projectTodos: newProjectTodos });
+                saveToIPC(newProjectTodos);
+            },
+
             loadTodos: async () => {
                 if ((window as any).ipcRenderer) {
                     const now = new Date();
@@ -315,6 +360,53 @@ export const useTodoStore = create<TodoStore>()(
 
             saveTodos: async () => {
                 await saveToIPC(get().projectTodos);
+            },
+
+            loadTodosForDate: async (dateStr: string) => {
+                if ((window as any).ipcRenderer) {
+                    const yearMonth = dateStr.slice(0, 7); // YYYY-MM
+                    const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
+                    if (logs && logs[dateStr]?.projectTodos) {
+                        const loaded = logs[dateStr].projectTodos;
+                        set({ previousDayTodos: loaded });
+                        return loaded;
+                    }
+                }
+                return null;
+            },
+
+            carryOverTodos: async (todos: Todo[], projectId: string) => {
+                get().addToHistory();
+
+                // Calculate TOMORROW's date
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                const tomorrowStr = format(tomorrow, 'yyyy-MM-dd');
+
+                // Load tomorrow's existing data first
+                const yearMonth = tomorrowStr.slice(0, 7);
+                let tomorrowProjectTodos: Record<string, Todo[]> = {};
+
+                if ((window as any).ipcRenderer) {
+                    const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
+                    if (logs && logs[tomorrowStr]?.projectTodos) {
+                        tomorrowProjectTodos = logs[tomorrowStr].projectTodos;
+                    }
+                }
+
+                const existingTodos = tomorrowProjectTodos[projectId] || [];
+
+                // Prevent duplicates by checking IDs
+                const existingIds = new Set(existingTodos.map(t => t.id));
+                const newTodos = todos.filter(t => !existingIds.has(t.id));
+
+                const mergedTodos = [...existingTodos, ...newTodos];
+                const newProjectTodos = { ...tomorrowProjectTodos, [projectId]: mergedTodos };
+
+                // Save to TOMORROW's date
+                await saveToIPCForDate(tomorrowStr, newProjectTodos);
+
+                console.log(`[CarryOver] Saved ${newTodos.length} todos to ${tomorrowStr} for project ${projectId}`);
             }
         }),
         {

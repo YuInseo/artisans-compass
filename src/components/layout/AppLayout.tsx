@@ -1,7 +1,7 @@
 import { ReactNode, useState, useCallback, useEffect } from 'react';
 import { FocusGoalsSection } from "../dashboard/FocusGoalsSection";
 import { Button } from "@/components/ui/button";
-import { GanttChartSquare, Settings, Minus, Square, X, Plus, Eye, Search } from "lucide-react";
+import { Settings, Minus, Square, X, Plus, Eye, Search, Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/hooks/useDataStore";
@@ -10,6 +10,8 @@ import { format, addDays } from "date-fns";
 
 import { UpdateChecker } from "./UpdateChecker";
 import { Project } from "@/types";
+import { useTranslation } from 'react-i18next';
+
 
 
 interface AppLayoutProps {
@@ -29,7 +31,8 @@ interface AppLayoutProps {
     setIsSidebarOpen: (isOpen: boolean) => void;
 }
 
-export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject: _focusedProject, onFocusProject, isSidebarOpen, setIsSidebarOpen }: AppLayoutProps) {
+export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewModeChange: _onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject, onFocusProject, isSidebarOpen, setIsSidebarOpen }: AppLayoutProps) {
+    const { t } = useTranslation();
     const { projects, saveProjects, saveSettings, settings, isWidgetMode, searchQuery, setSearchQuery, addToHistory } = useDataStore();
     // const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Lifted to App.tsx
     const [sidebarWidth, setSidebarWidth] = useState(400);
@@ -152,7 +155,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                 <input
                                     autoFocus
                                     className="w-full h-8 pl-9 pr-4 text-sm font-medium bg-background border border-border/50 rounded-full focus:border-blue-500/30 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all placeholder:text-muted-foreground/50"
-                                    placeholder="Search projects..."
+                                    placeholder={t('sidebar.search')}
                                     value={searchQuery}
                                     onChange={(e) => {
                                         setSearchQuery(e.target.value);
@@ -188,7 +191,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-blue-500 transition-colors" />
                             <input
                                 className="w-full h-9 pl-9 pr-9 text-sm font-medium bg-background/50 border border-border/50 rounded-full focus:bg-background focus:border-blue-500/30 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all placeholder:text-muted-foreground/50 shadow-sm hover:bg-background/80"
-                                placeholder="Search projects..."
+                                placeholder={t('sidebar.search')}
                                 value={searchQuery}
                                 onChange={(e) => {
                                     setSearchQuery(e.target.value);
@@ -219,7 +222,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                     {/* Sort Controls Header */}
                                     <div className="px-3 py-2 bg-muted/50 border-b border-border flex items-center justify-between shrink-0">
                                         <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                                            {searchQuery.trim() ? "Results" : "All Projects"}
+                                            {searchQuery.trim() ? t('sidebar.results') : t('sidebar.allProjects')}
                                         </span>
                                         <div className="flex items-center gap-2">
                                             <button
@@ -227,7 +230,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                                 onMouseDown={(e) => e.preventDefault()}
                                                 onClick={() => setSortConfig(prev => ({ key: 'name', direction: prev.key === 'name' && prev.direction === 'asc' ? 'desc' : 'asc' }))}
                                             >
-                                                Name {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
+                                                {t('sidebar.name')} {sortConfig.key === 'name' && (sortConfig.direction === 'asc' ? '↑' : '↓')}
                                             </button>
                                             <div className="w-px h-3 bg-border" />
                                             <button
@@ -235,7 +238,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                                 onMouseDown={(e) => e.preventDefault()}
                                                 onClick={() => setSortConfig(prev => ({ key: 'date', direction: prev.key === 'date' && prev.direction === 'desc' ? 'asc' : 'desc' }))}
                                             >
-                                                Date {sortConfig.key === 'date' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
+                                                {t('sidebar.date')} {sortConfig.key === 'date' && (sortConfig.direction === 'desc' ? '↓' : '↑')}
                                             </button>
                                         </div>
                                     </div>
@@ -245,7 +248,10 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                             sortedProjects.map(project => (
                                                 <div
                                                     key={project.id}
-                                                    className="px-4 py-3 hover:bg-accent hover:text-accent-foreground cursor-pointer flex items-center justify-between group transition-colors border-b border-border/40 last:border-0"
+                                                    className={cn(
+                                                        "px-4 py-3 hover:bg-accent hover:text-accent-foreground cursor-pointer flex items-center justify-between group transition-colors border-b border-border/40 last:border-0",
+                                                        focusedProject?.id === project.id && "bg-primary/10 border-l-2 border-l-primary pl-[14px]"
+                                                    )}
                                                     onMouseDown={(e) => {
                                                         // Prevent blur before click
                                                         e.preventDefault();
@@ -257,23 +263,32 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                                     }}
                                                 >
                                                     <div className="flex items-center gap-3">
-                                                        <div className={cn("w-2.5 h-2.5 rounded-full shadow-sm", project.type === 'Main' ? "bg-blue-500" : project.type === 'Sub' ? "bg-green-500" : "bg-orange-500")} />
+                                                        {project.locked ? (
+                                                            <div className="w-2.5 h-2.5 flex items-center justify-center">
+                                                                <Lock className="w-2.5 h-2.5 text-muted-foreground" />
+                                                            </div>
+                                                        ) : (
+                                                            <div className={cn("w-2.5 h-2.5 rounded-full shadow-sm", project.type === 'Main' ? "bg-blue-500" : project.type === 'Sub' ? "bg-green-500" : "bg-orange-500")} />
+                                                        )}
+                                                        {focusedProject?.id === project.id && (
+                                                            <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                                                        )}
                                                         <div className="flex flex-col">
-                                                            <span className="text-sm font-medium leading-none">{project.name}</span>
+                                                            <span className={cn("text-sm font-medium leading-none", project.locked && "text-muted-foreground line-through decoration-border/50")}>{project.name}</span>
                                                             <span className="text-[10px] text-muted-foreground mt-1">
                                                                 {project.startDate} ~ {project.endDate}
                                                             </span>
                                                         </div>
                                                     </div>
                                                     <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity bg-background/80 px-2 py-1 rounded">
-                                                        Jump
+                                                        {t('sidebar.jump')}
                                                     </span>
                                                 </div>
                                             ))
                                         ) : (
                                             <div className="px-4 py-8 text-sm text-muted-foreground italic text-center flex flex-col items-center gap-2">
                                                 <Search className="w-8 h-8 opacity-20" />
-                                                <span>No projects found</span>
+                                                <span>{t('sidebar.noProjects')}</span>
                                             </div>
                                         )}
                                     </div>
@@ -314,7 +329,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                             }}
                             style={{ WebkitAppRegion: 'no-drag' } as any}
                         >
-                            <Plus className="w-3.5 h-3.5 lg:mr-1" /><span className="hidden lg:inline"> New Project</span>
+                            <Plus className="w-3.5 h-3.5 lg:mr-1" /><span className="hidden lg:inline"> {t('sidebar.newProject')}</span>
                         </Button>
 
                         {/* View Toggle Buttons & Settings */}

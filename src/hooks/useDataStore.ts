@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { useEffect } from 'react';
 import { AppSettings, Project, DailyLog } from '@/types';
 import { format } from 'date-fns';
+import { useTodoStore } from './useTodoStore';
 
 interface DataStore {
     settings: AppSettings | null;
@@ -95,7 +96,9 @@ const useStore = create<DataStore>((set, get) => ({
                         "Sub": "#22c55e",
                         "Practice": "#eab308"
                     },
-                    enableCustomProjectColors: false
+                    enableCustomProjectColors: false,
+                    showIndentationGuides: true,
+                    showTimelinePreview: true
                 };
 
                 const [settings, projects] = await Promise.all([
@@ -111,6 +114,9 @@ const useStore = create<DataStore>((set, get) => ({
                 }
 
                 set({ settings: mergedSettings as AppSettings, projects, loading: false, initialized: true });
+
+                // Load todos from daily log
+                await useTodoStore.getState().loadTodos();
             } else {
                 console.warn("IPC not available");
                 set({ loading: false }); // Stop loading even if no IPC

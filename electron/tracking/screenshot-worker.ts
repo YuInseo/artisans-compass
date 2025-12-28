@@ -28,8 +28,26 @@ if (parentPort) {
                 // OFF-THREAD CAPTURE (Best for 4K)
                 if (!screenshot) throw new Error("screenshot-desktop not loaded");
 
-                // 1. Capture Full Screen (Fastest) - Returns Buffer (JPEG/PNG usually JPEG from screenshot-desktop)
-                const imgBuffer = await screenshot({ format: 'jpg' });
+                // 1. Capture Logic: Full Screen or Specific Display?
+                let imgBuffer: Buffer;
+
+                if (data.displayId) {
+                    // Multi-Monitor Support: Capture only the relevant display
+                    // screenshot-desktop's listDisplays() gives us objects with 'id'.
+                    const displays = await screenshot.listDisplays();
+                    const targetDisplay = displays.find((d: any) => d.id == data.displayId); // Loose equality for safety
+
+                    if (targetDisplay) {
+                        imgBuffer = await screenshot({ screen: targetDisplay.id, format: 'jpg' });
+                    } else {
+                        // Fallback to all if not found
+                        console.warn(`[Worker] Display ${data.displayId} not found. Capturing primary/all.`);
+                        imgBuffer = await screenshot({ format: 'jpg' });
+                    }
+                } else {
+                    // Default / Full Virtual Desktop
+                    imgBuffer = await screenshot({ format: 'jpg' });
+                }
 
                 if (data.action === 'CAPTURE_WINDOW' && data.bounds && jpeg) {
                     // 2. Crop to Window Bounds (Manual Pixel Manipulation via jpeg-js)
@@ -40,12 +58,19 @@ if (parentPort) {
                         const imgH = rawImageData.height;
                         const { x, y, width, height } = data.bounds;
 
-                        // Safe Bounds Calculation
-                        const safeX = Math.max(0, x);
-                        const safeY = Math.max(0, y);
-                        const xOffset = safeX - x;
+                        // Safe Bounds Calculation with Monitor Offset
+                        const monitorX = data.displayBounds ? data.displayBounds.x : 0;
+                        const monitorY = data.displayBounds ? data.displayBounds.y : 0;
+
+                        // Adjusted X/Y relative to the captured monitor image
+                        const relX = x - monitorX;
+                        const relY = y - monitorY;
+
+                        const safeX = Math.max(0, relX);
+                        const safeY = Math.max(0, relY);
+                        const xOffset = safeX - relX;
                         const safeW = Math.min(width - xOffset, imgW - safeX);
-                        const yOffset = safeY - y;
+                        const yOffset = safeY - relY;
                         const safeH = Math.min(height - yOffset, imgH - safeY);
 
                         if (safeW > 0 && safeH > 0) {

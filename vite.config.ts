@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import path from 'node:path'
+import fs from 'node:fs'
 import electron from 'vite-plugin-electron/simple'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'node:url'
@@ -54,5 +55,15 @@ export default defineConfig({
         ? undefined
         : {},
     }),
+    {
+      name: 'copy-gpu-worker',
+      closeBundle() {
+        const src = path.resolve(__dirname, 'electron/tracking/gpu-worker.html')
+        const dest = path.resolve(__dirname, 'dist-electron/gpu-worker.html')
+        if (fs.existsSync(src)) {
+          fs.copyFileSync(src, dest)
+        }
+      }
+    }
   ],
 })

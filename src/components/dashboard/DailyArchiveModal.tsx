@@ -14,7 +14,7 @@ interface DailyArchiveModalProps {
 }
 
 export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: DailyArchiveModalProps) {
-    const { getDailyLog, settings } = useDataStore();
+    const { getDailyLog, settings, projects } = useDataStore();
     const [logData, setLogData] = useState<any>(null);
     const formattedDate = format(date, 'yyyy-MM-dd');
 
@@ -89,7 +89,14 @@ export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: Daily
                     {logData ? (
                         <DailyArchiveView
                             date={date}
-                            todos={logData.todos || []}
+                            projectTodos={logData.projectTodos || {}}
+                            todos={
+                                // Try projectTodos first (new format), flatten all projects
+                                logData.projectTodos
+                                    ? Object.values(logData.projectTodos as Record<string, any[]>).flat()
+                                    : (logData.todos || []) // Legacy fallback
+                            }
+                            projects={projects}
                             screenshots={logData.screenshots || []}
                             sessions={logData.sessions || []}
                             stats={{

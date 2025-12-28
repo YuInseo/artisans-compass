@@ -12,6 +12,7 @@ import { format, parseISO, isSameWeek, isSameDay } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface CalendarNavProps {
     onSelect?: (date: Date) => void;
@@ -21,6 +22,7 @@ interface CalendarNavProps {
 }
 
 export function CalendarNav({ onSelect, focusedProject, navigationSignal }: CalendarNavProps) {
+    const { t } = useTranslation();
     const [viewMode, setViewMode] = useState<'calendar' | 'quest'>('calendar');
     const { streak } = useQuestStore();
 
@@ -171,8 +173,8 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
             );
 
             if (!hasData) {
-                toast("No archive data found for this date.", {
-                    description: "You didn't record any activity on this day."
+                toast(t('calendar.noArchiveData'), {
+                    description: t('calendar.noActivity')
                 });
                 // Do NOT call onSelect -> Modal won't open
                 setDate(d);
@@ -263,7 +265,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 onClick={handleGoToday}
                             >
                                 <Home className="w-3.5 h-3.5" />
-                                <span>Today: <span className="font-semibold text-foreground">{format(new Date(), 'MMM d')}</span></span>
+                                <span>{t('calendar.today')}: <span className="font-semibold text-foreground">{format(new Date(), 'MMM d')}</span></span>
                             </Button>
 
                             {focusedProject && (
@@ -274,7 +276,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                     onClick={handleGoToProject}
                                 >
                                     <Target className="w-3.5 h-3.5" />
-                                    <span>Project: <span className="font-semibold">{format(parseISO(focusedProject.startDate), 'MMM d')}</span></span>
+                                    <span>{t('calendar.project')}: <span className="font-semibold">{format(parseISO(focusedProject.startDate), 'MMM d')}</span></span>
                                 </Button>
                             )}
                         </div>
@@ -362,7 +364,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                             {/* Back button technically not needed if we have the toggle at bottom, but good for context */}
                             <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
                                 <div className="text-amber-600 font-bold text-xs uppercase tracking-wider flex items-center gap-1">
-                                    <span role="img" aria-label="fire">🔥</span> {streak} Day Streak
+                                    <span role="img" aria-label="fire">🔥</span> {streak} {t('calendar.streak')}
                                 </div>
                             </div>
                         </div>
@@ -370,18 +372,18 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                         {/* Add Mode Overlay */}
                         {isAdding && (
                             <div className="absolute inset-0 bg-background/95 backdrop-blur-md z-30 flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in-95 rounded-2xl border border-border overflow-hidden">
-                                <h4 className="text-xl font-black mb-4 text-violet-500 font-serif text-center">New Objective</h4>
+                                <h4 className="text-xl font-black mb-4 text-violet-500 font-serif text-center">{t('calendar.newObjective')}</h4>
                                 <Input
                                     autoFocus
-                                    placeholder="What is your main focus?"
+                                    placeholder={t('calendar.whatIsFocus')}
                                     value={newQuestText}
                                     onChange={(e) => setNewQuestText(e.target.value)}
                                     onKeyDown={handleKeyDown}
                                     className="text-center text-lg h-12 mb-6 shadow-xl border-violet-500/30 focus-visible:ring-violet-500 bg-card w-full max-w-[90%]"
                                 />
                                 <div className="flex flex-col gap-3 w-full max-w-[90%]">
-                                    <Button size="lg" className="w-full bg-violet-600 hover:bg-violet-700 font-bold shadow-lg shadow-violet-500/20" onClick={handleSetQuest}>Accept Quest</Button>
-                                    <Button variant="ghost" size="sm" className="w-full text-muted-foreground hover:bg-transparent hover:text-foreground" onClick={() => setIsAdding(false)}>Cancel</Button>
+                                    <Button size="lg" className="w-full bg-violet-600 hover:bg-violet-700 font-bold shadow-lg shadow-violet-500/20" onClick={handleSetQuest}>{t('calendar.acceptQuest')}</Button>
+                                    <Button variant="ghost" size="sm" className="w-full text-muted-foreground hover:bg-transparent hover:text-foreground" onClick={() => setIsAdding(false)}>{t('calendar.cancel')}</Button>
                                 </div>
                             </div>
                         )}
@@ -396,7 +398,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
 
                                     {activeQuestCreatedAt && (
                                         <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[11px] font-mono text-zinc-500 uppercase tracking-widest border border-zinc-700/50 rounded-full px-2 py-1 bg-zinc-900/50 whitespace-nowrap">
-                                            Created {format(activeQuestCreatedAt, 'MMM d, h:mm a')}
+                                            {t('calendar.created')} {format(activeQuestCreatedAt, 'MMM d, h:mm a')}
                                         </div>
                                     )}
 
@@ -426,12 +428,12 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                         {isTodayAchieved ? (
                                             <>
                                                 <Check className="w-4 h-4 mr-2" />
-                                                COMPLETED TODAY
+                                                {t('calendar.completedToday')}
                                             </>
                                         ) : (
                                             <>
                                                 <Check className="w-4 h-4 mr-2" />
-                                                COMPLETE FOR TODAY
+                                                {t('calendar.completeForToday')}
                                             </>
                                         )}
                                     </Button>
@@ -442,12 +444,12 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 <div className="w-20 h-20 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-6">
                                     <Target className="w-10 h-10 text-zinc-400" />
                                 </div>
-                                <h3 className="text-xl font-bold text-foreground mb-2">No Active Quest</h3>
+                                <h3 className="text-xl font-bold text-foreground mb-2">{t('calendar.noActiveQuest')}</h3>
                                 <p className="text-sm text-muted-foreground max-w-xs mx-auto mb-8">
-                                    You have not set a specific goal for today yet.
+                                    {t('calendar.noQuestDescription')}
                                 </p>
                                 <Button onClick={() => setIsAdding(true)} variant="default" className="rounded-full px-8">
-                                    <Plus className="w-4 h-4 mr-2" /> Set Daily Quest
+                                    <Plus className="w-4 h-4 mr-2" /> {t('calendar.setDailyQuest')}
                                 </Button>
                             </div>
                         )}
@@ -470,12 +472,12 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                     {viewMode === 'calendar' ? (
                         <>
                             <Swords className="w-5 h-5 mr-2" />
-                            DAILY QUEST
+                            {t('calendar.dailyQuest')}
                         </>
                     ) : (
                         <>
                             <ArrowLeft className="w-5 h-5 mr-2" />
-                            BACK TO CALENDAR
+                            {t('calendar.backToCalendar')}
                         </>
                     )}
                 </Button>
@@ -489,7 +491,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                     }}
                 >
                     <Target className="w-4 h-4 mr-2" />
-                    GOAL SETTING
+                    {t('calendar.goalSetting').toUpperCase()}
                     {hasMissingGoals && (
                         <span className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-red-500 rounded-full animate-pulse border-2 border-background" />
                     )}
@@ -508,21 +510,21 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-amber-500">
                             <AlertTriangle className="w-5 h-5" />
-                            The Path Seems Steep
+                            {t('calendar.pathSteep')}
                         </DialogTitle>
                         <DialogDescription className="pt-2">
-                            It looks like you haven't completed your Daily Quests for 2 days in a row.
+                            {t('calendar.streakBroken')}
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
                         <Button variant="secondary" onClick={() => setShowDifficultyAlert(false)}>
-                            I'll Try Harder
+                            {t('calendar.tryHarder')}
                         </Button>
                         <Button onClick={() => {
                             setShowGoalModal(true);
                             setShowDifficultyAlert(false);
                         }} className="bg-violet-600 hover:bg-violet-700">
-                            Adjust Goals
+                            {t('calendar.adjustGoals')}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

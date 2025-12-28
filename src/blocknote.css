@@ -78,11 +78,98 @@
 
 .bn-side-menu .bn-button {
     color: var(--bn-colors-side-menu);
+    transform: none !important;
+    transition: none !important;
+    animation: none !important;
+}
+
+.bn-side-menu .bn-button:hover {
+    transform: none !important;
+    background-color: transparent !important;
+    /* Optional: if background change is annoying too */
 }
 
 /* Hide indentation lines via border color */
 .bn-block-group {
     border-color: hsl(var(--border));
+}
+
+/* Target via Class AND Data Attribute for robustness */
+.hide-indent-guides .bn-block-group,
+[data-hide-indent="true"] .bn-block-group,
+[data-hide-indent="true"] [data-content-type="block-group"] {
+    border-left-color: transparent !important;
+    border-left-style: none !important;
+    border-left-width: 0 !important;
+    border-left: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+}
+
+/* Also target pseudo-elements just in case the theme uses them for lines */
+/* Also target pseudo-elements just in case the theme uses them for lines */
+[data-hide-indent="true"] .bn-block-group::before,
+[data-hide-indent="true"] .bn-block-group::after,
+[data-hide-indent="true"] [data-content-type="block-group"]::before,
+[data-hide-indent="true"] [data-content-type="block-group"]::after {
+    border-left: none !important;
+    background: transparent !important;
+    display: none !important;
+    opacity: 0 !important;
+}
+
+/* NUCLEAR OPTION: High Specificity to Kill Indentation Lines */
+html body [data-hide-indent="true"] .bn-block-group,
+html body [data-hide-indent="true"] [data-content-type="block-group"],
+html body [data-hide-indent="true"] .bn-block-group *,
+html body .hide-indent-guides .bn-block-group,
+html body .hide-indent-guides [data-content-type="block-group"] {
+    border-left-color: transparent !important;
+    border-left: 0 !important;
+    border-left-color: transparent !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    /* User specifically mentioned 'inline' - handling logical properties */
+    border-inline: none !important;
+    border-inline-start: none !important;
+    border-inline-start-width: 0 !important;
+    border-inline-style: none !important;
+}
+
+/* NUCLEAR OPTION: Target EVERYTHING inside the group if hidden */
+html body [data-hide-indent="true"] .bn-block-group *,
+html body .hide-indent-guides .bn-block-group * {
+    border-left-color: transparent !important;
+    border-left: none !important;
+    border-inline-start: none !important;
+    border-inline-start-color: transparent !important;
+    box-shadow: none !important;
+}
+
+/* User Identified Target: Pseudo-element on bn-block-group */
+html body [data-hide-indent="true"] .bn-block-group::before,
+html body .hide-indent-guides .bn-block-group::before,
+html body [data-hide-indent="true"] .bn-block-group::after,
+html body .hide-indent-guides .bn-block-group::after,
+html body [data-hide-indent="true"] .bn-block-group>div::before,
+html body .hide-indent-guides .bn-block-group>div::before {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    content: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    position: static !important;
+    /* Prevent it from taking up layout space */
+}
+
+/* Additional specific targeting for BlockNote's new structure if updated */
+[data-hide-indent="true"] .bn-block-group,
+[data-hide-indent="true"] .bn-block-group-content,
+[data-hide-indent="true"] .bn-block-group .bn-block-group {
+    border-left: none !important;
 }
 
 /* Context Menu Styling */
@@ -100,8 +187,15 @@
 
 /* Daily Focus Theme (Editable context) */
 .daily-focus-theme .bn-editor {
-    padding-left: 3rem !important;
-    /* Space for drag handle */
+    padding-left: 2.25rem !important;
+    /* Increased to fit drag handle (was 0.5rem, too small) */
+}
+
+/* Fix Drag Ghosting: Ensure blocks represent a solid layer */
+.bn-block-content,
+.bn-block {
+    /* Improve drag snapshot quality by ensuring no weird transparency artifacts */
+    transform: translateZ(0);
 }
 
 /* Min height for empty blocks */

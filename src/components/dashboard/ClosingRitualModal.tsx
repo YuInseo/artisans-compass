@@ -206,8 +206,11 @@ const LeftoverList = ({ todos, depth = 0, movedIds, onMove }: { todos: Todo[], d
 };
 
 
+import { useTranslation } from "react-i18next";
+
 export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, screenshots = [], sessions = [], projects = [] }: ClosingRitualModalProps) {
-    const { projectTodos, activeProjectId } = useTodoStore();
+    const { t } = useTranslation();
+    const { projectTodos, activeProjectId, carryOverTodos } = useTodoStore();
     const [step, setStep] = useState<1 | 2>(1);
 
     const [tomorrowPlans, setTomorrowPlans] = useState<Record<string, Todo[]>>({});
@@ -219,6 +222,16 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
 
     const [movedIds, setMovedIds] = useState<Set<string>>(new Set());
     const [editorVersion, setEditorVersion] = useState(0);
+
+    // Filter projects to only those with activity today (valid tasks)
+    const activeProjects = useMemo(() => {
+        return projects.filter(p => {
+            const todos = projectTodos[p.id];
+            if (!todos || todos.length === 0) return false;
+            // Check if it has at least one valid task (not Untitled)
+            return todos.some(t => t.text && t.text.trim().length > 0 && t.text !== "Untitled");
+        });
+    }, [projects, projectTodos]);
 
     const todayTodos = useMemo(() => {
         if (selectedProjectId === 'all') {
@@ -233,11 +246,12 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
             console.log("Opening Ritual Modal");
             setStep(1);
             setTomorrowPlans({});
-            // Default to active project if valid, otherwise first project or all
-            if (activeProjectId && activeProjectId !== 'none' && projects.find(p => p.id === activeProjectId)) {
+            // Default to active project if valid, otherwise first active project
+            if (activeProjectId && activeProjectId !== 'none' && activeProjects.find(p => p.id === activeProjectId)) {
                 setSelectedProjectId(activeProjectId);
             } else {
-                setSelectedProjectId(projects.length > 0 ? projects[0].id : "all");
+                // If no active projects, fall back to first project (though list might be empty)
+                setSelectedProjectId(activeProjects.length > 0 ? activeProjects[0].id : (projects.length > 0 ? projects[0].id : "all"));
             }
 
             setIsSaving(false);
@@ -245,14 +259,14 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
             setMovedIds(new Set());
             setEditorVersion(0);
         }
-    }, [isOpen, activeProjectId, projects]);
+    }, [isOpen, activeProjectId, activeProjects, projects]);
 
     // Ensure selectedProjectId is valid
     useEffect(() => {
-        if (projects.length > 0 && !projects.find(p => p.id === selectedProjectId) && selectedProjectId !== 'all') {
-            setSelectedProjectId(projects[0].id);
+        if (activeProjects.length > 0 && !activeProjects.find(p => p.id === selectedProjectId)) {
+            setSelectedProjectId(activeProjects[0].id);
         }
-    }, [projects, selectedProjectId]);
+    }, [activeProjects, selectedProjectId]);
 
     const handleNext = () => {
         console.log("Advancing to Plan step");
@@ -284,13 +298,13 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
         // 1. Today's Achievements (Focus Points)
         const completedTasks = todayTodos.filter(t => t.completed);
         if (completedTasks.length > 0) {
-            finalLog += `## Focus Points\n${serializeTodos(completedTasks)}\n\n`;
+            finalLog += `## ${t('ritual.focusPoints')}\n${serializeTodos(completedTasks)}\n\n`;
         } else {
-            finalLog += `## Focus Points\n(No tasks completed)\n\n`;
+            finalLog += `## ${t('ritual.focusPoints')}\n${t('ritual.noTasksCompleted')}\n\n`;
         }
 
         // 2. Tomorrow's Blueprint
-        finalLog += `## Tomorrow's Blueprint\n`;
+        finalLog += `## ${t('ritual.tomorrowsBlueprint')}\n`;
         projects.forEach(p => {
             const planList = tomorrowPlans[p.id];
             if (planList && planList.length > 0) {
@@ -299,7 +313,14 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
         });
         const miscPlan = tomorrowPlans['all'];
         if (miscPlan && miscPlan.length > 0) {
-            finalLog += `### Miscellaneous\n${serializeTodos(miscPlan)}\n`;
+            finalLog += `### ${t('ritual.miscellaneous')}\n${serializeTodos(miscPlan)}\n`;
+        }
+
+        // PERSIST tomorrow's plans to store for next day
+        for (const [projectId, todos] of Object.entries(tomorrowPlans)) {
+            if (todos.length > 0) {
+                await carryOverTodos(todos, projectId);
+            }
         }
 
         onSaveLog(finalLog);
@@ -355,7 +376,17 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
     const currentProjectName = projects.find(p => p.id === selectedProjectId)?.name || "All Projects";
 
     const filteredLeftovers = useMemo(() => {
-        return todayTodos.filter(t => !t.completed);
+        const clean = (list: Todo[]): Todo[] => {
+            return list.filter(t => {
+                const hasText = t.text && t.text.trim().length > 0 && t.text !== "Untitled";
+                const isCompleted = t.completed;
+                return hasText && !isCompleted;
+            }).map(t => ({
+                ...t,
+                children: t.children ? clean(t.children) : []
+            }));
+        };
+        return clean(todayTodos);
     }, [todayTodos]);
 
     // --- Render ---
@@ -370,7 +401,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                             <Moon className="w-4 h-4 text-primary" />
                         </div>
                         <DialogTitle className="text-lg font-medium tracking-tight text-foreground">
-                            Plan & Prepare
+                            {t('ritual.title')}
                         </DialogTitle>
                         <DialogDescription className="sr-only">End of Day Ritual Review and Planning</DialogDescription>
                     </div>
@@ -398,13 +429,13 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                             {/* Toolbar / Project Selector */}
                             <div className="px-8 py-3 bg-card border-b border-border flex items-center justify-between">
                                 <div className="flex items-center gap-4">
-                                    <span className="text-sm font-medium text-muted-foreground">Planning Context:</span>
+                                    <span className="text-sm font-medium text-muted-foreground">{t('ritual.planningContext')}:</span>
                                     <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                                         <SelectTrigger className="w-[240px] h-9">
-                                            <SelectValue placeholder="Select Project" />
+                                            <SelectValue placeholder={t('dashboard.selectProject')} />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {projects.map(p => (
+                                            {activeProjects.map(p => (
                                                 <SelectItem key={p.id} value={p.id}>
                                                     <span className="flex items-center gap-2">
                                                         <span className={`w-2 h-2 rounded-full ${p.type === 'Main' ? 'bg-blue-500' : 'bg-green-500'}`} />
@@ -412,17 +443,11 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                                     </span>
                                                 </SelectItem>
                                             ))}
-                                            <SelectItem value="all">
-                                                <span className="flex items-center gap-2">
-                                                    <span className="w-2 h-2 rounded-full bg-slate-500" />
-                                                    Miscellaneous
-                                                </span>
-                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
                                 <span className="text-xs text-muted-foreground">
-                                    Organize tomorrow's tasks for <span className="font-semibold text-primary">{currentProjectName}</span>
+                                    {t('ritual.organizeTasksFor', { project: currentProjectName })}
                                 </span>
                             </div>
 
@@ -432,14 +457,14 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                     <div className="px-6 py-4 border-b border-border/50">
                                         <h3 className="text-xs font-bold text-muted-foreground flex items-center gap-2 uppercase tracking-wider">
                                             <ListTodo className="w-3 h-3" />
-                                            Today's Leftovers
+                                            {t('ritual.todaysLeftovers')}
                                         </h3>
                                     </div>
                                     <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                                         {filteredLeftovers.length === 0 ? (
                                             <div className="text-center py-10 text-muted-foreground text-sm">
                                                 <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                                                All done! Nothing to carry over.
+                                                {t('ritual.allDone')}
                                             </div>
                                         ) : (
                                             <div className="opacity-100">
@@ -454,7 +479,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                     <div className="px-6 py-4 border-b border-border/50">
                                         <h3 className="text-xs font-bold text-muted-foreground flex items-center gap-2 uppercase tracking-wider">
                                             <Sparkles className="w-3 h-3" />
-                                            Tomorrow's Blueprint
+                                            {t('ritual.tomorrowsBlueprint')}
                                         </h3>
                                     </div>
 
@@ -482,20 +507,20 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                         <>
                             <div />
                             <Button onClick={handleNext} className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl px-10 h-12 text-base font-semibold shadow-lg hover:shadow-xl transition-all">
-                                Review Plans <ArrowRight className="w-4 h-4 ml-2" />
+                                {t('ritual.reviewPlans')} <ArrowRight className="w-4 h-4 ml-2" />
                             </Button>
                         </>
                     ) : (
                         <>
                             <Button onClick={handleBack} variant="ghost" className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl px-6 h-12 text-sm font-medium transition-all">
-                                <ArrowLeft className="w-4 h-4 mr-2" /> Daily Archive
+                                <ArrowLeft className="w-4 h-4 mr-2" /> {t('ritual.dailyArchive')}
                             </Button>
                             <Button
                                 onClick={handleFinish}
                                 disabled={isSaving || !materialChecked}
                                 className={`rounded-xl px-10 h-12 text-base font-semibold shadow-lg hover:shadow-xl transition-all ${!materialChecked ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 text-white shadow-green-200'}`}
                             >
-                                {isSaving ? "Closing..." : "Commit Daily Ritual"} <LogOut className="w-4 h-4 ml-2" />
+                                {isSaving ? t('ritual.closing') : t('ritual.commit')} <LogOut className="w-4 h-4 ml-2" />
                             </Button>
                         </>
                     )}

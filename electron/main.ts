@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net, desktopCapturer } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, net, desktopCapturer, shell } from 'electron'
 // import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
@@ -8,6 +8,14 @@ import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 // @ts-ignore
 import * as dotenv from 'dotenv';
+// Configure electron-log to save to logs.txt
+// Note: File path will be set after app is ready
+log.transports.file.level = 'info';
+log.transports.file.fileName = 'logs.txt';
+log.transports.console.level = 'debug';
+
+// Redirect console methods to electron-log (so they also save to file)
+Object.assign(console, log.functions);
 
 // Load .env file (in packaged app, it's at app root)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -97,11 +105,25 @@ function createWindow() {
       win.loadFile(indexPath);
     }
   }
+
+  win.on('closed', () => {
+    win = null;
+    app.quit();
+  });
 }
 
 import { setupStorageHandlers } from './storage';
 import { setupTracker } from './tracking/tracker';
 import { setupGoogleAuth } from './google-auth'; // Added
+import { setupNotionAuth } from './notion-auth';
+import { setupNotionOps } from './notion-ops'; // Added
+import { getMonitorNames } from './monitor-utils';
+
+
+ipcMain.on('log-message', (_, msg) => {
+  console.log(msg); // Will show in terminal
+  log.info(msg);    // Will log to file
+});
 
 ipcMain.on('quit-app', () => {
   app.quit();
@@ -140,6 +162,10 @@ ipcMain.handle('get-running-apps', async () => {
     console.error("Failed to get running apps", e);
     return [];
   }
+});
+
+ipcMain.handle('get-monitor-names', async () => {
+  return await getMonitorNames();
 });
 
 ipcMain.on('minimize-window', () => {
@@ -259,13 +285,72 @@ ipcMain.handle('get-daily-screenshots', async (_, dateStr: string) => {
   }
 });
 
+ipcMain.handle('export-settings', async (_, settings: any) => {
+  const { filePath } = await dialog.showSaveDialog({
+    title: 'Export Settings',
+    defaultPath: 'artisans-compass-settings.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }]
+  });
+
+  if (filePath) {
+    fs.writeFileSync(filePath, JSON.stringify(settings, null, 2));
+    return true;
+  }
+  return false;
+});
+
+ipcMain.handle('import-settings', async () => {
+  const { filePaths } = await dialog.showOpenDialog({
+    title: 'Import Settings',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+    properties: ['openFile']
+  });
+
+  if (filePaths && filePaths.length > 0) {
+    try {
+      const content = fs.readFileSync(filePaths[0], 'utf-8');
+      return JSON.parse(content);
+    } catch (e) {
+      console.error('Failed to parse settings file', e);
+      throw e;
+    }
+  }
+  return null;
+});
+
+ipcMain.handle('set-auto-launch', async (_, enable: boolean) => {
+  // Prevent enabling auto-launch in dev mode to avoid registering raw electron binary
+  if (!app.isPackaged && enable) {
+    console.warn('[Main] Blocked enabling auto-launch in dev mode');
+    return false;
+  }
+
+  app.setLoginItemSettings({
+    openAtLogin: enable,
+    path: app.getPath('exe') // Optional directly pointing to executable
+  });
+  return true;
+});
+
+ipcMain.handle('get-auto-launch', async () => {
+  return app.getLoginItemSettings().openAtLogin;
+});
+
 
 function setupAutoUpdater() {
   log.info('App starting...');
+
+  // Read settings
+  const settings = readJson(getSettingsPath(), DEFAULT_SETTINGS);
+  const autoUpdateEnabled = settings.autoUpdate || false;
+
+  log.info('[AutoUpdater] Auto-update settings state:', autoUpdateEnabled);
+
+  // Configure logger
   autoUpdater.logger = log;
-  // autoUpdater.logger.transports.file.level = 'info'; // 'transports' property 'file' does not exist on type 'LevelOption' ? fix below
   (autoUpdater.logger as any).transports.file.level = 'info';
 
+  // Register Event Listeners
   autoUpdater.on('checking-for-update', () => {
     log.info('Checking for update...');
   });
@@ -295,7 +380,6 @@ function setupAutoUpdater() {
     log.info('Update downloaded', info);
     if (win) win.webContents.send('update_downloaded');
 
-    // Ask user to update
     dialog.showMessageBox(win!, {
       type: 'info',
       title: 'Update Ready',
@@ -303,12 +387,14 @@ function setupAutoUpdater() {
       buttons: ['Restart', 'Later']
     }).then((returnValue) => {
       if (returnValue.response === 0) {
-        autoUpdater.quitAndInstall(); // Silent install and restart
+        autoUpdater.quitAndInstall();
       }
     });
   });
 
-  // Manual update check handler
+  // Register IPC Handlers
+  // We use removeHandler to avoid potential double-registration errors if this function is called multiple times (though it shouldn't be)
+  ipcMain.removeHandler('check-for-updates');
   ipcMain.handle('check-for-updates', async () => {
     try {
       return await autoUpdater.checkForUpdates();
@@ -318,13 +404,23 @@ function setupAutoUpdater() {
     }
   });
 
-  // Quit and Install handler
+  ipcMain.removeHandler('quit-and-install');
   ipcMain.handle('quit-and-install', () => {
     autoUpdater.quitAndInstall();
   });
 
-  // Check for updates (will notify if found)
-  autoUpdater.checkForUpdatesAndNotify();
+  // Check for updates if enabled
+  if (autoUpdateEnabled) {
+    try {
+      autoUpdater.checkForUpdatesAndNotify().catch(err => {
+        log.warn('Update check failed (non-blocking):', err.message);
+      });
+    } catch (err) {
+      log.warn('Update check initialization failed:', err);
+    }
+  } else {
+    log.info('[AutoUpdater] Skipping auto-check because autoUpdate is disabled.');
+  }
 }
 
 app.whenReady().then(() => {
@@ -383,10 +479,18 @@ app.whenReady().then(() => {
 
   setupStorageHandlers();
   setupGoogleAuth();
+  setupNotionAuth();
+  setupNotionOps(); // Added
   createWindow();
   setupAutoUpdater(); // Initialize Auto Updater
 
   if (win) {
     setupTracker(win);
+  }
+});
+
+ipcMain.handle('open-external', async (_, url: string) => {
+  if (url && (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('mailto:'))) {
+    await shell.openExternal(url);
   }
 });

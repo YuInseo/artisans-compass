@@ -3,6 +3,7 @@ import { Project } from "@/types";
 import { format, parseISO } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Trash, Lock, Unlock } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/hooks/useDataStore";
 import { ProjectSettingsModal } from "./ProjectSettingsModal";
@@ -12,6 +13,7 @@ interface ProjectListProps {
 }
 
 export function ProjectList({ searchQuery: _searchQuery = "" }: ProjectListProps) {
+    const { t } = useTranslation();
     const { projects, saveProjects } = useDataStore();
     const [editingProject, setEditingProject] = useState<Project | null>(null);
 
@@ -41,9 +43,9 @@ export function ProjectList({ searchQuery: _searchQuery = "" }: ProjectListProps
         <div className="h-full w-full flex flex-col bg-background/50">
             <div className="flex items-center justify-between px-8 py-6 pb-2 shrink-0">
                 <div className="flex items-baseline gap-3">
-                    <h2 className="text-2xl font-bold tracking-tight text-foreground font-serif">Project Database</h2>
+                    <h2 className="text-2xl font-bold tracking-tight text-foreground font-serif">{t('dashboard.projectDatabase')}</h2>
                     <span className="text-sm font-medium text-muted-foreground/50">
-                        Total {projects.length}
+                        {t('dashboard.total')} {projects.length}
                     </span>
                 </div>
             </div>
@@ -61,7 +63,7 @@ export function ProjectList({ searchQuery: _searchQuery = "" }: ProjectListProps
                     }}
                 >
                     <span className="text-4xl font-light mb-2 group-hover:scale-110 transition-transform">+</span>
-                    <span className="text-sm uppercase tracking-widest font-bold">New Project</span>
+                    <span className="text-sm uppercase tracking-widest font-bold">{t('dashboard.newProject')}</span>
                 </div>
 
                 {sortedProjects.map((project) => (
@@ -96,12 +98,12 @@ export function ProjectList({ searchQuery: _searchQuery = "" }: ProjectListProps
                             </div>
 
                             <h3 className="text-2xl font-bold text-foreground/90 mb-2 leading-tight min-h-[4rem] group-hover:text-primary transition-colors">
-                                {project.name || "Untitled Project"}
+                                {project.name || t('dashboard.untitledProject')}
                             </h3>
 
                             <div className="space-y-4 mt-auto">
                                 <div className="space-y-1">
-                                    <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">Timeline</div>
+                                    <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold">{t('sidebar.timeline')}</div>
                                     <div className="text-sm font-medium text-foreground flex items-center justify-between">
                                         <span>{format(parseISO(project.startDate), 'MMM d')}</span>
                                         <div className="h-px flex-1 mx-2 bg-border relative">
@@ -117,7 +119,7 @@ export function ProjectList({ searchQuery: _searchQuery = "" }: ProjectListProps
                                         project.isCompleted ? "text-green-600" : "text-amber-600"
                                     )}>
                                         <div className={cn("w-2 h-2 rounded-full", project.isCompleted ? "bg-green-500" : "bg-amber-500 animate-pulse")} />
-                                        {project.isCompleted ? "COMPLETED" : "IN PROGRESS"}
+                                        {project.isCompleted ? t('dashboard.completed') : t('dashboard.inProgress')}
                                     </div>
                                 </div>
                             </div>
@@ -130,7 +132,7 @@ export function ProjectList({ searchQuery: _searchQuery = "" }: ProjectListProps
                                 size="sm"
                                 className="h-8 w-8 rounded-full hover:bg-background hover:text-foreground hover:shadow-sm"
                                 onClick={() => toggleLock(project)}
-                                title={project.locked ? "Unlock" : "Lock"}
+                                title={project.locked ? t('dashboard.unlockWidget') : t('dashboard.lockWidget')}
                             >
                                 {project.locked ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                             </Button>
@@ -142,7 +144,7 @@ export function ProjectList({ searchQuery: _searchQuery = "" }: ProjectListProps
                                     className="h-8 px-3 rounded-full text-xs font-medium bg-background border border-border/50 shadow-sm hover:border-primary/50 hover:text-primary"
                                     onClick={() => setEditingProject(project)}
                                 >
-                                    Edit
+                                    {t('dashboard.edit')}
                                 </Button>
                                 <Button
                                     variant="ghost"

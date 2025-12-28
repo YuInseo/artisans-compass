@@ -12,6 +12,8 @@ export interface AppSettings {
     screenshotPath?: string; // Custom directory for screenshots
     timelapseDurationSeconds: number; // default: 5
     checkboxVisibility: 'high' | 'low'; // default: 'high'
+    showIndentationGuides?: boolean; // default: true
+    showTimelinePreview?: boolean; // default: true
     focusGoals?: {
         monthly: string;
         weekly: string;
@@ -22,10 +24,12 @@ export interface AppSettings {
     };
     widgetOpacity?: number; // 0.1 to 1.0
     widgetDisplayMode?: 'none' | 'quote' | 'goals'; // default: 'none'
+    widgetPositionLocked?: boolean; // default: false
+    widgetHeaderAutoHide?: boolean; // default: false
     widgetMaxHeight?: number; // default: 800
     startOfWeek?: 'sunday' | 'monday'; // default: 'sunday'
     workDays?: string[]; // List of specific dates "YYYY-MM-DD" that are work days
-    screenshotMode?: 'window' | 'screen' | 'process';
+    screenshotMode?: 'window' | 'screen' | 'process' | 'active-app';
     screenshotDisplayId?: string;
     screenshotTargetProcess?: string;
     googleDriveTokens?: {
@@ -34,6 +38,21 @@ export interface AppSettings {
         expiryDate: number;
         email?: string;
     };
+    notionTokens?: {
+        accessToken: string;
+        botId?: string;
+        workspaceId?: string;
+        workspaceName?: string;
+        owner?: any;
+        databaseId?: string;
+    };
+    notionConfig?: {
+        clientId: string;
+        clientSecret: string;
+    };
+    enableScreenshots?: boolean;
+    autoLaunch?: boolean;
+    autoUpdate?: boolean;
 }
 
 export interface Project {
@@ -79,4 +98,10 @@ export interface DailyLog {
     };
     assets: string[]; // Paths to screenshots
     isRestDay: boolean; // if true, treated as rest
+}
+
+export interface MonitorInfo {
+    id: string; // InstanceName
+    name: string; // UserFriendlyName
+    manufacturer: string; // ManufacturerName
 }

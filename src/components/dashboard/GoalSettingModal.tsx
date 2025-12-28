@@ -1,4 +1,5 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useTranslation } from "react-i18next";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ interface GoalSettingModalProps {
 }
 
 export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) {
+    const { t } = useTranslation();
     const { settings, saveSettings } = useDataStore();
     const [monthlyGoal, setMonthlyGoal] = useState("");
     const [weeklyGoal, setWeeklyGoal] = useState("");
@@ -54,11 +56,11 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-xl font-serif">
                         <Target className="w-5 h-5 text-primary" />
-                        Set Your Focus Goals
+                        {t('modals.goalSetting.title')}
                     </DialogTitle>
                     <div className="sr-only">
                         <DialogDescription>
-                            Set your monthly and weekly goals to keep your focus sharp.
+                            {t('modals.goalSetting.description')}
                         </DialogDescription>
                     </div>
                 </DialogHeader>
@@ -69,12 +71,12 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
                         <div className="flex items-center justify-between text-violet-600 dark:text-violet-400 font-bold text-sm tracking-wide uppercase">
                             <div className="flex items-center gap-2">
                                 <Calendar className="w-4 h-4" />
-                                Monthly Goal
+                                {t('modals.goalSetting.monthly')}
                             </div>
                             {/* Lock indicator */}
                             {isMonthlyLocked && (
                                 <span className="text-[10px] bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 rounded-full flex items-center gap-1 opacity-80 animate-in fade-in">
-                                    Locked for this month
+                                    {t('modals.goalSetting.monthlyLocked')}
                                 </span>
                             )}
                         </div>
@@ -82,7 +84,7 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
                             <Textarea
                                 value={monthlyGoal}
                                 onChange={(e) => setMonthlyGoal(e.target.value)}
-                                placeholder="Example: Mastering Human Anatomy..."
+                                placeholder={t('modals.goalSetting.monthlyPlaceholder')}
                                 disabled={!!isMonthlyLocked}
                                 className="min-h-[100px] text-lg font-medium border-violet-200 focus:border-violet-500 bg-violet-50/50 dark:bg-violet-950/20 dark:border-violet-900 resize-none disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                             />
@@ -95,12 +97,12 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
                         <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 font-bold text-sm tracking-wide uppercase">
                             <div className="flex items-center gap-2">
                                 <CalendarClock className="w-4 h-4" />
-                                Weekly Goal
+                                {t('modals.goalSetting.weekly')}
                             </div>
                             {/* Lock indicator */}
                             {isWeeklyLocked && (
                                 <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded-full flex items-center gap-1 opacity-80 animate-in fade-in">
-                                    Locked for this week
+                                    {t('modals.goalSetting.weeklyLocked')}
                                 </span>
                             )}
                         </div>
@@ -108,7 +110,7 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
                             <Textarea
                                 value={weeklyGoal}
                                 onChange={(e) => setWeeklyGoal(e.target.value)}
-                                placeholder="Example: 30 croquis per day..."
+                                placeholder={t('modals.goalSetting.weeklyPlaceholder')}
                                 disabled={!!isWeeklyLocked}
                                 className="min-h-[100px] text-lg font-medium border-blue-200 focus:border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900 resize-none disabled:opacity-60 disabled:cursor-not-allowed transition-all"
                             />
@@ -118,9 +120,9 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
                 </div>
 
                 <div className="flex justify-end gap-3">
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>{t('modals.goalSetting.cancel')}</Button>
                     <Button onClick={handleSave} className="min-w-[100px] font-bold">
-                        Save Goals
+                        {t('modals.goalSetting.save')}
                     </Button>
                 </div>
             </DialogContent>

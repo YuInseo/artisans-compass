@@ -1,4 +1,5 @@
 import { useDataStore } from "@/hooks/useDataStore";
+import { useTranslation } from "react-i18next";
 import { useTimelineStore } from "@/hooks/useTimelineStore";
 import { format, addDays, differenceInDays, parseISO, startOfDay, startOfYear, endOfYear, isBefore, addYears } from "date-fns";
 import { Trash, Settings } from "lucide-react";
@@ -21,6 +22,7 @@ interface TimelineSectionProps {
 }
 
 export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject, navigationSignal, onOpenSettings }: TimelineSectionProps) {
+    const { t } = useTranslation();
     const { projects, saveProjects, settings, addToHistory } = useDataStore();
     const {
         selectedIds,
@@ -192,12 +194,21 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
 
     const stackedProjects = useMemo(() => calculateStackedLayout(projects), [projects]);
 
+    // Quantize drag X to avoid excessive recalculation
+    const quantizedDragX = useMemo(() => {
+        if (!dragState) return 0;
+        // Only update when we cross a day threshold (PX_PER_DAY = 40)
+        return Math.round(dragState.currentX / PX_PER_DAY) * PX_PER_DAY;
+    }, [dragState?.currentX]);
+
     // Calculate Preview Layout for Ghost Bars
     const previewLayoutMap = useMemo(() => {
         if (!dragState || dragState.action !== 'move') return null;
 
-        const deltaX = dragState.currentX - dragState.startX;
-        const deltaDays = Math.round(deltaX / PX_PER_DAY);
+        // Use original startX and quantized currentX
+        // Or simpler: just use deltaDays directly derived from quantized values
+
+        const deltaDays = Math.round((dragState.currentX - dragState.startX) / PX_PER_DAY);
 
         if (deltaDays === 0) return null;
 
@@ -219,7 +230,7 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
         const map = new Map<string, number>();
         layout.projects.forEach(p => map.set(p.id, p.rowIndex));
         return map;
-    }, [projects, selectedIds, dragState?.currentX, dragState?.startX, dragState?.action]);
+    }, [projects, selectedIds, dragState?.action, quantizedDragX]); // Depend on quantizedDragX instead of currentX
 
 
     const getLeftStyle = (dateStr: string) => {
@@ -243,26 +254,51 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
     };
 
     const handleProjectDelete = async (id: string) => {
+        // Prevent deleting if the specific target is locked (and not part of a larger valid selection logic)
+        const targetProject = projects.find(p => p.id === id);
+        if (targetProject?.locked && !selectedIds.has(id)) return;
+
         addToHistory();
         let updated: Project[];
         if (selectedIds.has(id)) {
-            // Delete all selected
-            updated = projects.filter(p => !selectedIds.has(p.id));
-            setSelectedIds(new Set());
+            // Delete all selected EXCEPT locked
+            const lockedInSelection = projects.filter(p => selectedIds.has(p.id) && p.locked);
+            const lockedIds = new Set(lockedInSelection.map(p => p.id));
+
+            updated = projects.filter(p => {
+                if (selectedIds.has(p.id)) {
+                    return p.locked; // Keep it if it's locked
+                }
+                return true; // Keep non-selected
+            });
+
+            // Update selection to only contain the locked items we couldn't delete
+            setSelectedIds(lockedIds);
         } else {
             // Delete just this one
+            if (targetProject?.locked) return;
             updated = projects.filter(p => p.id !== id);
         }
         await saveProjects(updated);
     };
 
     // Separate handler for multi-delete to ensure clean execution after menu closes
-    // Separate handler for multi-delete to ensure clean execution after menu closes
-    const handleDeleteSelected = () => {
+    const handleDeleteSelected = async () => {
+        // Filter out locked projects
+        const lockedInSelection = projects.filter(p => selectedIds.has(p.id) && p.locked);
+        const lockedIds = new Set(lockedInSelection.map(p => p.id));
+        const unlockedIds = new Set([...selectedIds].filter(id => !lockedIds.has(id)));
+
+        if (unlockedIds.size === 0) return;
+
         addToHistory();
-        // Use store action - it handles isDeleting state internally
-        // Pass selectedIds explicitly to fix race condition where selection might clear before delete runs
-        deleteSelected(projects, saveProjects, selectedIds);
+        // Use store action
+        await deleteSelected(projects, saveProjects, unlockedIds);
+
+        // Restore selection for locked items if any remained
+        if (lockedIds.size > 0) {
+            setSelectedIds(lockedIds);
+        }
     };
 
     // Keyboard Delete Listener
@@ -303,7 +339,12 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
         const y = e.clientY - rect.top;
 
         // Snapshot current selection for additive drag
-        initialSelectionRef.current = new Set(selectedIds);
+        if (e.ctrlKey) {
+            initialSelectionRef.current = new Set(selectedIds);
+        } else {
+            initialSelectionRef.current = new Set();
+            clearSelection();
+        }
         setSelectionBox({ startX: x, startY: y, currentX: x, currentY: y });
     };
 
@@ -343,7 +384,10 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
 
                 // Box Collision
                 if (boxRight > pLeft && boxLeft < pRight && boxBottom > pRealTop && boxTop < pRealBottom) {
-                    newSelected.add(p.id);
+                    // Prevent selecting locked projects
+                    if (!p.locked) {
+                        newSelected.add(p.id);
+                    }
                 }
             });
             setSelectedIds(newSelected);
@@ -367,20 +411,21 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
     // --- Drag Logic ---
     const handleMouseDown = (e: React.MouseEvent, proj: Project, action: 'move' | 'resize-left' | 'resize-right') => {
         if (e.button !== 0) return; // Only Left Click
+        if (proj.locked) return; // Prevent interaction with locked projects entirely
         e.stopPropagation();
 
         if (e.ctrlKey) {
             // Toggle Selection logic
             const newSet = new Set(selectedIds);
             if (newSet.has(proj.id)) newSet.delete(proj.id);
-            else newSet.add(proj.id);
+            else newSet.add(proj.id); // Locked check already handled above
             setSelectedIds(newSet);
             return;
         }
 
         if (!selectedIds.has(proj.id)) {
-            // Additive selection by default (requested by user)
-            const newSet = new Set(selectedIds);
+            // Standard selection: Clear others, Select this one
+            const newSet = new Set<string>();
             newSet.add(proj.id);
             setSelectedIds(newSet);
         }
@@ -422,7 +467,7 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                     const updates: Project[] = [];
                     for (const id of selectedIds) {
                         const p = projects.find(proj => proj.id === id);
-                        if (p) {
+                        if (p && !p.locked) { // Double check: Ensure locked projects don't move even if selected
                             const pStart = parseISO(p.startDate);
                             const pEnd = parseISO(p.endDate);
                             const newStart = addDays(pStart, deltaDays);
@@ -437,6 +482,9 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                     }
                     const projectMap = new Map(updates.map(u => [u.id, u]));
                     const finalProjects = projects.map(p => projectMap.get(p.id) || p);
+
+                    // Clear drag state BEFORE saving to prevent visual jump (double-application of transform)
+                    setDragState(null);
                     await saveProjects(finalProjects);
                 }
             } else {
@@ -461,6 +509,8 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                         addToHistory(); // Snapshot before saving
                         const updated = { ...project, startDate: format(newStart, 'yyyy-MM-dd'), endDate: format(newEnd, 'yyyy-MM-dd') };
                         const finalProjects = projects.map(p => p.id === updated.id ? updated : p);
+
+                        setDragState(null);
                         await saveProjects(finalProjects);
                     }
                 }
@@ -535,10 +585,16 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                             const isFirstDay = date.getDate() === 1;
                             const isToday = differenceInDays(date, today) === 0;
                             return (
-                                <div key={i} className={`flex-shrink-0 h-8 flex items-end pb-1 border-r border-border/50 ${isFirstDay ? 'border-l border-border bg-accent/50' : ''}`} style={{ width: PX_PER_DAY }}>
-                                    <span className={`w-full text-center text-xs ${isFirstDay ? 'font-bold text-foreground' : 'text-muted-foreground'} ${isToday ? 'text-blue-600 font-bold' : ''}`}>
-                                        {isFirstDay ? format(date, 'MMM') : date.getDate()}
-                                    </span>
+                                <div key={i} className={`relative flex-shrink-0 h-8 flex items-end pb-1 border-r border-border/50 ${isFirstDay ? 'border-l border-border bg-accent/50' : ''}`} style={{ width: PX_PER_DAY }}>
+                                    {isFirstDay ? (
+                                        <span className="absolute left-1 bottom-1 w-max font-bold text-foreground text-xs select-none z-10 whitespace-nowrap">
+                                            {format(date, 'yyyy. M')}
+                                        </span>
+                                    ) : (
+                                        <span className={`w-full text-center text-xs text-muted-foreground ${isToday ? 'text-blue-600 font-bold' : ''}`}>
+                                            {date.getDate()}
+                                        </span>
+                                    )}
                                 </div>
                             )
                         })}
@@ -638,9 +694,9 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                             return (
                                 <div key={project.id}>
                                     {/* Ghost Bar (Snap Preview) */}
-                                    {showGhost && (
+                                    {showGhost && settings?.showTimelinePreview && (
                                         <div
-                                            className="absolute h-9 border-2 border-dashed border-red-500/50 rounded-md bg-transparent z-20 pointer-events-none"
+                                            className="absolute h-9 border-2 border-dashed border-red-500/80 rounded-md bg-background/50 z-[60] pointer-events-none"
                                             style={{
                                                 left: `${left}px`,
                                                 width: (() => {
@@ -740,7 +796,7 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                                                         onSelect={handleDeleteSelected}
                                                     >
                                                         <Trash className="mr-2 h-4 w-4" />
-                                                        Delete Selected ({selectedIds.size})
+                                                        {t('dashboard.deleteSelected')} ({selectedIds.size})
                                                     </ContextMenu.Item>
                                                 </ContextMenu.Content>
                                             </ContextMenu.Portal>

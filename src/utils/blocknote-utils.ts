@@ -1,14 +1,26 @@
-import { Block, PartialBlock, BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
+import { Block, PartialBlock, BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
 import { Todo } from "@/types";
 // import { v4 as uuidv4 } from "uuid";
 
 // Custom schema with NO inline styles (bold, italic, etc.)
 // AND restricted blocks (ONLY checkListItem)
 
+// Custom schema with NO inline styles (bold, italic, etc.)
+// AND restricted blocks (ONLY checkListItem)
+
+// Define custom checkListItem with empty placeholder
+const customCheckListItem = {
+    ...defaultBlockSpecs.checkListItem,
+    config: {
+        ...defaultBlockSpecs.checkListItem.config,
+        placeholder: "",
+    },
+};
+
 export const customSchema = BlockNoteSchema.create({
     blockSpecs: {
-        paragraph: defaultBlockSpecs.paragraph,
-        checkListItem: defaultBlockSpecs.checkListItem,
+        paragraph: customCheckListItem,
+        checkListItem: customCheckListItem,
     },
     // Disable all inline styles (bold, italic, underline, strike, code, colors)
     styleSpecs: {},
@@ -48,10 +60,8 @@ export const blocksToTodos = (blocks: Block[]): Todo[] => {
             : '';
 
         // Handle both "checkListItem" and our aliased "paragraph" (which is effectively a checkbox now)
-        // Note: For "paragraph" (aliased), the props might not default to unchecked if not set,
-        // but since we aligned the spec, it should have the 'checked' prop.
-        // Standard check
-        const header = block.type === "checkListItem";
+        // Since we aliased paragraph to use checkListItem spec, it HAS the 'checked' prop.
+        const header = block.type === "checkListItem" || block.type === "paragraph";
         const isChecked = header && (block.props as any).checked === true;
 
         return {
