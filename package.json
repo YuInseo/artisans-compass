@@ -1,7 +1,7 @@
 {
   "name": "artisans-compass",
   "private": true,
-  "version": "0.0.40",
+  "version": "0.0.41",
   "type": "module",
   "scripts": {
     "dev": "node copy-worker.js && vite",
