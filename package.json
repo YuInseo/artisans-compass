@@ -1,11 +1,12 @@
 {
   "name": "artisans-compass",
   "private": true,
-  "version": "0.0.37",
+  "version": "0.0.40",
   "type": "module",
   "scripts": {
     "dev": "node copy-worker.js && vite",
     "build": "node copy-worker.js && tsc && vite build && electron-builder",
+    "build:linux": "npm version patch && npm run build -- --linux",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview"
   },
@@ -117,6 +118,13 @@
       ],
       "signAndEditExecutable": true,
       "icon": "public/appLOGO.ico"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "public/appLOGO.ico",
+      "category": "Productivity"
     },
     "nsis": {
       "oneClick": false,

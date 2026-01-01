@@ -181,6 +181,7 @@
         "unpin": "고정 해제",
         "pin": "고정",
         "addFirstTask": "첫 번째 할 일 추가",
+        "todoPlaceholder": "할 일을 입력하세요...",
         "monthly": "월간",
         "weekly": "주간",
         "noGoal": "목표 없음",
@@ -198,7 +199,8 @@
         "yes": "예",
         "no": "아니오",
         "timeTable": "타임테이블",
-        "workingOn": "진행 중..."
+        "workingOn": "진행 중...",
+        "timer": "집중 타이머"
     },
     "calendar": {
         "today": "오늘",
@@ -224,6 +226,7 @@
         "noActivity": "이 날에는 활동을 기록하지 않았습니다.",
         "streak": "일 연속",
         "focusSession": "집중 세션",
+        "focusing": "집중 중...",
         "activity": "활동",
         "journeyLog": "여정 로그",
         "visualRecap": "비주얼 리캡",

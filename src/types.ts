@@ -23,7 +23,7 @@ export interface AppSettings {
         weeklyUpdatedAt?: number;
     };
     widgetOpacity?: number; // 0.1 to 1.0
-    widgetDisplayMode?: 'none' | 'quote' | 'goals'; // default: 'none'
+    widgetDisplayMode?: 'none' | 'quote' | 'goals' | 'timer'; // default: 'none'
     widgetPositionLocked?: boolean; // default: false
     widgetHeaderAutoHide?: boolean; // default: false
     widgetMaxHeight?: number; // default: 800

@@ -1,4 +1,4 @@
-import { Block, PartialBlock, BlockNoteSchema, defaultBlockSpecs, defaultInlineContentSpecs } from "@blocknote/core";
+import { Block, PartialBlock, BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { Todo } from "@/types";
 // import { v4 as uuidv4 } from "uuid";
 
@@ -19,11 +19,11 @@ const customCheckListItem = {
 
 export const customSchema = BlockNoteSchema.create({
     blockSpecs: {
-        paragraph: customCheckListItem,
+        ...defaultBlockSpecs,
         checkListItem: customCheckListItem,
     },
-    // Disable all inline styles (bold, italic, underline, strike, code, colors)
-    styleSpecs: {},
+    // Enable inline styles for now to rule out that variable
+    // styleSpecs: {}, 
 });
 
 // CheckListItem Block Structure (Partial)

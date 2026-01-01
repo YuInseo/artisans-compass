@@ -199,13 +199,15 @@ ipcMain.on('toggle-always-on-top', (_event, flag?: boolean) => {
 });
 
 // Added set-widget-mode handler
-ipcMain.on('set-widget-mode', (_event, isWidgetMode: boolean) => {
+// Added set-widget-mode handler
+ipcMain.on('set-widget-mode', (_event, { mode, height }: { mode: boolean, height?: number }) => {
   const win = BrowserWindow.getFocusedWindow();
   if (win) {
-    if (isWidgetMode) {
+    if (mode) {
       // Store original size if needed? For now just hardcode standard/widget sizes.
-      // Widget Size: 435x800 (Vertical Strip)
-      win.setSize(435, 800);
+      // Widget Size: 435xHeight (Vertical Strip)
+      const targetHeight = height || 800;
+      win.setSize(435, targetHeight);
       win.setAlwaysOnTop(true, 'floating');
       // Opacity will be set by the frontend via `set-window-opacity` immediately or stored setting
     } else {
@@ -319,17 +321,30 @@ ipcMain.handle('import-settings', async () => {
 });
 
 ipcMain.handle('set-auto-launch', async (_, enable: boolean) => {
+  console.log('[Main] set-auto-launch called with:', enable);
+  console.log('[Main] isPackaged:', app.isPackaged);
+  console.log('[Main] exe path:', app.getPath('exe'));
+
   // Prevent enabling auto-launch in dev mode to avoid registering raw electron binary
   if (!app.isPackaged && enable) {
     console.warn('[Main] Blocked enabling auto-launch in dev mode');
+    dialog.showErrorBox(
+      'Development Mode',
+      'Auto-launch cannot be enabled in development mode.\n\nThis feature typically requires a packaged application to register the correct executable path. Enabling it now would register the generic Electron binary, causing the app to launch incorrectly.'
+    );
     return false;
   }
 
-  app.setLoginItemSettings({
-    openAtLogin: enable,
-    path: app.getPath('exe') // Optional directly pointing to executable
-  });
-  return true;
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: enable,
+      path: app.getPath('exe') // Explicitly point to the executable
+    });
+    return true;
+  } catch (err) {
+    console.error('[Main] Failed to set login item settings:', err);
+    return false;
+  }
 });
 
 ipcMain.handle('get-auto-launch', async () => {
@@ -483,6 +498,21 @@ app.whenReady().then(() => {
   setupNotionOps(); // Added
   createWindow();
   setupAutoUpdater(); // Initialize Auto Updater
+
+  // Safety Check: If in Dev mode and Auto-Launch is somehow enabled (pointing to electron.exe), disable it to fix the user's registry.
+  if (!app.isPackaged) {
+    const loginSettings = app.getLoginItemSettings();
+    if (loginSettings.openAtLogin) {
+      console.warn('[Main] Detected Auto-Launch enabled in Dev Mode. Disabling to prevent "Electron Default App" issue...');
+      try {
+        app.setLoginItemSettings({ openAtLogin: false });
+        console.log('[Main] Successfully reset Auto-Launch to false.');
+      } catch (e) {
+        console.error('[Main] Failed to reset Auto-Launch:', e);
+      }
+    }
+  }
+
 
   if (win) {
     setupTracker(win);

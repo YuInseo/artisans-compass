@@ -690,6 +690,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                     <SelectItem value="none">{t('settings.appearance.none')}</SelectItem>
                                                     <SelectItem value="quote">{t('settings.appearance.dailyQuote')}</SelectItem>
                                                     <SelectItem value="goals">{t('settings.appearance.focusGoals')}</SelectItem>
+                                                    <SelectItem value="timer">{t('dashboard.timer') || 'Focus Timer'}</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                             <span className="text-sm text-foreground">{t('settings.appearance.widgetHeaderDesc')}</span>

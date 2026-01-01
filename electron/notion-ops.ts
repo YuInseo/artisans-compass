@@ -562,8 +562,7 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
 
         const projectNames = new Set<string>();
         const projectTypes = new Set<string>();
-        const projectStarts: string[] = [];
-        const projectEnds: string[] = [];
+
 
         // Collect project info
         let firstProjectStart: string | null = null;

@@ -1,13 +1,14 @@
-import "@blocknote/core/fonts/inter.css";
-import { useCreateBlockNote, SideMenuController, SideMenu, DragHandleButton } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import "@blocknote/shadcn/style.css";
-import { useEffect, useCallback, useRef, useState } from "react";
+import { useCreateBlockNote } from "@blocknote/react";
+import { SideMenu, SideMenuController, DragHandleButton } from "@blocknote/react";
+import { useTranslation } from "react-i18next";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useTheme } from "@/components/theme-provider";
-import { todosToBlocks, blocksToTodos, customSchema } from "@/utils/blocknote-utils";
+import { useRef, useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { customSchema, todosToBlocks, blocksToTodos } from "@/utils/blocknote-utils";
 import { Todo } from "@/types";
 
 interface TodoEditorProps {
@@ -21,6 +22,7 @@ export function TodoEditor({ activeProjectId, todos, isWidgetMode, isWidgetLocke
     const { setTodos } = useTodoStore();
     const { settings } = useDataStore();
     const { theme } = useTheme();
+    const { } = useTranslation();
 
     // Internal state to track if we are currently editing (to avoid loops)
     const isLocalUpdate = useRef(false);
@@ -37,6 +39,13 @@ export function TodoEditor({ activeProjectId, todos, isWidgetMode, isWidgetLocke
     const editor = useCreateBlockNote({
         initialContent: initialBlocks as any,
         schema: customSchema,
+        // dictionary: {
+        //     ...locales.en,
+        //     placeholders: {
+        //         ...locales.en.placeholders,
+        //         default: t('dashboard.todoPlaceholder')
+        //     }
+        // }
     });
 
     // 1. Inbound Sync: Store -> Editor
@@ -46,6 +55,10 @@ export function TodoEditor({ activeProjectId, todos, isWidgetMode, isWidgetLocke
         if (!editor) return;
 
         const isProjectSwitch = lastProjectId.current !== activeProjectId;
+
+        // Check for content equivalence to avoid unnecessary re-renders (which break cursor/input)
+        const currentEditorTodos = blocksToTodos(editor.document);
+        const isContentFunctionallyIdentical = JSON.stringify(currentEditorTodos) === JSON.stringify(todos);
 
         // Case 1: Project Switch - Always sync
         if (isProjectSwitch) {
@@ -58,8 +71,9 @@ export function TodoEditor({ activeProjectId, todos, isWidgetMode, isWidgetLocke
 
             lastProjectId.current = activeProjectId;
         }
-        // Case 2: External Update (e.g. Undo/Redo) - Sync if NOT a local update
-        else if (!isLocalUpdate.current) {
+        // Case 2: External Update - Sync only if content is DIFFERENT and it's NOT a local update
+        // We add the content check here as a safety net. 
+        else if (!isLocalUpdate.current && !isContentFunctionallyIdentical) {
             const newBlocks = todos.length > 0 ? todosToBlocks(todos) : [{ type: "checkListItem", content: "" }];
             editor.replaceBlocks(editor.document, newBlocks as any);
         }
@@ -69,6 +83,18 @@ export function TodoEditor({ activeProjectId, todos, isWidgetMode, isWidgetLocke
     // 2. Outbound Sync: Editor -> Store
     const handleEditorChange = useCallback(() => {
         if (!editor) return;
+
+        // Auto-convert Paragraph -> CheckListItem if it has content
+        const selection = editor.getTextCursorPosition();
+        if (selection && selection.block.type === 'paragraph') {
+            const text = Array.isArray(selection.block.content)
+                ? selection.block.content.map(c => c.type === 'text' ? c.text : '').join('')
+                : '';
+
+            if (text.trim().length > 0) {
+                editor.updateBlock(selection.block, { type: 'checkListItem', props: { checked: false } });
+            }
+        }
 
         // Clear previous timeout
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -84,10 +110,10 @@ export function TodoEditor({ activeProjectId, todos, isWidgetMode, isWidgetLocke
 
             // Clear the flag after safe margin (Store update + Effect run should happen fast)
             // But we need to ensure the Effect ran. 
-            // 500ms after setter is generous for React render cycle.
+            // Increase to 2000ms to be extremely safe against slow renders or race conditions
             setTimeout(() => {
                 isLocalUpdate.current = false;
-            }, 100);
+            }, 2000);
         }, 500);
     }, [editor, setTodos]);
 
@@ -175,6 +201,7 @@ export function TodoEditor({ activeProjectId, todos, isWidgetMode, isWidgetLocke
                 slashMenu={false}
                 data-hide-indent={!settings?.showIndentationGuides}
             >
+                {/* Dictionary removed - auto-conversion handles flow */}
                 <SideMenuController
                     sideMenu={(props) => (
                         <SideMenu {...props}>
