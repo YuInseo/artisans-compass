@@ -196,8 +196,14 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                 }
             });
 
+            // Listen for completed sessions to update total time immediately
+            const removeSessionListener = (window as any).ipcRenderer.onSessionCompleted((session: Session) => {
+                setSessions((prev: Session[]) => [...prev, session]);
+            });
+
             return () => {
                 removeListener();
+                if (removeSessionListener) removeSessionListener();
             };
         }
     }, [loadTodos]);

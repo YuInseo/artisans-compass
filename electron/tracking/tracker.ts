@@ -18,6 +18,7 @@ interface TrackingState {
     settings: AppSettings;
     lastScreenshotTime: number;
     activeWindowId: number;
+    mainWindow: BrowserWindow | null; // Added
 }
 
 const STATE: TrackingState = {
@@ -28,7 +29,8 @@ const STATE: TrackingState = {
     currentSession: null,
     settings: DEFAULT_SETTINGS,
     lastScreenshotTime: 0,
-    activeWindowId: 0
+    activeWindowId: 0,
+    mainWindow: null // Added
 };
 
 // Reload settings helper
@@ -38,6 +40,7 @@ function reloadSettings() {
 }
 
 export function setupTracker(win: BrowserWindow) {
+    STATE.mainWindow = win; // Store reference
     // Initial load
     console.log("!!! VERSION: 30 MINUTE FIX ACTIVE (D DRIVE) !!!");
     reloadSettings();
@@ -205,6 +208,11 @@ function closeAndSaveSession(session: Session) {
     // Use internal save which triggers Sync
     import('../storage').then(mod => {
         mod.saveDailyLogInternal(dateKey, { sessions });
+
+        // Notify Frontend to update stats immediately
+        if (STATE.mainWindow && !STATE.mainWindow.isDestroyed()) {
+            STATE.mainWindow.webContents.send('session-completed', session);
+        }
     });
 
     console.log(`Saved session: ${session.process} (${session.duration}s) to ${dateKey}`);

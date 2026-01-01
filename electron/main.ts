@@ -134,34 +134,10 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
+import { getRunningApps } from './process-utils'; // Added import
+
 ipcMain.handle('get-running-apps', async () => {
-  try {
-    // Set UTF-8 encoding to properly handle Korean and other Unicode characters
-    const psCommand = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Process | Where-Object {$_.MainWindowTitle -ne \"\"} | Select-Object ProcessName, MainWindowTitle | ConvertTo-Json -Compress`;
-    const { stdout } = await execAsync(`powershell -NoProfile -Command "${psCommand.replace(/"/g, '\\"')}"`, { encoding: 'utf8', maxBuffer: 1024 * 1024 * 10 });
-
-    let activeApps = [];
-    try {
-      if (stdout.trim()) {
-        activeApps = JSON.parse(stdout);
-        if (!Array.isArray(activeApps)) {
-          activeApps = [activeApps];
-        }
-      }
-    } catch (e) {
-      console.error("Failed to parse running apps JSON", e);
-    }
-
-    return activeApps.map((a: any) => ({
-      id: a.ProcessName,
-      name: a.MainWindowTitle || a.ProcessName,
-      process: a.ProcessName,
-      appIcon: null
-    }));
-  } catch (e) {
-    console.error("Failed to get running apps", e);
-    return [];
-  }
+  return await getRunningApps();
 });
 
 ipcMain.handle('get-monitor-names', async () => {

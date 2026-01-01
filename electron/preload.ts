@@ -34,4 +34,9 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     ipcRenderer.on('tracking-update', listener);
     return () => ipcRenderer.off('tracking-update', listener);
   },
+  onSessionCompleted: (callback: (session: any) => void) => {
+    const listener = (_event: any, session: any) => callback(session);
+    ipcRenderer.on('session-completed', listener);
+    return () => ipcRenderer.off('session-completed', listener);
+  },
 })
