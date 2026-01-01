@@ -129,11 +129,6 @@ ipcMain.on('quit-app', () => {
   app.quit();
 });
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
-
 import { getRunningApps } from './process-utils'; // Added import
 
 ipcMain.handle('get-running-apps', async () => {
