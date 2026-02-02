@@ -15,12 +15,23 @@
             "tall": "길게",
             "checkboxVisibility": "체크박스 표시",
             "checkboxVisibilityDesc": "작업 체크박스가 표시되는 시점을 제어합니다.",
+            "spellCheck": "맞춤법 검사",
+            "spellCheckDesc": "맞춤법 오류에 빨간색 밑줄을 표시합니다.",
             "designMode": "디자인 모드 (높은 가시성)",
             "designModeDesc": "체크박스가 항상 표시됩니다.",
             "focusMode": "집중 모드 (낮은 가시성)",
             "focusModeDesc": "체크박스는 마우스를 올릴 때만 표시됩니다. 더 깔끔합니다.",
             "indentationLines": "들여쓰기 가이드",
-            "indentationLinesDesc": "중첩된 작업을 연결하는 세로선을 표시합니다."
+            "indentationLinesDesc": "중첩된 작업을 연결하는 세로선을 표시합니다.",
+            "colorTheme": "컬러 테마",
+            "editTheme": "이 테마 수정하기",
+            "loadDefaultList": "기본값 불러오기",
+            "saveAsPreset": "프리셋으로 저장",
+            "enterThemeName": "테마 이름을 입력하세요:",
+            "themeSaved": "\"{name}\" 테마가 저장되었습니다!",
+            "myThemes": "내 테마",
+            "cssEditor": "CSS 에디터",
+            "cssEditorDesc": "* \"기본값 불러오기\"를 클릭하면 편집 가능한 모든 색상 변수를 볼 수 있습니다."
         },
         "timelineLabel": "타임라인",
         "timelineConfig": "타임라인 설정",
@@ -32,6 +43,8 @@
             "screenshotIntervalDesc": "자동 캡처 빈도입니다.",
             "timelapseSpeed": "타임랩스 속도",
             "timelapseSpeedDesc": "일일 검토 재생 시간입니다.",
+            "detectIdleTime": "유휴 감지 대기 시간",
+            "detectIdleTimeDesc": "활동이 없을 때 추적이 일시 중지되기 전의 시간입니다.",
             "screenshotMode": "스크린샷 모드",
             "screenshotModeDesc": "스크린샷 캡처 방식을 선택합니다.",
             "selectInterval": "간격 선택",
@@ -85,6 +98,8 @@
         "autoLaunchDesc": "로그인할 때 Artisans Compass를 자동으로 시작합니다.",
         "autoUpdate": "자동 업데이트",
         "autoUpdateDesc": "시작 시 자동으로 최신 버전을 확인합니다.",
+        "updateLog": "패치 노트",
+        "screenshotOnlyActive": "해당 앱 사용 시에만 캡처",
         "widgetSettings": "위젯 설정",
         "checkboxVisibility": "체크박스 표시",
         "indentationLines": "들여쓰기 가이드",
@@ -99,10 +114,15 @@
         "timeline": {
             "title": "타임라인 설정",
             "showPreview": "드래그 미리보기 표시",
-            "showPreviewDesc": "드래그하거나 크기를 조정할 때 변경될 위치를 점선으로 미리 보여줍니다."
+            "showPreviewDesc": "드래그하거나 크기를 조정할 때 변경될 위치를 점선으로 미리 보여줍니다.",
+            "workApps": "작업 프로그램",
+            "filterWorkApps": "작업 프로그램만 보기",
+            "filterWorkAppsDesc": "타임라인 시각화에서 설정된 작업 프로그램만 표시합니다.",
+            "configuredApps": "설정된 앱"
         },
         "backup": {
             "title": "백업 및 데이터",
+            "includeScreenshots": "스크린샷 포함",
             "local": "로컬 백업",
             "localDesc": "설정을 수동으로 내보내거나 가져옵니다.",
             "export": "설정 내보내기",
@@ -142,7 +162,11 @@
             "verifyFailed": "검증 실패. 시크릿 키를 확인해주세요.",
             "preparing": "준비 중...",
             "initializing": "초기화 중...",
-            "syncingProgress": "{{processed}}/{{total}} 동기화 중"
+            "syncingProgress": "{{processed}}/{{total}} 동기화 중",
+            "importNotionTitle": "Notion에서 가져오기",
+            "importNotionDesc": "선택한 날짜의 Notion 페이지 데이터를 가져와 로컬 작업을 덮어씁니다.",
+            "dateLabel": "날짜 선택",
+            "importing": "가져오는 중..."
         }
     },
     "common": {
@@ -185,6 +209,10 @@
         "monthly": "월간",
         "weekly": "주간",
         "noGoal": "목표 없음",
+        "monthlyGoal": "월간 목표",
+        "weeklyGoal": "주간 목표",
+        "noMonthlyGoalSet": "설정된 월간 목표가 없습니다...",
+        "noWeeklyGoalSet": "설정된 주간 목표가 없습니다...",
         "projectDatabase": "프로젝트 데이터베이스",
         "total": "총",
         "untitledProject": "제목 없는 프로젝트",
@@ -230,11 +258,19 @@
         "activity": "활동",
         "journeyLog": "여정 로그",
         "visualRecap": "비주얼 리캡",
-        "totalWork": "총 작업 시간",
+        "totalWork": "평균 작업 시간",
         "totalFocus": "총 집중 시간",
         "appUsage": "앱 사용량",
         "closeArchive": "아카이브 닫기",
-        "questClear": "퀘스트 완료"
+        "questClear": "퀘스트 완료",
+        "avgFocus": "평균 집중 시간",
+        "fetchUnchecked": "이월",
+        "fetchUncheckedDesc": "완료되지 않은 작업을 오늘로 가져옵니다",
+        "fetchedUnchecked": "미완료 작업을 가져왔습니다",
+        "noUnchecked": "가져올 미완료 작업이 없습니다",
+        "lastFocus": "마지막 집중",
+        "cannotTravelFuture": "미래로 이동할 수 없습니다!",
+        "peakFocus": "주요 활동 시간"
     },
     "ritual": {
         "title": "계획 및 준비",
@@ -301,5 +337,18 @@
         "goal": "목표",
         "pickDate": "날짜 선택",
         "launch": "나침반 띄우기"
+    },
+    "analysis": {
+        "title": "일일 활동 분석",
+        "description": "시간대별 주요 활동 분석 내역입니다.",
+        "dayTime": "주간 활동 (Day)",
+        "nightTime": "야간 활동 (Night)",
+        "time": "시간",
+        "primaryFocus": "주요 활동",
+        "intensity": "집중도",
+        "duration": "시간",
+        "noData": "기록된 활동이 없습니다.",
+        "analyze": "활동 분석",
+        "buttonLabel": "활동 분석"
     }
 }

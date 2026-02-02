@@ -1,7 +1,7 @@
 import { useDataStore } from "@/hooks/useDataStore";
 import { useTranslation } from "react-i18next";
 import { useTimelineStore } from "@/hooks/useTimelineStore";
-import { format, addDays, differenceInDays, parseISO, startOfDay, startOfYear, endOfYear, isBefore, addYears } from "date-fns";
+import { format, addDays, differenceInDays, parseISO, startOfDay, startOfYear, endOfYear, isBefore, addYears, subYears } from "date-fns";
 import { Trash, Settings } from "lucide-react";
 import { useRef, useState, useEffect, useLayoutEffect, useMemo } from "react";
 import { ProjectSettingsModal } from "./ProjectSettingsModal";
@@ -49,33 +49,48 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
     const containerRef = useRef<HTMLDivElement>(null);
     const [hasScrolled, setHasScrolled] = useState(false);
 
+    const [scrollLeft, setScrollLeft] = useState(0);
+    const [containerWidth, setContainerWidth] = useState(0);
+
     // Generate Date Headers for Full Year + Next Year
     const { today, timelineStart, timelineEnd } = useMemo(() => {
         const t = startOfDay(new Date());
         return {
             today: t,
-            timelineStart: startOfYear(t),
-            timelineEnd: endOfYear(addYears(t, 1))
+            // Optimized: Virtualization allows us to have a HUGE range. 50 years is effectively infinite for this use case.
+            timelineStart: subYears(startOfYear(t), 50),
+            timelineEnd: endOfYear(addYears(t, 50))
         };
     }, []); // Empty dep array: calculate once on mount (or maybe dependency on nothing). 
-    // Actually, if the user leaves the app open for days, this might be stale. 
-    // But for a session, it's fine. 
-    // If strictness needed, verify date every minute? Overkill for now.
 
     // Create array of all days in the full range
     const totalDays = differenceInDays(timelineEnd, timelineStart) + 1;
-    const dates = useMemo(() => Array.from({ length: totalDays }).map((_, i) => addDays(timelineStart, i)), [timelineStart, totalDays]);
+    // const dates = useMemo(() => Array.from({ length: totalDays }).map((_, i) => addDays(timelineStart, i)), [timelineStart, totalDays]);
 
     // Directional Highlight State
     const [directionHighlight, setDirectionHighlight] = useState<'left' | 'right' | null>(null);
 
     // Initial scroll and check
     useLayoutEffect(() => {
-        if (containerRef.current && !hasScrolled && !focusedProject) {
-            const todayIndex = differenceInDays(today, timelineStart);
-            const scrollPosition = (todayIndex * PX_PER_DAY) - (containerRef.current.clientWidth / 2) + (PX_PER_DAY / 2);
-            containerRef.current.scrollLeft = Math.max(0, scrollPosition);
-            setHasScrolled(true);
+        if (containerRef.current) {
+            setContainerWidth(containerRef.current.clientWidth);
+
+            // Resize Observer to keep width updated
+            const observer = new ResizeObserver(entries => {
+                for (const entry of entries) {
+                    setContainerWidth(entry.contentRect.width);
+                }
+            });
+            observer.observe(containerRef.current);
+
+            if (!hasScrolled && !focusedProject) {
+                const todayIndex = differenceInDays(today, timelineStart);
+                const scrollPosition = (todayIndex * PX_PER_DAY) - (containerRef.current.clientWidth / 2) + (PX_PER_DAY / 2);
+                containerRef.current.scrollLeft = Math.max(0, scrollPosition);
+                setHasScrolled(true);
+            }
+
+            return () => observer.disconnect();
         }
     }, [hasScrolled, today, timelineStart, focusedProject]);
 
@@ -119,6 +134,8 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
         if (!containerRef.current) return;
 
         const container = containerRef.current;
+        setScrollLeft(container.scrollLeft);
+
         const scrollLeft = container.scrollLeft;
         const clientWidth = container.clientWidth;
 
@@ -577,39 +594,72 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                 onMouseUp={handleContainerMouseUp}
                 onMouseLeave={handleContainerMouseUp}
             >
-                <div className="min-w-max h-full relative" style={{ width: dates.length * PX_PER_DAY, minHeight: '100%' }}>
+                <div className="min-w-max h-full relative" style={{ width: totalDays * PX_PER_DAY, minHeight: '100%' }}>
 
                     {/* Header Row (Sticky) */}
-                    <div className="sticky top-0 z-20 flex border-b border-border bg-card shadow-sm pointer-events-none">
-                        {dates.map((date, i) => {
-                            const isFirstDay = date.getDate() === 1;
-                            const isToday = differenceInDays(date, today) === 0;
-                            return (
-                                <div key={i} className={`relative flex-shrink-0 h-8 flex items-end pb-1 border-r border-border/50 ${isFirstDay ? 'border-l border-border bg-accent/50' : ''}`} style={{ width: PX_PER_DAY }}>
-                                    {isFirstDay ? (
-                                        <span className="absolute left-1 bottom-1 w-max font-bold text-foreground text-xs select-none z-10 whitespace-nowrap">
-                                            {format(date, 'yyyy. M')}
-                                        </span>
-                                    ) : (
-                                        <span className={`w-full text-center text-xs text-muted-foreground ${isToday ? 'text-blue-600 font-bold' : ''}`}>
-                                            {date.getDate()}
-                                        </span>
-                                    )}
-                                </div>
-                            )
-                        })}
+                    <div className="sticky top-0 z-20 h-8 flex border-b border-border bg-card shadow-sm pointer-events-none overflow-hidden relative" style={{ width: '100%' }}>
+                        {(() => {
+                            const buffer = 10; // Extra days to render on sides
+                            const visibleStartIndex = Math.max(0, Math.floor(scrollLeft / PX_PER_DAY) - buffer);
+                            const visibleEndIndex = Math.min(totalDays, Math.ceil((scrollLeft + containerWidth) / PX_PER_DAY) + buffer);
+
+                            const visibleDates = [];
+                            for (let i = visibleStartIndex; i < visibleEndIndex; i++) {
+                                visibleDates.push({ date: addDays(timelineStart, i), index: i });
+                            }
+
+                            return visibleDates.map(({ date, index }) => {
+                                const isFirstDay = date.getDate() === 1;
+                                const isToday = differenceInDays(date, today) === 0;
+                                const left = index * PX_PER_DAY;
+
+                                return (
+                                    <div
+                                        key={index}
+                                        className={`absolute top-0 bottom-0 flex items-end pb-1 border-r border-border/50 ${isFirstDay ? 'border-l border-border bg-accent/50' : ''}`}
+                                        style={{ left, width: PX_PER_DAY }}
+                                    >
+                                        {isFirstDay ? (
+                                            <span className="absolute left-1 bottom-1 w-max font-bold text-foreground text-xs select-none z-10 whitespace-nowrap">
+                                                {format(date, 'yyyy. M')}
+                                            </span>
+                                        ) : (
+                                            <span className={`w-full text-center text-xs text-muted-foreground ${isToday ? 'text-blue-600 font-bold' : ''}`}>
+                                                {date.getDate()}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            });
+                        })()}
                     </div>
 
                     {/* Canvas Body */}
                     <div className="relative flex-1 min-h-[500px] pt-4">
                         {/* Background Grid */}
-                        <div className="absolute inset-0 flex pointer-events-none h-full pt-8">
-                            {dates.map((date, i) => {
-                                const isToday = differenceInDays(date, today) === 0;
-                                return (
-                                    <div key={i} className={`flex-shrink-0 border-r border-border/30 h-full ${isToday ? 'bg-blue-500/5' : ''}`} style={{ width: PX_PER_DAY }} />
-                                );
-                            })}
+                        <div className="absolute inset-0 pointer-events-none h-full pt-8">
+                            {(() => {
+                                const buffer = 10;
+                                const visibleStartIndex = Math.max(0, Math.floor(scrollLeft / PX_PER_DAY) - buffer);
+                                const visibleEndIndex = Math.min(totalDays, Math.ceil((scrollLeft + containerWidth) / PX_PER_DAY) + buffer);
+
+                                const gridLines = [];
+                                for (let i = visibleStartIndex; i < visibleEndIndex; i++) {
+                                    gridLines.push({ date: addDays(timelineStart, i), index: i });
+                                }
+
+                                return gridLines.map(({ date, index }) => {
+                                    const isToday = differenceInDays(date, today) === 0;
+                                    const left = index * PX_PER_DAY;
+                                    return (
+                                        <div
+                                            key={index}
+                                            className={`absolute top-0 bottom-0 border-r border-border/30 ${isToday ? 'bg-blue-500/5' : ''}`}
+                                            style={{ left, width: PX_PER_DAY }}
+                                        />
+                                    );
+                                });
+                            })()}
                         </div>
 
                         {/* Today Line Indicator */}
@@ -845,15 +895,22 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                                                             })()
                                                         }}
                                                     ></div>
-                                                    <div className="absolute inset-0 flex items-center px-2 gap-1">
-                                                        {project.locked && (
-                                                            <div className="bg-background/80 p-0.5 rounded-full shadow-sm">
-                                                                <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-lock text-muted-foreground"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-                                                            </div>
+                                                    <div className="absolute inset-0 flex flex-col justify-center px-3 min-w-0">
+                                                        <div className="flex items-center gap-1.5 w-full">
+                                                            {project.locked && (
+                                                                <div className="shrink-0 bg-background/80 p-0.5 rounded-full shadow-sm">
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-lock text-muted-foreground"><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                                                                </div>
+                                                            )}
+                                                            <span className="font-bold text-xs text-foreground truncate select-none leading-none">
+                                                                {project.name}
+                                                            </span>
+                                                        </div>
+                                                        {project.type && (
+                                                            <span className="text-[10px] text-foreground/70 font-medium truncate select-none leading-none mt-0.5 ml-0.5">
+                                                                {project.type}
+                                                            </span>
                                                         )}
-                                                        <span className="font-semibold text-xs text-foreground truncate w-full select-none">
-                                                            {project.name}
-                                                        </span>
                                                     </div>
 
                                                     {!project.locked && (

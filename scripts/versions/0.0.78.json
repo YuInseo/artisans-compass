@@ -1,0 +1,18 @@
+{
+    "version": "0.0.78",
+    "deploy_date": "2026-02-02 17:48:00",
+    "logs": {
+        "ko": {
+            "title": "배포 스크립트 최적화",
+            "description": "완전 자동화된 릴리스를 위해 배포 스크립트에서 대화형 프롬프트를 제거했습니다."
+        },
+        "ja": {
+            "title": "デプロイスクリプトの最適化",
+            "description": "完全自動化されたリリースのために、デプロイスクリプトから対話型プロンプトを削除しました。"
+        },
+        "en": {
+            "title": "Deploy Script Optimization",
+            "description": "Removed interactive prompts from the deployment script for fully automated releases."
+        }
+    }
+}

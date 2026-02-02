@@ -9,6 +9,10 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     const [channel, ...omit] = args
     return ipcRenderer.off(channel, ...omit)
   },
+  removeListener(...args: Parameters<typeof ipcRenderer.removeListener>) {
+    const [channel, ...omit] = args
+    return ipcRenderer.removeListener(channel, ...omit)
+  },
   send(...args: Parameters<typeof ipcRenderer.send>) {
     const [channel, ...omit] = args
     return ipcRenderer.send(channel, ...omit)
@@ -38,5 +42,10 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     const listener = (_event: any, session: any) => callback(session);
     ipcRenderer.on('session-completed', listener);
     return () => ipcRenderer.off('session-completed', listener);
+  },
+  onUpdateState: (callback: (state: any) => void) => {
+    const listener = (_event: any, state: any) => callback(state);
+    ipcRenderer.on('update-state', listener);
+    return () => ipcRenderer.off('update-state', listener);
   },
 })

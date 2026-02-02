@@ -1,11 +1,13 @@
 import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Play, Clock, CheckCircle2, Check } from "lucide-react";
+import { Play, Clock, CheckCircle2, Check, CornerDownRight, Import } from "lucide-react";
 import { Todo, Session, Project } from "@/types";
 import { TimeTableGraph } from "./TimeTableGraph";
 import { format } from "date-fns";
 import { ScreenshotSlider } from "./ScreenshotSlider";
-import { ArchiveBlockNote } from "./ArchiveBlockNote";
+import { useTodoStore } from "@/hooks/useTodoStore";
+import { toast } from "sonner";
+// import { ArchiveBlockNote } from "./ArchiveBlockNote";
 import {
     Select,
     SelectContent,
@@ -13,6 +15,13 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuCheckboxItem,
+    ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { Button } from "@/components/ui/button";
 
 interface DailyArchiveViewProps {
     date: Date;
@@ -28,50 +37,116 @@ interface DailyArchiveViewProps {
     onUpdateTodos?: (todos: Todo[]) => void;
     className?: string;
     timelapseDurationSeconds?: number;
-    checkboxVisibility?: 'high' | 'low';
+    showIndentationGuides?: boolean;
     onClose?: () => void;
     hideCloseButton?: boolean;
+    readOnly?: boolean;
 }
 
 import { useTranslation } from "react-i18next";
 
-export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, checkboxVisibility = 'high', onClose, hideCloseButton = false }: DailyArchiveViewProps) {
+export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false }: DailyArchiveViewProps) {
     const { t } = useTranslation();
     const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
+    const { carryOverTodos } = useTodoStore();
 
     // Filter todos based on selected project
     const filteredTodos = useMemo(() => {
         if (selectedProjectId === "all" || !projectTodos || Object.keys(projectTodos).length === 0) {
-            return initialTodos;
+            // Apply clean filter to initialTodos as well if it's the fallback
+            const cleanFilter = (list: Todo[]): Todo[] => {
+                return list.filter(item => {
+                    const hasText = item.text && item.text.trim().length > 0;
+                    const hasChildren = item.children && item.children.length > 0;
+
+                    if (hasChildren) {
+                        item.children = cleanFilter(item.children || []);
+                        const childrenHaveContent = item.children.length > 0;
+                        return hasText || childrenHaveContent;
+                    }
+                    return hasText;
+                }).map(item => ({
+                    ...item,
+                    children: item.children ? cleanFilter(item.children) : []
+                }));
+            };
+            return cleanFilter(initialTodos);
         }
-        return projectTodos[selectedProjectId] || [];
+        const currentList = projectTodos[selectedProjectId] || [];
+
+        // Filter out empty todos (and no children) for cleaner Archive view
+        const cleanFilter = (list: Todo[]): Todo[] => {
+            return list.map(item => ({
+                ...item,
+                children: item.children ? cleanFilter(item.children) : []
+            })).filter(item => {
+                const hasText = item.text && item.text.trim().length > 0;
+                const hasChildren = item.children && item.children.length > 0;
+                return hasText || hasChildren;
+            });
+        };
+
+        return cleanFilter(currentList);
     }, [selectedProjectId, projectTodos, initialTodos]);
 
     const [todos, setTodos] = useState<Todo[]>(filteredTodos);
     const [dynamicScreenshots, setDynamicScreenshots] = useState<string[]>(initialScreenshots);
+
+    // Dynamic Screenshot & Settings Loading
+    const [enableSpellCheck, setEnableSpellCheck] = useState(false);
+    const [showHint, setShowHint] = useState(() => {
+        return localStorage.getItem('hasSeenFetchUncheckedHint') !== 'true';
+    });
+    const [autoCloseOnFetch, setAutoCloseOnFetch] = useState(() => {
+        // Default to true as requested, but respect user preference if set
+        const stored = localStorage.getItem('autoCloseArchiveOnFetch');
+        return stored === null ? true : stored === 'true';
+    });
+    const [nightTimeStart, setNightTimeStart] = useState<number>(22);
+
+    useEffect(() => {
+        if (showHint) {
+            const timer = setTimeout(() => {
+                setShowHint(false);
+                localStorage.setItem('hasSeenFetchUncheckedHint', 'true');
+            }, 5000); // Auto hide after 5s
+            return () => clearTimeout(timer);
+        }
+    }, [showHint]);
+
+    const toggleAutoClose = (checked: boolean) => {
+        setAutoCloseOnFetch(checked);
+        localStorage.setItem('autoCloseArchiveOnFetch', String(checked));
+    };
+
+    useEffect(() => {
+        const loadData = async () => {
+            if ((window as any).ipcRenderer) {
+                // Screenshots
+                const dateStr = format(date, 'yyyy-MM-dd');
+                const images = await (window as any).ipcRenderer.invoke('get-daily-screenshots', dateStr);
+                setDynamicScreenshots(images);
+
+                // Settings
+                const settings = await (window as any).ipcRenderer.invoke('get-settings');
+                if (settings && typeof settings.enableSpellCheck === 'boolean') {
+                    setEnableSpellCheck(settings.enableSpellCheck);
+                }
+                if (settings && typeof settings.nightTimeStart === 'number') {
+                    setNightTimeStart(settings.nightTimeStart);
+                }
+            }
+        };
+        loadData();
+    }, [date]);
 
     // Sync filteredTodos to state when project selection or data changes
     useEffect(() => {
         setTodos(filteredTodos);
     }, [filteredTodos]);
 
-    // Dynamic Screenshot Loading
-    useEffect(() => {
-        const fetchScreenshots = async () => {
-            if ((window as any).ipcRenderer) {
-                const dateStr = format(date, 'yyyy-MM-dd');
-                const images = await (window as any).ipcRenderer.invoke('get-daily-screenshots', dateStr);
-                setDynamicScreenshots(images);
-            }
-        };
-        fetchScreenshots();
-    }, [date]);
+    // Recalculate stats from sessions to ensure consistency with TimeTableGraph
 
-    const formatTime = (seconds: number) => {
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        return `${h}h ${m}m`;
-    };
 
     // Todo Logic
     const updateTodoText = (id: string, text: string) => {
@@ -180,59 +255,142 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
         }
     };
 
+    const handleFetchUnchecked = async () => {
+        if (!projectTodos || Object.keys(projectTodos).length === 0) {
+            // Fallback for flat todo list
+            const filterIncomplete = (list: Todo[]): Todo[] => {
+                return list.filter(t => !t.completed && t.text.trim() !== "").map(t => ({
+                    ...t,
+                    carriedOver: true,
+                    children: t.children ? filterIncomplete(t.children) : []
+                }));
+            };
+            const incomplete = filterIncomplete(initialTodos);
+            if (incomplete.length > 0) {
+                await carryOverTodos(incomplete, "none");
+                toast.success(t('calendar.fetchedUnchecked'));
+            } else {
+                toast.info(t('calendar.noUnchecked'));
+            }
+            return;
+        }
+
+        let hasFetched = false;
+        for (const projectId of Object.keys(projectTodos)) {
+            const todos = projectTodos[projectId];
+            const filterIncomplete = (list: Todo[]): Todo[] => {
+                return list.filter(t => !t.completed && t.text.trim() !== "").map(t => ({
+                    ...t,
+                    carriedOver: true,
+                    children: t.children ? filterIncomplete(t.children) : []
+                }));
+            };
+            const incomplete = filterIncomplete(todos);
+            if (incomplete.length > 0) {
+                await carryOverTodos(incomplete, projectId);
+                hasFetched = true;
+            }
+        }
+
+        if (hasFetched) {
+            toast.success(t('calendar.fetchedUnchecked'));
+        } else {
+            toast.info(t('calendar.noUnchecked'));
+        }
+    };
+
+    const handleFetchClick = async () => {
+        setShowHint(false);
+        localStorage.setItem('hasSeenFetchUncheckedHint', 'true');
+        await handleFetchUnchecked();
+
+        if (autoCloseOnFetch && onClose) {
+            onClose();
+        }
+    };
+
     const renderTodo = (todo: Todo, level = 0) => (
-        <div key={todo.id} className="mb-px"> {/* Reduced margin */}
+        <div key={todo.id} className="mb-px relative">
             <div className={`flex items-start gap-2 py-1 group ${level > 0 ? 'ml-6' : ''}`}>
                 {/* Checkbox */}
                 <div
-                    onClick={() => toggleTodo(todo.id)}
+                    onClick={() => !readOnly && toggleTodo(todo.id)}
                     className={cn(
-                        "mt-1.5 w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 transition-all duration-300 cursor-pointer select-none",
+                        "mt-1.5 w-4 h-4 rounded-[4px] border flex items-center justify-center shrink-0 transition-all duration-300 select-none",
+                        readOnly ? "cursor-default" : "cursor-pointer",
                         todo.completed
-                            ? "bg-blue-600 border-blue-600"
+                            ? "bg-primary border-primary"
                             : cn(
-                                checkboxVisibility === 'high'
-                                    ? "border-zinc-500 bg-zinc-800 hover:border-zinc-400 hover:bg-zinc-700"
-                                    : "border-zinc-700 bg-zinc-800 hover:border-zinc-500"
+                                "border-muted-foreground/30 bg-transparent",
+                                !readOnly && "hover:border-primary/50 hover:bg-primary/5"
                             ),
-                        checkboxVisibility === 'low' && !todo.completed ? 'opacity-0 group-hover:opacity-100' : 'opacity-100'
+                        "opacity-100" // Always visible now
                     )}
                 >
                     {todo.completed && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                 </div>
 
+                {/* Incomplete / Carried Over Indicator (Visualize as carried over to next day) */}
+                {!todo.completed && (
+                    <div className="absolute -left-3 top-2 text-muted-foreground/40" title={t('calendar.carriedOver')}>
+                        <CornerDownRight size={12} />
+                    </div>
+                )}
+
                 {/* Input Text */}
-                <input
-                    id={`todo-input-${todo.id}`}
-                    value={todo.text}
-                    onChange={(e) => updateTodoText(todo.id, e.target.value)}
-                    onKeyDown={(e) => handleKeyDown(e, todo.id)}
-                    className={`bg-transparent border-none outline-none w-full p-0 text-sm leading-relaxed focus:bg-white/5 rounded px-1 transition-colors
-                        ${todo.completed ? 'text-zinc-500 line-through' : 'text-zinc-200 focus:text-white'}`}
-                    placeholder="Type a focus..."
-                    autoComplete="off"
-                />
+                {readOnly ? (
+                    <span className={cn(
+                        "w-full p-0 text-sm leading-relaxed rounded px-1 transition-colors cursor-default",
+                        todo.completed ? "text-muted-foreground line-through" : "text-foreground"
+                    )}>
+                        {todo.text}
+                    </span>
+                ) : (
+                    <input
+                        id={`todo-input-${todo.id}`}
+                        value={todo.text}
+                        onChange={(e) => updateTodoText(todo.id, e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(e, todo.id)}
+                        className={cn(
+                            "bg-transparent border-none outline-none w-full p-0 text-sm leading-relaxed rounded px-1 transition-colors focus:bg-accent/50 focus:text-foreground",
+                            todo.completed ? "text-muted-foreground line-through" : "text-foreground placeholder:text-muted-foreground/50"
+                        )}
+                        placeholder="Type a focus..."
+                        autoComplete="off"
+                        spellCheck={enableSpellCheck}
+                    />
+                )}
             </div>
-            {/* Children */}
-            {todo.children?.map(child => renderTodo(child, level + 1))}
+            {/* Children with Indentation Guide */}
+            {todo.children && todo.children.length > 0 && (
+                <div className="relative">
+                    {showIndentationGuides && (
+                        <div
+                            className="absolute bg-border/40 w-px h-[calc(100%-12px)] top-0"
+                            style={{ left: `${(level + 1) * 24 + 7}px` }} // Calculated to align with checkbox center of children
+                        />
+                    )}
+                    {todo.children.map(child => renderTodo(child, level + 1))}
+                </div>
+            )}
         </div>
     );
 
     const hasScreenshots = dynamicScreenshots.length > 0;
 
     return (
-        <div className={`h-full flex divide-x divide-border ${className}`}>
+        <div className={`h-full flex divide-x divide-border select-none ${className}`}>
             {/* Column 1: Visual (Timelapse) - Flex 5 (Left) - Conditional */}
             {hasScreenshots && (
-                <div className="flex-[5] min-w-0 p-6 flex flex-col bg-[#09090b] relative group/visual justify-center">
+                <div className="flex-[5] min-w-0 p-6 flex flex-col bg-muted/30 relative group/visual justify-center">
                     <div className="absolute top-6 left-6 flex items-center gap-2 z-10">
-                        <h3 className="text-sm font-bold text-white/50 flex items-center gap-2 uppercase tracking-wider backdrop-blur-md bg-black/30 px-3 py-1 rounded-full border border-white/10">
+                        <h3 className="text-sm font-bold text-white/50 flex items-center gap-2 uppercase tracking-wider backdrop-blur-md bg-white/5 px-3 py-1 rounded-full border border-white/10">
                             <Play className="w-3.5 h-3.5 text-primary" />
                             {t('calendar.visualRecap')}
                         </h3>
                     </div>
 
-                    <div className="w-full aspect-video max-h-[80%] relative rounded-xl overflow-hidden border border-white/10 bg-black shadow-2xl">
+                    <div className="w-full aspect-video max-h-[80%] relative rounded-xl overflow-hidden border border-white/10 bg-zinc-900/50 shadow-2xl">
                         <ScreenshotSlider
                             images={dynamicScreenshots}
                             durationSeconds={timelapseDurationSeconds}
@@ -244,48 +402,85 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
 
             {/* Column 2: Today's Focus/Journey Archive - Flex 4 or grow */}
             <div className={cn(
-                "min-w-0 p-8 flex flex-col bg-[#121212] text-white border-l border-white/5",
+                "min-w-0 p-8 flex flex-col bg-muted/30 text-foreground border-l border-border/50",
                 hasScreenshots ? "flex-[4]" : "flex-[6]" // Take more space if no visual
             )}>
                 <div className="flex items-center justify-between mb-1">
                     <h3 className="text-xs font-bold text-zinc-500 flex items-center gap-2 uppercase tracking-widest">
                         {t('calendar.journeyLog')}
                     </h3>
-                    {/* Project Selector */}
-                    {projects.length > 0 && (
-                        <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                            <SelectTrigger className="w-[160px] h-7 text-xs bg-zinc-800 border-zinc-700 text-zinc-300">
-                                <SelectValue placeholder={t('sidebar.allProjects')} />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">{t('sidebar.allProjects')}</SelectItem>
-                                {projects.map(p => (
-                                    <SelectItem key={p.id} value={p.id}>
-                                        <span className="flex items-center gap-2">
-                                            <span className={`w-2 h-2 rounded-full`} style={{ backgroundColor: p.color || '#3b82f6' }} />
-                                            {p.name}
-                                        </span>
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
+
+                    <div className="flex items-center gap-2">
+                        {/* Fetch Unchecked Button - Icon Only with Hint */}
+                        <div className="relative">
+                            <ContextMenu>
+                                <ContextMenuTrigger>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary border border-primary/20 rounded-full transition-all hover:scale-105 active:scale-95"
+                                        onClick={handleFetchClick}
+                                    >
+                                        <Import size={14} strokeWidth={2.5} />
+                                    </Button>
+                                </ContextMenuTrigger>
+                                <ContextMenuContent>
+                                    <ContextMenuCheckboxItem
+                                        checked={autoCloseOnFetch}
+                                        onCheckedChange={toggleAutoClose}
+                                    >
+                                        {t('calendar.autoCloseOnFetch') || "Auto-close"}
+                                    </ContextMenuCheckboxItem>
+                                </ContextMenuContent>
+                            </ContextMenu>
+
+                            {/* Speech Bubble Hint */}
+                            {showHint && (
+                                <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 z-50 animate-in fade-in slide-in-from-right-2 duration-500 pointer-events-none">
+                                    <div className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap relative">
+                                        {t('calendar.fetchUncheckedDesc')}
+                                        {/* Triangle Arrow */}
+                                        <div className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-0 h-0 border-y-[6px] border-y-transparent border-l-[8px] border-l-primary" />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        {/* Actually, let's just use ContextMenu properly if available, or just a small gear? 
+                           Left Click: Fetch
+                           Right Click: Options
+                        */}
+
+                        {/* Project Selector */}
+                        {projects.length > 0 && (
+                            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                                <SelectTrigger className="w-[160px] h-7 text-xs bg-zinc-800 border-zinc-700 text-zinc-300">
+                                    <SelectValue placeholder={t('sidebar.allProjects')} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">{t('sidebar.allProjects')}</SelectItem>
+                                    {projects.map(p => (
+                                        <SelectItem key={p.id} value={p.id}>
+                                            <span className="flex items-center gap-2">
+                                                <span className={`w-2 h-2 rounded-full`} style={{ backgroundColor: p.color || '#3b82f6' }} />
+                                                {p.name}
+                                            </span>
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    </div>
                 </div>
-                <div className="text-3xl font-bold text-white mb-8 tracking-tight">
+                <div className="text-3xl font-bold text-foreground mb-8 tracking-tight">
                     {format(date, 'MMM dd, yyyy')}
                 </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1 relative"
-                    style={{
-                        // Ensure variables align with the dark container
-                        "--foreground": "0 0% 95%",
-                        "--muted-foreground": "0 0% 65%",
-                    } as React.CSSProperties}
-                >
+                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1 relative">
                     {todos.length > 0 ? (
                         <div className="bn-container">
-                            {/* Read-Only Editor for Journey Log */}
-                            <ArchiveBlockNote todos={todos} />
+                            <div className="flex flex-col gap-1">
+                                {todos.map(t => renderTodo(t))}
+                            </div>
                         </div>
                     ) : (
                         <div className="text-zinc-600 text-sm italic mt-10 text-center">
@@ -309,16 +504,13 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                 </div>
 
                 <div className="flex-1 overflow-hidden relative">
-                    <TimeTableGraph sessions={sessions} date={date} />
+                    <TimeTableGraph sessions={sessions} date={date} projects={projects} nightTimeStart={nightTimeStart} />
                 </div>
 
                 {/* Footer Stack: Stats */}
                 <div className="p-4 pt-2 flex flex-col gap-3 bg-card shrink-0 pb-6 border-t border-border mt-auto">
-                    {/* Total Work */}
-                    <div className="bg-muted border border-border rounded-2xl p-4 flex flex-col items-center justify-center shadow-sm">
-                        <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-1">{t('calendar.totalWork')}</div>
-                        <div className="text-2xl text-foreground font-black font-mono tracking-tight">{formatTime(stats.totalSeconds)}</div>
-                    </div>
+
+
 
                     {/* Close Button Attached Below */}
                     {!hideCloseButton && onClose && (
@@ -332,13 +524,13 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
 
                     {/* Quest Clear */}
                     {stats.questAchieved && (
-                        <div className="bg-green-500/10 border border-green-500/20 rounded-2xl p-4 flex items-center justify-center gap-2 shadow-sm">
+                        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3 flex items-center justify-start gap-2 shadow-sm">
                             <CheckCircle2 className="w-5 h-5 text-green-600 fill-green-100 dark:text-green-400 dark:fill-green-900" />
                             <span className="text-sm font-extrabold text-green-700 dark:text-green-400 tracking-wide">{t('calendar.questClear')}</span>
                         </div>
                     )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 }

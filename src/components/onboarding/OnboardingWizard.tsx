@@ -58,7 +58,24 @@ export function OnboardingWizard({ isOpen, onComplete }: OnboardingWizardProps) 
     };
 
     const handleFinish = async () => {
-        // 1. Save Settings (Robust)
+        // 1. Create First Project (Overwrite existing)
+        const newProject: Project = {
+            id: uuidv4(),
+            name: projectName,
+            type: "Main",
+            startDate: format(startDate, 'yyyy-MM-dd'),
+            endDate: format(endDate, 'yyyy-MM-dd'),
+            isCompleted: false
+        };
+
+        // Explicitly overwrite any existing projects
+        await saveProjects([newProject]);
+
+        // 2. Set as Active Project
+        setActiveProjectId(newProject.id);
+
+        // 3. Save Settings (Mark Onboarding Complete)
+        // Doing this LAST ensures the wizard doesn't close before data is saved
         let currentSettings = settings;
         if (!currentSettings && (window as any).ipcRenderer) {
             try {
@@ -78,20 +95,6 @@ export function OnboardingWizard({ isOpen, onComplete }: OnboardingWizardProps) 
                 hasCompletedOnboarding: true
             });
         }
-
-        // 2. Create First Project
-        const newProject: Project = {
-            id: uuidv4(),
-            name: projectName,
-            type: "Main",
-            startDate: format(startDate, 'yyyy-MM-dd'),
-            endDate: format(endDate, 'yyyy-MM-dd'),
-            isCompleted: false
-        };
-        await saveProjects([newProject]);
-
-        // 3. Set as Active Project
-        setActiveProjectId(newProject.id);
 
         onComplete();
     };
@@ -202,7 +205,7 @@ export function OnboardingWizard({ isOpen, onComplete }: OnboardingWizardProps) 
 
                                     <div className="flex justify-between items-center pt-2">
                                         <Button variant="ghost" onClick={() => setStep(1)} className="text-muted-foreground hover:text-foreground">{t('onboarding.back')}</Button>
-                                        <Button onClick={() => setStep(3)} disabled={selectedApps.length === 0} className="rounded-full px-8">
+                                        <Button onClick={() => setStep(3)} className="rounded-full px-8">
                                             {t('onboarding.nextStep')}
                                         </Button>
                                     </div>

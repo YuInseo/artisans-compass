@@ -29,31 +29,96 @@
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    --background: 223 7% 21%;
+    /* Discord Main Chat: #313338 */
+    --foreground: 210 9% 87%;
+    /* Discord Text Normal: #dbdee1 */
+
+    --card: 220 7% 18%;
+    /* Discord Secondary Sidebar: #2b2d31 */
+    --card-foreground: 210 9% 87%;
+
+    --popover: 220 7% 18%;
+    --popover-foreground: 210 9% 87%;
+
+    --primary: 235 86% 65%;
+    /* Discord Blurple: #5865F2 */
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 223 7% 21%;
+    /* Same as background for subtle secondary */
+    --secondary-foreground: 210 9% 87%;
+
+    --muted: 225 6% 13%;
+    /* Discord Darkest Sidebar: #1e1f22 */
+    --muted-foreground: 214 8% 61%;
+    /* Discord Muted Text: #949BA4 */
+
+    --accent: 225 6% 26%;
+    /* Hover state: #3F4147 */
+    --accent-foreground: 210 9% 87%;
+
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --destructive-foreground: 210 9% 87%;
+
+    --border: 225 6% 13%;
+    /* Dark border */
+    --input: 225 6% 13%;
+    /* Darkest input background */
+    --ring: 235 86% 65%;
+    /* Focus ring: Blurple */
+  }
+
+  /* Discord Theme Override */
+  .dark.theme-discord {
+    --background: 223 7% 21%;
+    --foreground: 210 9% 87%;
+    --card: 220 7% 18%;
+    --card-foreground: 210 9% 87%;
+    --popover: 220 7% 18%;
+    --popover-foreground: 210 9% 87%;
+    --primary: 235 86% 65%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 223 7% 21%;
+    --secondary-foreground: 210 9% 87%;
+    --muted: 225 6% 13%;
+    --muted-foreground: 214 8% 61%;
+    --accent: 225 6% 26%;
+    --accent-foreground: 210 9% 87%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 9% 87%;
+    --border: 225 6% 13%;
+    --input: 225 6% 13%;
+    --ring: 235 86% 65%;
+  }
+
+  /* Midnight (OLED) Theme Override */
+  .dark.theme-midnight {
+    --background: 0 0% 0%;
+    --foreground: 210 20% 98%;
+    --card: 0 0% 3%;
+    --card-foreground: 210 20% 98%;
+    --popover: 0 0% 3%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 210 100% 50%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 0 0% 10%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 0 0% 7%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 0 0% 15%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 20% 98%;
+    --border: 0 0% 12%;
+    --input: 0 0% 12%;
+    --ring: 210 100% 50%;
   }
 }
 
 @layer base {
   * {
-    @apply border-border;
+    @apply border-border focus-visible:ring-0 focus-visible:outline-none;
   }
 
   body {
@@ -99,16 +164,81 @@
 
 /* 3. Hide ALL placeholders in BlockNote */
 /* This ensures "List", "Type '/' for commands" etc. are all hidden as requested for cleaner UI */
-.bn-editor .bn-inline-content:empty::before {
+/* Also hide default Paragraph blocks to prevent "empty blank space" at end of list */
+/* Use direct child combinators to prevent hiding Parents that contain Child paragraphs */
+.bn-block-outer:has(> .bn-block > .bn-block-content[data-content-type="paragraph"]) {
+  display: none !important;
+}
+
+/* 4. Notion-like Checkbox Styling */
+.bn-checkbox {
+  border-radius: 3px !important;
+  border: 1px solid hsl(var(--muted-foreground) / 0.6) !important;
+  /* Thinner 1px border as requested */
+  background: transparent !important;
+
+  /* STRICT Layout & Sizing */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+
+  /* Strict Notion Size */
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+  max-width: 16px !important;
+  max-height: 16px !important;
+  flex-shrink: 0 !important;
+
+  transition: all 0.1s ease-out !important;
+  margin-top: 3px !important;
+  /* Visual optical alignment */
+  margin-right: 2px !important;
+  /* Matches screenshot data */
+}
+
+/* Ensure inner SVG matches size exactly and doesn't overflow or shrink */
+.bn-checkbox svg {
+  width: 16px !important;
+  /* Slightly smaller icon to fit in 16px box nicely */
+  height: 16px !important;
+  min-width: 16px !important;
+  min-height: 16px !important;
+}
+
+/* Checked State - Fill with Primary Color */
+.bn-block-content[data-checked="true"] .bn-checkbox {
+  background: #2383E2 !important;
+  /* Explicit Notion-like Blue for that specific "photo" look, or use var(--primary) if preferred. Let's stick to a safe nice blue or primary */
+  border-color: #2383E2 !important;
+}
+
+/* Check icon color inside checked box */
+.bn-block-content[data-checked="true"] .bn-checkbox svg {
+  fill: white !important;
+}
+
+/* Unchecked Hover State - Darker Border */
+.bn-block-content[data-checked="false"] .bn-checkbox:hover {
+  background: hsl(var(--accent) / 0.5) !important;
+  border-color: hsl(var(--muted-foreground)) !important;
+  /* Darker grey on hover */
+}
+
+.bn-editor .bn-inline-content::before {
   content: "" !important;
   visibility: hidden !important;
   opacity: 0 !important;
+  display: none !important;
 }
 
 /* 4. Drag Handle Positioning & Editor Padding */
 .bn-side-menu {
   z-index: 50;
   /* margin-left adjustment removed in favor of padding */
+  margin-top: 3px !important;
+  /* Align with checkbox (which is also pushed down 3px) */
 }
 
 .bn-editor {

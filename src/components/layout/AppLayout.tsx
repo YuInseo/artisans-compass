@@ -1,6 +1,7 @@
 import { ReactNode, useState, useCallback, useEffect } from 'react';
 import { FocusGoalsSection } from "../dashboard/FocusGoalsSection";
 import { Button } from "@/components/ui/button";
+import { UpdateChecker } from "./UpdateChecker";
 import { Settings, Minus, Square, X, Plus, Eye, Search, Lock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -8,7 +9,7 @@ import { useDataStore } from "@/hooks/useDataStore";
 import { v4 as uuidv4 } from 'uuid';
 import { format, addDays } from "date-fns";
 
-import { UpdateChecker } from "./UpdateChecker";
+
 import { Project } from "@/types";
 import { useTranslation } from 'react-i18next';
 
@@ -33,7 +34,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewModeChange: _onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject, onFocusProject, isSidebarOpen, setIsSidebarOpen }: AppLayoutProps) {
     const { t } = useTranslation();
-    const { projects, saveProjects, saveSettings, settings, isWidgetMode, searchQuery, setSearchQuery, addToHistory } = useDataStore();
+    const { projects, saveProjects, settings, isWidgetMode, searchQuery, setSearchQuery, addToHistory } = useDataStore();
     // const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Lifted to App.tsx
     const [sidebarWidth, setSidebarWidth] = useState(400);
     const [isResizing, setIsResizing] = useState(false);
@@ -75,7 +76,8 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
         const doDrag = (mouseMoveEvent: MouseEvent) => {
             const currentX = mouseMoveEvent.clientX;
             const deltaX = currentX - startX;
-            const newWidth = Math.max(250, Math.min(800, startWidth + deltaX));
+            // Limit resizing: Min 300px (stops squashing), Max 500px (stops becoming too wide)
+            const newWidth = Math.max(300, Math.min(500, startWidth + deltaX));
             setSidebarWidth(newWidth);
         };
 
@@ -128,7 +130,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
     const showFocusGoals = !isSidebarOpen && viewMode === 'timeline';
 
     return (
-        <div className={cn("flex flex-col h-screen w-screen text-foreground overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
+        <div className={cn("flex flex-col h-screen w-screen text-foreground overflow-hidden select-none", !isWidgetMode ? "bg-background" : "bg-transparent")}>
 
             {/* Custom Title Bar - Hidden in Widget Mode */}
             {!isWidgetMode && (
@@ -339,6 +341,9 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
 
 
 
+                            {/* Update Checker */}
+                            <UpdateChecker />
+
                             {/* Settings Button */}
                             <Button
                                 variant="ghost"
@@ -349,7 +354,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                 <Settings className="w-4 h-4" />
                             </Button>
 
-                            <UpdateChecker />
+
                         </div>
 
                         {/* Window Controls (Custom) */}
@@ -424,23 +429,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
 
                 {/* Right: Interactive Daily Panel */}
                 <div className={cn("flex-1 relative bg-muted/40 text-foreground", isWidgetMode ? "p-0" : "p-4")}>
-                    {!isWidgetMode && (
-                        <div className="absolute top-2 right-2 z-20">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 rounded-full text-muted-foreground/50 hover:text-foreground hover:bg-background/80 shadow-sm"
-                                title="Help / Replay Tutorial"
-                                onClick={() => {
-                                    if (settings) {
-                                        saveSettings({ ...settings, hasCompletedOnboarding: false });
-                                    }
-                                }}
-                            >
-                                <span className="text-xs font-bold">?</span>
-                            </Button>
-                        </div>
-                    )}
+
                     {dailyPanel}
                 </div>
             </div>

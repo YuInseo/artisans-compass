@@ -15,12 +15,23 @@
             "tall": "Tall",
             "checkboxVisibility": "Checkbox Visibility",
             "checkboxVisibilityDesc": "Control when task checkboxes are displayed.",
+            "spellCheck": "Spell Checker",
+            "spellCheckDesc": "Show red underlines for spelling mistakes.",
             "designMode": "Design Mode (High Visibility)",
             "designModeDesc": "Checkboxes are always visible.",
             "focusMode": "Focus Mode (Low Visibility)",
             "focusModeDesc": "Checkboxes appear only on hover. Cleaner look.",
             "indentationLines": "Indentation Lines",
-            "indentationLinesDesc": "Show vertical lines connecting nested tasks."
+            "indentationLinesDesc": "Show vertical lines connecting nested tasks.",
+            "colorTheme": "Color Theme",
+            "editTheme": "Edit This Theme",
+            "loadDefaultList": "Load Default List",
+            "saveAsPreset": "Save as Preset",
+            "enterThemeName": "Enter theme name:",
+            "themeSaved": "Theme \"{{name}}\" saved!",
+            "myThemes": "My Themes",
+            "cssEditor": "CSS Editor",
+            "cssEditorDesc": "* Click \"Load Default List\" to see all editable color variables."
         },
         "timelineLabel": "Timeline",
         "timelineConfig": "Timeline Configurations",
@@ -32,6 +43,8 @@
             "screenshotIntervalDesc": "Frequency of automated captures.",
             "timelapseSpeed": "Timelapse Speed",
             "timelapseSpeedDesc": "Playback duration for daily review.",
+            "detectIdleTime": "Idle Detection Threshold",
+            "detectIdleTimeDesc": "Time before tracking pauses when no activity is detected.",
             "screenshotMode": "Screenshot Mode",
             "screenshotModeDesc": "Choose how screenshots are captured.",
             "selectInterval": "Select interval",
@@ -84,6 +97,7 @@
         "autoLaunch": "Auto Launch on Startup",
         "autoUpdate": "Auto Update",
         "autoUpdateDesc": "Automatically check for updates on startup.",
+        "screenshotOnlyActive": "Only capture when active",
         "widgetSettings": "Widget Settings",
         "checkboxVisibility": "Checkbox Visibility",
         "indentationLines": "Indentation Lines",
@@ -98,10 +112,15 @@
         "timeline": {
             "title": "Timeline Settings",
             "showPreview": "Show Drag Preview",
-            "showPreviewDesc": "Show a ghost bar indicating the new position while dragging or resizing."
+            "showPreviewDesc": "Show a ghost bar indicating the new position while dragging or resizing.",
+            "workApps": "Work Programs",
+            "filterWorkApps": "Show Only Work Programs",
+            "filterWorkAppsDesc": "Only show configured work programs in the timeline visualization.",
+            "configuredApps": "Configured Apps"
         },
         "backup": {
             "title": "Backup & Data",
+            "includeScreenshots": "Include Screenshots",
             "local": "Local Backup",
             "localDesc": "Export or Import your settings manually.",
             "export": "Export Settings",
@@ -226,12 +245,20 @@
         "activity": "Activity",
         "journeyLog": "Journey Log",
         "visualRecap": "Visual Recap",
-        "totalWork": "Total Work",
+        "totalWork": "Average Work Time",
         "totalFocus": "TOTAL FOCUS",
         "appUsage": "APP USAGE",
         "closeArchive": "Close Archive",
         "questClear": "QUEST CLEAR",
-        "focusing": "Focusing..."
+        "avgFocus": "Avg Focus Time",
+        "fetchUnchecked": "Carry Over",
+        "fetchUncheckedDesc": "Carry over unfinished tasks to today",
+        "fetchedUnchecked": "Fetched unfinished tasks",
+        "noUnchecked": "No unfinished tasks to fetch",
+        "focusing": "Focusing...",
+        "lastFocus": "LAST FOCUS",
+        "cannotTravelFuture": "Cannot travel to the future!",
+        "peakFocus": "Peak Focus"
     },
     "ritual": {
         "title": "Plan & Prepare",
@@ -298,5 +325,18 @@
         "goal": "Goal",
         "pickDate": "Pick date",
         "launch": "Launch Compass"
+    },
+    "analysis": {
+        "title": "Daily Activity Analysis",
+        "description": "Breakdown of your major activities by hour.",
+        "dayTime": "Day Time",
+        "nightTime": "Night Time",
+        "time": "Time",
+        "primaryFocus": "Primary Focus",
+        "intensity": "Intensity",
+        "duration": "Duration",
+        "noData": "No activity recorded yet.",
+        "analyze": "Analyze",
+        "buttonLabel": "Analyze"
     }
 }

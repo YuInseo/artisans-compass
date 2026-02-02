@@ -11,7 +11,6 @@ export interface AppSettings {
     screenshotIntervalSeconds: number; // default: 1800 (30m)
     screenshotPath?: string; // Custom directory for screenshots
     timelapseDurationSeconds: number; // default: 5
-    checkboxVisibility: 'high' | 'low'; // default: 'high'
     showIndentationGuides?: boolean; // default: true
     showTimelinePreview?: boolean; // default: true
     focusGoals?: {
@@ -27,11 +26,14 @@ export interface AppSettings {
     widgetPositionLocked?: boolean; // default: false
     widgetHeaderAutoHide?: boolean; // default: false
     widgetMaxHeight?: number; // default: 800
+    widgetAutoResize?: boolean; // default: true
+    widgetCustomHeight?: number; // default: undefined
     startOfWeek?: 'sunday' | 'monday'; // default: 'sunday'
     workDays?: string[]; // List of specific dates "YYYY-MM-DD" that are work days
     screenshotMode?: 'window' | 'screen' | 'process' | 'active-app';
     screenshotDisplayId?: string;
     screenshotTargetProcess?: string;
+    screenshotOnlyWhenActive?: boolean; // default: true
     googleDriveTokens?: {
         accessToken: string;
         refreshToken: string;
@@ -49,10 +51,18 @@ export interface AppSettings {
     notionConfig?: {
         clientId: string;
         clientSecret: string;
+        includeScreenshots?: boolean;
     };
     enableScreenshots?: boolean;
     autoLaunch?: boolean;
     autoUpdate?: boolean;
+    enableSpellCheck?: boolean; // default: false
+    themePreset?: 'default' | 'discord' | 'midnight' | 'custom'; // default: 'default'
+    customCSS?: string; // User-defined CSS injection
+    customThemes?: { id: string; name: string; css: string }[];
+    workApps?: string[]; // List of app names to filter timeline by
+    filterTimelineByWorkApps?: boolean; // default: false
+    nightTimeStart?: number; // default: 22 (10 PM)
 }
 
 export interface Project {
@@ -86,6 +96,7 @@ export interface Todo {
     children?: Todo[];
     isCollapsed?: boolean;
     createdAt?: number; // Timestamp
+    carriedOver?: boolean;
 }
 
 export interface DailyLog {
@@ -98,6 +109,8 @@ export interface DailyLog {
     };
     assets: string[]; // Paths to screenshots
     isRestDay: boolean; // if true, treated as rest
+    projectTodos?: Record<string, Todo[]>;
+    carriedOver?: boolean;
 }
 
 export interface MonitorInfo {

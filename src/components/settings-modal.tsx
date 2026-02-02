@@ -20,13 +20,15 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
-import { X, Cloud, Check, Moon, Sun, Monitor, Eye, EyeOff, Info, FileText, RefreshCw } from "lucide-react";
+import { X, Cloud, Check, Moon, Sun, Monitor, Info, FileText, RefreshCw, AlertCircle, History, Settings, Palette, LayoutTemplate, Shield, Database } from "lucide-react";
 import { AppSettings } from "@/types"
 import { useState, useEffect, useRef } from "react"
+import { toast } from "sonner";
 import { cn } from "@/lib/utils"
 import { useTranslation, Trans } from 'react-i18next';
 // @ts-ignore
 import { NotionSetupDialog } from "./notion-setup-dialog"; // Import
+import { version } from "../../package.json";
 
 interface SettingsModalProps {
     open?: boolean;
@@ -57,7 +59,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical, Pencil } from 'lucide-react';
 
-type SettingsTab = 'general' | 'appearance' | 'timeline' | 'tracking' | 'integrations';
+type SettingsTab = 'general' | 'appearance' | 'timeline' | 'tracking' | 'integrations' | 'updatelog';
 // Presentational Component for Project Type Item
 function ProjectTypeItem({
     tag,
@@ -296,7 +298,18 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
     // General Tab State
     const [newAppInput, setNewAppInput] = useState("");
-    const [runningApps, setRunningApps] = useState<{ id: string, name: string, process?: string, appIcon?: string }[]>([]);
+    const [runningApps, setRunningApps] = useState<{ id?: string, name: string, process: string, appIcon?: string }[]>([]);
+    const [runningAppsSearch, setRunningAppsSearch] = useState("");
+
+    useEffect(() => {
+        if (open && activeTab === 'timeline') {
+            if ((window as any).ipcRenderer) {
+                (window as any).ipcRenderer.invoke('get-running-apps').then((apps: any[]) => {
+                    setRunningApps(apps || []);
+                });
+            }
+        }
+    }, [open, activeTab]);
 
     // Tracking Tab State
     const [screenSources, setScreenSources] = useState<{ id: string, name: string, thumbnail: string }[]>([]);
@@ -310,6 +323,217 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     // Notion Credentials State (Integrations)
     const [notionSecret, setNotionSecret] = useState("");
     const [isSyncingHistory, setIsSyncingHistory] = useState(false);
+    const [showImportDialog, setShowImportDialog] = useState(false);
+    const [importDate, setImportDate] = useState(new Date().toISOString().split('T')[0]);
+    const [isImporting, setIsImporting] = useState(false);
+
+    // Auto Update State
+    const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'ready' | 'error'>('idle');
+    const [updateProgress, setUpdateProgress] = useState(0);
+    const [updateError, setUpdateError] = useState<string | null>(null);
+
+    // Update Log State
+    const [updates, setUpdates] = useState<{ version: string, date: string, title: string, file: string }[]>([]);
+    const [selectedUpdate, setSelectedUpdate] = useState<{ version: string, content: string } | null>(null);
+
+    useEffect(() => {
+        if (open && activeTab === 'updatelog') {
+            fetch('/updates/index.json')
+                .then(res => res.json())
+                .then(data => {
+                    setUpdates(data);
+                    // Select first by default if nothing selected
+                    if (data.length > 0 && !selectedUpdate) {
+                        const lang = i18n.language || 'en';
+                        const v = data[0].version;
+                        const f = data[0].file;
+                        const localizedPath = `/updates/${lang}/${v}.md`;
+
+                        fetch(localizedPath)
+                            .then(res => {
+                                if (res.ok) return res.text();
+                                return fetch(`/updates/${f}`).then(res => res.text());
+                            })
+                            .then(text => setSelectedUpdate({ version: v, content: text }));
+                    }
+                })
+                .catch(err => console.error("Failed to fetch updates index", err));
+        }
+    }, [open, activeTab]);
+
+    // Confirmation Dialog State
+    const [confirmConfig, setConfirmConfig] = useState<{
+        title: string;
+        description: string;
+        actionLabel: string;
+        onConfirm: () => void;
+    } | null>(null);
+
+    const handleConfirmClose = () => {
+        setConfirmConfig(null);
+    };
+
+    // Info Dialog State
+    const [infoConfig, setInfoConfig] = useState<{
+        title: string;
+        description: string;
+        details?: any[];
+    } | null>(null);
+
+    const handleImport = async () => {
+        if (!settings?.notionTokens?.accessToken || !settings?.notionTokens?.databaseId) return;
+        setIsImporting(true);
+        try {
+            if ((window as any).ipcRenderer) {
+                const result = await (window as any).ipcRenderer.invoke('import-notion-log', {
+                    token: settings.notionTokens.accessToken,
+                    databaseId: settings.notionTokens.databaseId,
+                    dateStr: importDate
+                });
+
+                if (result.success && result.data) {
+                    // Save to local
+                    await (window as any).ipcRenderer.invoke('save-daily-log', importDate, result.data);
+                    setInfoConfig({
+                        title: t('settings.backup.importComplete'),
+                        description: t('settings.backup.importSuccessMsg', { date: importDate }),
+                    });
+                    setShowImportDialog(false);
+                    window.location.reload();
+                } else {
+                    setInfoConfig({
+                        title: t('settings.backup.importFailed'),
+                        description: `Error: ${result.error || 'Unknown error'}`,
+                    });
+                }
+            }
+        } catch (e) {
+            console.error("Import error", e);
+            setInfoConfig({
+                title: "Critical Error",
+                description: "Import encountered a critical error. Check console for details.",
+            });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    const handleSelectUpdate = (version: string, file: string) => {
+        const lang = i18n.language || 'en';
+        // Try localized path first: /updates/{lang}/{version}.md
+        // Note: The file argument from index.json is typically "vX.X.X.md", so we might need just the version or strip 'v' if needed.
+        // But our workflow creates /updates/ko/0.0.82.md. 
+        // Let's assume the version string passed here matches the filename in language folders.
+
+        const targetVersion = version; // e.g. "0.0.82"
+        const localizedPath = `/updates/${lang}/${targetVersion}.md`;
+
+        fetch(localizedPath)
+            .then(res => {
+                if (res.ok) return res.text();
+                // Fallback to default file path provided in index.json
+                return fetch(`/updates/${file}`).then(res => res.text());
+            })
+            .then(text => setSelectedUpdate({ version, content: text }))
+            .catch(err => console.error("Failed to fetch update log", err));
+    };
+
+    // Simple Markdown Parser (Basic)
+    const renderMarkdown = (text: string) => {
+        if (!text) return null;
+        const lines = text.split('\n');
+        return lines.map((line, i) => {
+            if (line.startsWith('# ')) {
+                return <h1 key={i} className="text-2xl font-bold mb-4 mt-6 border-b pb-2">{line.replace('# ', '')}</h1>;
+            } else if (line.startsWith('## ')) {
+                return <h2 key={i} className="text-xl font-semibold mb-3 mt-5">{line.replace('## ', '')}</h2>;
+            } else if (line.startsWith('### ')) {
+                return <h3 key={i} className="text-lg font-medium mb-2 mt-4">{line.replace('### ', '')}</h3>;
+            } else if (line.startsWith('- ')) {
+                return <li key={i} className="ml-4 list-disc mb-1 pl-1 text-sm text-foreground/90">{line.replace('- ', '')}</li>;
+            } else if (line.trim() === '') {
+                return <div key={i} className="h-2" />;
+            } else {
+                return <p key={i} className="mb-2 text-sm leading-relaxed text-muted-foreground">{line}</p>;
+            }
+        });
+    };
+
+    useEffect(() => {
+        if (!open) return;
+
+        const onUpdateState = (_: any, state: { status: string; info?: any; progress?: any; error?: string; message?: string }) => {
+            console.log('[Settings] Update State:', state);
+
+            // Map backend 'idle' with 'up-to-date' message to 'not-available' for UI feedback
+            if (state.status === 'idle' && state.message === 'up-to-date') {
+                setUpdateStatus('not-available');
+                toast.info(t('settings.update.upToDate') || "You are using the latest version.");
+                return;
+            }
+
+            // Map other statuses directly if they match
+            // Backend: checking, available, downloading, ready, error, idle
+            // Frontend: idle, checking, available, not-available, downloading, ready, error
+            if (state.status === 'downloading' && state.progress) {
+                setUpdateStatus('downloading');
+                setUpdateProgress(state.progress.percent);
+            } else {
+                setUpdateStatus(state.status as any);
+
+                // Auto-trigger download if available, as the UI implies it's happening
+                if (state.status === 'available') {
+                    // Only show toast if transitioning from checking or idle to avoid spamming
+                    if (updateStatus === 'checking' || updateStatus === 'idle') {
+                        toast.success(t('settings.update.available') || "New update available. Downloading...", {
+                            action: {
+                                label: t('settings.updateLog') || "View Log",
+                                onClick: () => setActiveTab('updatelog')
+                            }
+                        });
+                    }
+
+                    if ((window as any).ipcRenderer) {
+                        (window as any).ipcRenderer.invoke('download-update').catch((err: any) => console.error("Failed to start download", err));
+                    }
+                }
+            }
+
+            if (state.error) {
+                setUpdateError(state.error);
+                toast.error(t('settings.update.error') || "Update check failed.");
+            }
+        };
+
+        if ((window as any).ipcRenderer) {
+            (window as any).ipcRenderer.on('update-state', onUpdateState);
+        }
+
+        return () => {
+            if ((window as any).ipcRenderer) {
+                (window as any).ipcRenderer.removeListener('update-state', onUpdateState);
+            }
+        };
+    }, [open]);
+
+    const checkForUpdates = async () => {
+        setUpdateStatus('checking');
+        setUpdateError(null);
+        if ((window as any).ipcRenderer) {
+            try {
+                await (window as any).ipcRenderer.invoke('check-for-updates');
+            } catch (e: any) {
+                setUpdateStatus('error');
+                setUpdateError(e.message);
+            }
+        }
+    };
+
+    const quitAndInstall = () => {
+        if ((window as any).ipcRenderer) {
+            (window as any).ipcRenderer.invoke('quit-and-install');
+        }
+    };
 
     const fetchRunningApps = async () => {
         if ((window as any).ipcRenderer) {
@@ -386,7 +610,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     }, [open, activeTab, screenSources.length]);
 
     const renderSidebar = () => (
-        <div className="w-[210px] shrink-0 bg-muted/30 flex flex-col p-2 gap-[2px] justify-end md:justify-start">
+        <div className="w-[210px] shrink-0 bg-muted/30 flex flex-col p-2 gap-[2px] justify-end md:justify-start select-none">
             <div className="px-3 pt-6 pb-3 md:pt-4">
                 <h2 className="text-xs font-bold text-muted-foreground uppercase px-2 mb-1">User Settings</h2>
             </div>
@@ -395,26 +619,37 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                 active={activeTab === 'general'}
                 onClick={() => setActiveTab('general')}
                 label={t('settings.general')}
+                icon={<Settings className="w-4 h-4 mr-2" />}
             />
             <SidebarButton
                 active={activeTab === 'appearance'}
                 onClick={() => setActiveTab('appearance')}
                 label={t('settings.appearance.title')}
+                icon={<Palette className="w-4 h-4 mr-2" />}
             />
             <SidebarButton
                 active={activeTab === 'timeline'}
                 onClick={() => setActiveTab('timeline')}
                 label={t('sidebar.timeline')}
+                icon={<LayoutTemplate className="w-4 h-4 mr-2" />}
             />
             <SidebarButton
                 active={activeTab === 'tracking'}
                 onClick={() => setActiveTab('tracking')}
                 label={t('settings.tracking.title')}
+                icon={<Shield className="w-4 h-4 mr-2" />}
             />
             <SidebarButton
                 active={activeTab === 'integrations'}
                 onClick={() => setActiveTab('integrations')}
                 label={t('settings.backup.title')}
+                icon={<Database className="w-4 h-4 mr-2" />}
+            />
+            <SidebarButton
+                active={activeTab === 'updatelog'}
+                onClick={() => setActiveTab('updatelog')}
+                label={t('settings.updateLog') || "패치 노트"} // Fallback or add to locales
+                icon={<History className="w-4 h-4 mr-2" />}
             />
 
             <div className="my-2 px-2"><Separator className="bg-border/50" /></div>
@@ -423,6 +658,10 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
             <div className="mt-auto p-2 pb-5 md:hidden">
                 <Button variant="destructive" className="w-full" onClick={() => onOpenChange?.(false)}>Close</Button>
             </div>
+
+            <div className="mt-auto pl-5 py-4 text-xs text-muted-foreground/30 font-mono text-left mb-1 hidden md:block">
+                v{version}
+            </div>
         </div>
     );
 
@@ -430,7 +669,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         if (!settings) return null;
 
         return (
-            <div className="flex-1 flex flex-col h-full overflow-hidden bg-background relative">
+            <div className="flex-1 flex flex-col h-full overflow-hidden bg-background relative select-none">
                 {/* Close Button X (Floating Top Right) */}
                 <div className="absolute top-9 right-9 z-50 flex flex-col items-center gap-1 group cursor-pointer" onClick={() => onOpenChange?.(false)}>
                     <div className="w-9 h-9 border-2 border-muted-foreground/40 rounded-full flex items-center justify-center transition-colors group-hover:bg-muted-foreground/10 group-hover:border-foreground/60">
@@ -448,6 +687,9 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                 <div>
                                     <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.general')}</h3>
                                     <Separator className="bg-border/60 mb-6" />
+
+
+
 
                                     <div className="space-y-4 mb-8">
                                         <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.language')}</h5>
@@ -636,6 +878,114 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             />
                                         </div>
                                     </div>
+
+                                    {/* Update Section */}
+                                    <div className="mt-8 pt-4 border-t border-border/40">
+                                        <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-4">Software Update</h5>
+                                        <div className="bg-muted/30 rounded-lg p-4 border border-border/50">
+                                            <div className="flex items-center justify-between mb-4">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={cn("w-10 h-10 rounded-full flex items-center justify-center",
+                                                        updateStatus === 'ready' ? "bg-green-500/20 text-green-500" :
+                                                            updateStatus === 'error' ? "bg-red-500/20 text-red-500" :
+                                                                "bg-primary/10 text-primary"
+                                                    )}>
+                                                        {updateStatus === 'checking' || updateStatus === 'downloading' ? <RefreshCw className="w-5 h-5 animate-spin" /> :
+                                                            updateStatus === 'ready' ? <Check className="w-5 h-5" /> :
+                                                                updateStatus === 'error' ? <AlertCircle className="w-5 h-5" /> :
+                                                                    <Cloud className="w-5 h-5" />}
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-medium text-sm">Update Status</h4>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {updateStatus === 'idle' && `Current Version: v${version}`}
+                                                            {updateStatus === 'checking' && "Checking for updates..."}
+                                                            {updateStatus === 'available' && "Update available. Downloading..."}
+                                                            {updateStatus === 'not-available' && `You are up to date (v${version})`}
+                                                            {updateStatus === 'downloading' && `Downloading update: ${Math.round(updateProgress)}%`}
+                                                            {updateStatus === 'ready' && "Update ready to install"}
+                                                            {updateStatus === 'error' && "Update failed"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {updateStatus === 'idle' || updateStatus === 'not-available' || updateStatus === 'error' ? (
+                                                    <Button variant="outline" size="sm" onClick={checkForUpdates}>
+                                                        Check for Updates
+                                                    </Button>
+                                                ) : updateStatus === 'ready' ? (
+                                                    <Button size="sm" onClick={quitAndInstall}>
+                                                        Restart & Install
+                                                    </Button>
+                                                ) : null}
+                                            </div>
+
+                                            {updateStatus === 'downloading' && (
+                                                <div className="w-full bg-muted/50 rounded-full h-1.5 overflow-hidden">
+                                                    <div
+                                                        className="bg-primary h-full transition-all duration-300 ease-out"
+                                                        style={{ width: `${updateProgress}%` }}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {updateStatus === 'error' && updateError && (
+                                                <div className="text-xs text-destructive mt-2 bg-destructive/10 p-2 rounded">
+                                                    Error: {updateError}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'updatelog' && (
+                            <div className="space-y-6 animate-in fade-in duration-300 h-full flex flex-col">
+                                <div>
+                                    <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.updateLog') || "패치 노트"}</h3>
+                                    <Separator className="bg-border/60" />
+                                </div>
+
+                                <div className="flex-1 flex gap-6 h-[500px]">
+                                    {/* Version List */}
+                                    <div className="w-[200px] shrink-0 border-r border-border/40 pr-4 overflow-y-auto custom-scrollbar">
+                                        <div className="space-y-1">
+                                            {updates.map((update) => (
+                                                <button
+                                                    key={update.version}
+                                                    onClick={() => handleSelectUpdate(update.version, update.file)}
+                                                    className={cn(
+                                                        "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
+                                                        selectedUpdate?.version === update.version
+                                                            ? "bg-primary/10 text-primary font-medium"
+                                                            : "hover:bg-muted text-muted-foreground hover:text-foreground"
+                                                    )}
+                                                >
+                                                    <div className="flex flex-col">
+                                                        <span className="font-semibold">v{update.version}</span>
+                                                        <span className="text-[10px] opacity-70 truncate">{update.date}</span>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                            {updates.length === 0 && (
+                                                <div className="text-sm text-muted-foreground p-2 text-center">No update logs found.</div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Content Area */}
+                                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
+                                        {selectedUpdate ? (
+                                            <div className="prose prose-sm dark:prose-invert max-w-none">
+                                                {renderMarkdown(selectedUpdate.content)}
+                                            </div>
+                                        ) : (
+                                            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                                                Select a version to view details
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -672,6 +1022,69 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                 </div>
 
                                 <Separator className="bg-border/30" />
+
+                                <div className="space-y-4">
+                                    <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.appearance.colorTheme') || "Color Theme"}</h5>
+                                    <div className="flex flex-col gap-4 bg-muted/30 p-4 rounded-lg">
+                                        <div className="flex items-center gap-4">
+                                            <Select
+                                                value={settings.themePreset || 'default'}
+                                                onValueChange={(val: any) => {
+                                                    // Check if it's a saved theme ID
+                                                    const savedTheme = settings.customThemes?.find(t => t.id === val);
+                                                    if (savedTheme) {
+                                                        // Maintain the selected ID but sync the CSS to customCSS property for the editor if they choose to edit later
+                                                        onSaveSettings({
+                                                            ...settings,
+                                                            themePreset: val,
+                                                            customCSS: savedTheme.css
+                                                        });
+                                                    } else {
+                                                        onSaveSettings({ ...settings, themePreset: val });
+                                                    }
+                                                }}
+                                            >
+                                                <SelectTrigger className="w-[200px] bg-background border-none">
+                                                    {/* Display name logic including handling saved themes visually if needed, though they switch to custom */}
+                                                    <SelectValue placeholder="Select Theme" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="default">Default (Slate)</SelectItem>
+                                                    <SelectItem value="discord">Discord (Gamer)</SelectItem>
+                                                    <SelectItem value="midnight">Midnight (OLED)</SelectItem>
+
+                                                    {settings.customThemes && settings.customThemes.length > 0 && (
+                                                        <>
+                                                            <Separator className="my-1 opacity-50" />
+                                                            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{t('settings.appearance.myThemes')}</div>
+                                                            {settings.customThemes.map(theme => (
+                                                                <SelectItem key={theme.id} value={theme.id}>
+                                                                    {theme.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </>
+                                                    )}
+
+
+                                                </SelectContent>
+                                            </Select>
+                                            <div className="flex flex-col gap-2">
+                                                <span className="text-sm font-medium text-foreground">
+                                                    {settings.themePreset === 'discord' ? "Gamer Style" :
+                                                        settings.themePreset === 'midnight' ? "Pure Black" :
+
+                                                            settings.customThemes?.some(t => t.id === settings.themePreset) ?
+                                                                (settings.customThemes?.find(t => t.id === settings.themePreset)?.name || "User Theme") :
+                                                                "Standard"}
+                                                </span>
+
+                                                {/* Edit Button Removed */}
+                                            </div>
+                                        </div>
+
+
+                                    </div>
+                                </div>
 
                                 <div className="space-y-4">
                                     <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.widgetSettings')}</h5>
@@ -716,80 +1129,37 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             </div>
                                         </div>
                                     </div>
+
+
                                 </div>
 
                                 <Separator className="bg-border/30" />
 
                                 <div className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.appearance.checkboxVisibility')}</h5>
-                                            <p className="text-sm text-muted-foreground">
-                                                {t('settings.appearance.checkboxVisibilityDesc')}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <div className="flex flex-col gap-2">
-                                        <div
-                                            className={cn(
-                                                "flex items-center justify-between p-3 rounded-md cursor-pointer border-2 transition-all",
-                                                settings.checkboxVisibility === 'high'
-                                                    ? "bg-primary/10 border-primary"
-                                                    : "bg-muted/30 border-transparent hover:border-border"
-                                            )}
-                                            onClick={() => onSaveSettings({ ...settings, checkboxVisibility: 'high' })}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-5 h-5 rounded-full flex items-center justify-center border border-muted-foreground/40">
-                                                    {settings.checkboxVisibility === 'high' && <div className="w-3 h-3 rounded-full bg-primary" />}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium text-sm">{t('settings.appearance.designMode')}</span>
-                                                    <span className="text-xs text-muted-foreground">{t('settings.appearance.designModeDesc')}</span>
-                                                </div>
-                                            </div>
-                                            <Eye className="w-5 h-5 text-muted-foreground" />
-                                        </div>
-
-                                        <div
-                                            className={cn(
-                                                "flex items-center justify-between p-3 rounded-md cursor-pointer border-2 transition-all",
-                                                settings.checkboxVisibility === 'low'
-                                                    ? "bg-primary/10 border-primary"
-                                                    : "bg-muted/30 border-transparent hover:border-border"
-                                            )}
-                                            onClick={() => onSaveSettings({ ...settings, checkboxVisibility: 'low' })}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-5 h-5 rounded-full flex items-center justify-center border border-muted-foreground/40">
-                                                    {settings.checkboxVisibility === 'low' && <div className="w-3 h-3 rounded-full bg-primary" />}
-                                                </div>
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium text-sm">{t('settings.appearance.focusMode')}</span>
-                                                    <span className="text-xs text-muted-foreground">{t('settings.appearance.focusModeDesc')}</span>
-                                                </div>
-                                            </div>
-                                            <EyeOff className="w-5 h-5 text-muted-foreground" />
-                                        </div>
-                                    </div>
-
-                                    <Separator className="bg-border/30" />
-
-                                    <div className="space-y-4">
+                                    <div className="flex flex-col gap-4">
                                         <div className="flex items-center justify-between">
-                                            <div>
-                                                <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.appearance.indentationLines')}</h5>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {t('settings.appearance.indentationLinesDesc')}
-                                                </p>
+                                            <div className="space-y-0.5">
+                                                <Label className="text-base font-medium">{t('settings.appearance.indentationLines')}</Label>
+                                                <p className="text-sm text-muted-foreground">{t('settings.appearance.indentationLinesDesc')}</p>
                                             </div>
                                             <Switch
                                                 checked={settings.showIndentationGuides !== false}
                                                 onCheckedChange={(checked) => onSaveSettings({ ...settings, showIndentationGuides: checked })}
                                             />
                                         </div>
+
+                                        <div className="flex items-center justify-between">
+                                            <div className="space-y-0.5">
+                                                <Label className="text-base font-medium">{t('settings.appearance.spellCheck')}</Label>
+                                                <p className="text-sm text-muted-foreground">{t('settings.appearance.spellCheckDesc')}</p>
+                                            </div>
+                                            <Switch
+                                                checked={settings.enableSpellCheck || false}
+                                                onCheckedChange={(checked) => onSaveSettings({ ...settings, enableSpellCheck: checked })}
+                                            />
+                                        </div>
                                     </div>
+
                                 </div>
                             </div>
                         )}
@@ -799,27 +1169,8 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                 <div>
                                     <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.timelineConfig')}</h3>
                                     <Separator className="bg-border/60" />
-                                </div>
 
-                                <div className="space-y-4">
-                                    <h3 className="text-lg font-medium">{t('settings.timeline.title')}</h3>
-
-                                    <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                                        <div className="space-y-0.5">
-                                            <Label className="text-base">{t('settings.timeline.showPreview')}</Label>
-                                            <p className="text-sm text-muted-foreground">
-                                                {t('settings.timeline.showPreviewDesc')}
-                                            </p>
-                                        </div>
-                                        <Switch
-                                            checked={settings.showTimelinePreview}
-                                            onCheckedChange={(checked) => onSaveSettings({ ...settings, showTimelinePreview: checked })}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="grid gap-8">
-
-                                    {/* Project Types & Colors Section */}
+                                    {/* Project Types & Colors Section (Moved) */}
                                     <div className="space-y-4">
                                         <div className="flex flex-col gap-1">
                                             <div className="flex items-center justify-between">
@@ -949,6 +1300,186 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             </div>
                                         </div>
                                     </div>
+                                    <Separator className="bg-border/60" />
+                                </div>
+
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-medium">{t('settings.timeline.title')}</h3>
+
+                                    <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-base">{t('settings.timeline.showPreview')}</Label>
+                                            <p className="text-sm text-muted-foreground">
+                                                {t('settings.timeline.showPreviewDesc')}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={settings.showTimelinePreview}
+                                            onCheckedChange={(checked) => onSaveSettings({ ...settings, showTimelinePreview: checked })}
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Work Apps Filter Section */}
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-medium">{t('settings.timeline.workApps') || "Work Programs"}</h3>
+
+                                    <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-base">{t('settings.timeline.filterWorkApps') || "Show Only Work Programs"}</Label>
+                                            <p className="text-sm text-muted-foreground">
+                                                {t('settings.timeline.filterWorkAppsDesc') || "Only show configured work programs in the timeline visualization."}
+                                            </p>
+                                        </div>
+                                        <Switch
+                                            checked={settings.filterTimelineByWorkApps || false}
+                                            onCheckedChange={(checked) => onSaveSettings({ ...settings, filterTimelineByWorkApps: checked })}
+                                        />
+                                    </div>
+
+                                    {settings.filterTimelineByWorkApps && (
+                                        <div className="bg-muted/30 p-4 rounded-lg space-y-4 animate-in fade-in slide-in-from-top-2">
+                                            <div className="flex flex-col gap-2">
+                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                                                    {t('settings.timeline.configuredApps') || "Configured Apps"}
+                                                </Label>
+                                                <div className="flex flex-wrap gap-2 min-h-[40px] p-2 rounded-lg bg-background border border-border/50">
+                                                    {settings.workApps?.map(app => (
+                                                        <div key={app} className="flex items-center gap-1 bg-muted px-2 py-1 rounded text-xs font-medium border border-border">
+                                                            {app}
+                                                            <button
+                                                                onClick={() => onSaveSettings({ ...settings, workApps: settings.workApps?.filter(a => a !== app) })}
+                                                                className="hover:text-destructive transition-colors ml-1"
+                                                            >
+                                                                <X className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    {(!settings.workApps || settings.workApps.length === 0) && (
+                                                        <div className="text-xs text-muted-foreground italic p-1">No apps configured</div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="flex gap-2">
+                                                <Input
+                                                    placeholder="Add Process Name (e.g. Code.exe)..."
+                                                    className="h-8 text-sm"
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') {
+                                                            const val = (e.currentTarget as HTMLInputElement).value?.trim();
+                                                            if (val && !settings.workApps?.includes(val)) {
+                                                                onSaveSettings({
+                                                                    ...settings,
+                                                                    workApps: [...(settings.workApps || []), val]
+                                                                });
+                                                                (e.currentTarget as HTMLInputElement).value = '';
+                                                            }
+                                                        }
+                                                    }}
+                                                />
+                                                <Button
+                                                    size="sm"
+                                                    className="h-8"
+                                                    onClick={(e) => {
+                                                        const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                                        const val = input.value?.trim();
+                                                        if (val && !settings.workApps?.includes(val)) {
+                                                            onSaveSettings({
+                                                                ...settings,
+                                                                workApps: [...(settings.workApps || []), val]
+                                                            });
+                                                            input.value = '';
+                                                        }
+                                                    }}
+                                                >
+                                                    Add
+                                                </Button>
+                                            </div>
+
+                                            <div className="pt-4 border-t border-border/50">
+                                                <h4 className="text-sm font-semibold mb-2">{t('settings.runningApps') || "Running Apps Details"}</h4>
+                                                <div className="bg-muted/40 rounded-lg p-2 border border-border/50">
+                                                    <Input
+                                                        className="h-8 mb-2 bg-background/50 border-border/50"
+                                                        placeholder={t("common.search")}
+                                                        onChange={(e) => setRunningAppsSearch(e.target.value)}
+                                                    />
+                                                    <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                                                        {runningApps
+                                                            .filter(app => !runningAppsSearch || app.name.toLowerCase().includes(runningAppsSearch.toLowerCase()) || app.process.toLowerCase().includes(runningAppsSearch.toLowerCase()))
+                                                            .map(app => {
+                                                                const isAdded = settings.workApps?.some(wa => wa.toLowerCase() === app.process.toLowerCase());
+                                                                return (
+                                                                    <div key={app.process} className="flex items-center justify-between p-2 rounded hover:bg-muted/50 group">
+                                                                        <div className="flex flex-col min-w-0">
+                                                                            <span className="text-sm font-medium truncate">{app.name}</span>
+                                                                            <span className="text-xs text-muted-foreground truncate">{app.process}</span>
+                                                                        </div>
+                                                                        <Button
+                                                                            size="sm"
+                                                                            variant={isAdded ? "secondary" : "ghost"}
+                                                                            className={cn("h-7 text-xs", isAdded ? "opacity-50" : "hover:bg-primary/10 hover:text-primary")}
+                                                                            disabled={isAdded}
+                                                                            onClick={() => {
+                                                                                if (!isAdded) {
+                                                                                    onSaveSettings({
+                                                                                        ...settings,
+                                                                                        workApps: [...(settings.workApps || []), app.process]
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            {isAdded ? "Added" : "Add"}
+                                                                        </Button>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        {runningApps.length === 0 && (
+                                                            <div className="text-center py-4 text-xs text-muted-foreground">
+                                                                Loading apps...
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="flex flex-col gap-3">
+                                        <div className="flex items-center justify-between">
+                                            <Label className="text-base font-semibold">Night Time Start</Label>
+                                            <span className="text-xs text-muted-foreground font-mono">
+                                                {(settings.nightTimeStart || 22) >= 24
+                                                    ? `Next Day ${(settings.nightTimeStart || 22) - 24}:00`
+                                                    : `${settings.nightTimeStart || 22}:00`}
+                                            </span>
+                                        </div>
+                                        <div className="bg-muted/30 p-4 rounded-lg">
+                                            <Slider
+                                                min={18}
+                                                max={28}
+                                                step={1}
+                                                value={[settings.nightTimeStart || 22]}
+                                                onValueChange={(val) => onSaveSettings({ ...settings, nightTimeStart: val[0] })}
+                                            />
+                                            <div className="flex justify-between text-[10px] text-muted-foreground mt-2 px-1">
+                                                <span>18:00</span>
+                                                <span>04:00 (+1)</span>
+                                            </div>
+                                            <p className="text-xs text-muted-foreground mt-3">
+                                                Focus sessions after this time will be visually highlighted as late-night activity.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-8">
+
+                                    {/* Project Types & Colors Section */}
+
 
                                     <div className="flex flex-col gap-3">
                                         <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.visibleRows')}</Label>
@@ -1000,6 +1531,28 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             checked={settings.enableScreenshots !== false}
                                             onCheckedChange={(checked: boolean) => onSaveSettings({ ...settings, enableScreenshots: checked })}
                                         />
+                                    </div>
+
+                                    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                                        <div className="space-y-0.5">
+                                            <Label className="text-base font-semibold">{t('settings.tracking.detectIdleTime')}</Label>
+                                            <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.detectIdleTimeDesc')}</p>
+                                        </div>
+                                        <Select
+                                            value={String(settings.idleThresholdSeconds || 10)}
+                                            onValueChange={(val) => onSaveSettings({ ...settings, idleThresholdSeconds: parseInt(val) })}
+                                        >
+                                            <SelectTrigger className="w-[180px] bg-background border-none">
+                                                <SelectValue placeholder={t('settings.tracking.selectDuration')} />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="5">{t('settings.tracking.seconds5')}</SelectItem>
+                                                <SelectItem value="10">{t('settings.tracking.seconds10')} (Default)</SelectItem>
+                                                <SelectItem value="30">{t('settings.tracking.seconds30')}</SelectItem>
+                                                <SelectItem value="60">{t('settings.tracking.hour1').replace('1 Hour', '1 Minute').replace('1시간', '1분')}</SelectItem>
+                                                <SelectItem value="300">5 {t('settings.tracking.minutes5').replace('5 Minutes', 'Minutes').replace('5분', '분')}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
 
                                     <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
@@ -1092,32 +1645,82 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                         )}
 
                                         {settings.screenshotMode === 'process' && (
-                                            <div className="flex items-center justify-between animate-in fade-in slide-in-from-top-2">
-                                                <div className="space-y-0.5">
-                                                    <Label className="text-base font-semibold">{t('settings.tracking.selectApp')}</Label>
-                                                    <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.selectAppDesc')}</p>
+                                            <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 bg-muted/20 p-3 rounded-lg border border-border/50">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="space-y-0.5">
+                                                        <Label className="text-base font-semibold">{t('settings.tracking.selectApp')}</Label>
+                                                        <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.selectAppDesc')}</p>
+                                                    </div>
+                                                    <Select
+                                                        value={settings.screenshotTargetProcess || ''}
+                                                        onValueChange={(val) => onSaveSettings({ ...settings, screenshotTargetProcess: val })}
+                                                    >
+                                                        <SelectTrigger className="w-[200px] bg-background border-none">
+                                                            <SelectValue placeholder={t('settings.tracking.selectProcess')} />
+                                                        </SelectTrigger>
+                                                        <SelectContent className="max-h-[300px]">
+                                                            {settings.targetProcessPatterns && settings.targetProcessPatterns.length > 0 ? (
+                                                                settings.targetProcessPatterns
+                                                                    .sort()
+                                                                    .map((p, idx) => (
+                                                                        <SelectItem key={`${p}-${idx}`} value={p}>
+                                                                            {p}
+                                                                        </SelectItem>
+                                                                    ))
+                                                            ) : (
+                                                                <div className="p-2 text-xs text-center text-muted-foreground">{t('settings.tracking.noMonitoredApps')}</div>
+                                                            )}
+                                                        </SelectContent>
+                                                    </Select>
                                                 </div>
-                                                <Select
-                                                    value={settings.screenshotTargetProcess || ''}
-                                                    onValueChange={(val) => onSaveSettings({ ...settings, screenshotTargetProcess: val })}
-                                                >
-                                                    <SelectTrigger className="w-[250px] bg-background border-none">
-                                                        <SelectValue placeholder={t('settings.tracking.selectProcess')} />
-                                                    </SelectTrigger>
-                                                    <SelectContent className="max-h-[300px]">
-                                                        {settings.targetProcessPatterns && settings.targetProcessPatterns.length > 0 ? (
-                                                            settings.targetProcessPatterns
-                                                                .sort()
-                                                                .map((p, idx) => (
-                                                                    <SelectItem key={`${p}-${idx}`} value={p}>
-                                                                        {p}
-                                                                    </SelectItem>
-                                                                ))
-                                                        ) : (
-                                                            <div className="p-2 text-xs text-center text-muted-foreground">{t('settings.tracking.noMonitoredApps')}</div>
-                                                        )}
-                                                    </SelectContent>
-                                                </Select>
+
+                                                <div className="flex gap-2">
+                                                    <Input
+                                                        placeholder="Add Process Name (e.g. Photoshop.exe)"
+                                                        className="flex-1 h-8 text-sm"
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                const val = (e.currentTarget as HTMLInputElement).value?.trim();
+                                                                if (val && !settings.targetProcessPatterns?.includes(val)) {
+                                                                    onSaveSettings({
+                                                                        ...settings,
+                                                                        targetProcessPatterns: [...(settings.targetProcessPatterns || []), val],
+                                                                        screenshotTargetProcess: val // Auto-select new
+                                                                    });
+                                                                    (e.currentTarget as HTMLInputElement).value = '';
+                                                                }
+                                                            }
+                                                        }}
+                                                    />
+                                                    <Button
+                                                        size="sm"
+                                                        className="h-8"
+                                                        variant="secondary"
+                                                        onClick={(e) => {
+                                                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                                            const val = input.value?.trim();
+                                                            if (val && !settings.targetProcessPatterns?.includes(val)) {
+                                                                onSaveSettings({
+                                                                    ...settings,
+                                                                    targetProcessPatterns: [...(settings.targetProcessPatterns || []), val],
+                                                                    screenshotTargetProcess: val
+                                                                });
+                                                                input.value = '';
+                                                            }
+                                                        }}
+                                                    >
+                                                        Add
+                                                    </Button>
+                                                </div>
+
+                                                <div className="flex items-center justify-between pt-2 px-1">
+                                                    <Label className="text-xs text-muted-foreground">{t('settings.screenshotOnlyActive')}</Label>
+                                                    <Switch
+                                                        checked={settings.screenshotOnlyWhenActive !== false}
+                                                        onCheckedChange={(c) => onSaveSettings({ ...settings, screenshotOnlyWhenActive: c })}
+                                                        className="scale-90"
+                                                    />
+                                                </div>
                                             </div>
                                         )}
 
@@ -1235,82 +1838,6 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             </Button>
                                         </div>
                                     </div>
-                                    {/* Google Drive Card */}
-                                    <div className="p-4 bg-muted/30 rounded-lg flex flex-col gap-4 border border-border/50">
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center">
-                                                    <Cloud className="w-5 h-5 text-blue-500" />
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-semibold text-base">{t('settings.backup.drive')}</h4>
-                                                    <p className="text-sm text-muted-foreground">{t('settings.backup.driveDesc')}</p>
-                                                </div>
-                                            </div>
-                                            {settings.googleDriveTokens ? (
-                                                <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 px-2 py-0.5 flex items-center gap-1">
-                                                    <Check className="w-3 h-3" />
-                                                    {settings.googleDriveTokens.email || "Connected"}
-                                                </Badge>
-                                            ) : (
-                                                <Badge variant="outline" className="text-muted-foreground px-2 py-0.5">
-                                                    Not Connected
-                                                </Badge>
-                                            )}
-                                        </div>
-
-                                        <div className="flex items-center justify-between pt-2">
-                                            <div className="text-xs text-muted-foreground">
-                                                {settings.googleDriveTokens ? t('settings.backup.accessValid', { date: new Date(settings.googleDriveTokens.expiryDate).toLocaleDateString() }) : t('settings.backup.connectToEnable')}
-                                            </div>
-
-                                            {settings.googleDriveTokens ? (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        setConfirmConfig({
-                                                            title: t('settings.backup.disconnectTitle', { service: "Google Drive" }),
-                                                            description: t('settings.backup.disconnectConfirm'),
-                                                            actionLabel: t('settings.backup.disconnect'),
-                                                            onConfirm: async () => {
-                                                                onSaveSettings({ ...settings, googleDriveTokens: undefined });
-                                                                if ((window as any).ipcRenderer) {
-                                                                    await (window as any).ipcRenderer.invoke('logout-google-drive');
-                                                                }
-                                                            }
-                                                        });
-                                                    }}
-                                                    className="h-8 text-destructive hover:text-destructive"
-                                                >
-                                                    {t('settings.backup.disconnect')}
-                                                </Button>
-                                            ) : (
-                                                <Button
-                                                    size="sm"
-                                                    className="h-8 gap-2"
-                                                    onClick={async () => {
-                                                        if ((window as any).ipcRenderer) {
-                                                            try {
-                                                                // Trigger Auth
-                                                                const result = await (window as any).ipcRenderer.invoke('start-google-auth');
-                                                                if (result.success && result.tokens) {
-                                                                    // Update Local State via onSaveSettings to sync
-                                                                    onSaveSettings({ ...settings, googleDriveTokens: result.tokens });
-                                                                }
-                                                            } catch (e) {
-                                                                console.error("Auth failed", e);
-                                                                alert("Authentication failed. Check console for details.");
-                                                            }
-                                                        }
-                                                    }}
-                                                >
-                                                    {t('settings.backup.connect')}
-                                                </Button>
-                                            )}
-                                        </div>
-                                    </div>
-
                                     {/* Notion Card */}
                                     <div className="p-4 bg-muted/30 rounded-lg flex flex-col gap-4 border border-border/50">
                                         <div className="flex items-start justify-between">
@@ -1336,8 +1863,30 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                         </div>
 
                                         <div className="flex items-center justify-between pt-2">
-                                            <div className="text-xs text-muted-foreground">
-                                                {settings.notionTokens ? t('settings.backup.connectedWorkspace', { name: settings.notionTokens.workspaceName || 'Unknown' }) : t('settings.backup.connectNotion')}
+                                            <div className="text-xs text-muted-foreground flex flex-col gap-2">
+                                                <span>{settings.notionTokens ? t('settings.backup.connectedWorkspace', { name: settings.notionTokens.workspaceName || 'Unknown' }) : t('settings.backup.connectNotion')}</span>
+
+                                                {settings.notionTokens && (
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <Switch
+                                                            id="include-screenshots"
+                                                            className="scale-75 origin-left"
+                                                            checked={settings.notionConfig?.includeScreenshots !== false} // Default to true if undefined
+                                                            onCheckedChange={(checked) => onSaveSettings({
+                                                                ...settings,
+                                                                notionConfig: {
+                                                                    clientId: '',
+                                                                    clientSecret: '',
+                                                                    ...(settings.notionConfig || {}),
+                                                                    includeScreenshots: checked
+                                                                }
+                                                            })}
+                                                        />
+                                                        <Label htmlFor="include-screenshots" className="text-xs font-normal cursor-pointer">
+                                                            {t('settings.backup.includeScreenshots')}
+                                                        </Label>
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {settings.notionTokens ? (
@@ -1368,102 +1917,126 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                             </Button>
                                                         </div>
                                                     ) : (
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={async () => {
-                                                                // TS Safe Check
-                                                                if (!settings.notionTokens) return;
 
-                                                                setConfirmConfig({
-                                                                    title: t('settings.backup.syncHistoryTitle'),
-                                                                    description: t('settings.backup.syncHistoryDesc'),
-                                                                    actionLabel: t('settings.backup.startSync'),
-                                                                    onConfirm: async () => {
-                                                                        setIsSyncingHistory(true);
-                                                                        if ((window as any).ipcRenderer) {
-                                                                            // Listen for progress
-                                                                            const progressHandler = (_: any, p: { processed: number, total: number }) => {
-                                                                                const percent = Math.round((p.processed / p.total) * 100);
-                                                                                // Update Bars
-                                                                                const labelEl = document.getElementById('sync-progress-label');
-                                                                                if (labelEl) labelEl.innerText = p.processed === 0 ? t('settings.backup.initializing') : t('settings.backup.syncingProgress', { processed: p.processed, total: p.total });
 
-                                                                                const percentEl = document.getElementById('sync-progress-percent');
-                                                                                if (percentEl) percentEl.innerText = `${percent}%`;
+                                                        <div className="flex gap-2">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => setShowImportDialog(true)}
+                                                                className="h-8 gap-2"
+                                                            >
+                                                                <FileText className="w-3.5 h-3.5" />
+                                                                {t('settings.backup.import') || "Import"}
+                                                            </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={async () => {
+                                                                    // TS Safe Check
+                                                                    if (!settings.notionTokens) return;
 
-                                                                                const bar = document.getElementById('sync-progress-bar');
-                                                                                if (bar) bar.style.width = `${percent}%`;
-                                                                            };
-                                                                            (window as any).ipcRenderer.on('notion-sync-progress', progressHandler);
+                                                                    setConfirmConfig({
+                                                                        title: t('settings.backup.syncHistoryTitle'),
+                                                                        description: t('settings.backup.syncHistoryDesc'),
+                                                                        actionLabel: t('settings.backup.startSync'),
+                                                                        onConfirm: async () => {
+                                                                            setIsSyncingHistory(true);
+                                                                            if ((window as any).ipcRenderer) {
+                                                                                // Listen for progress
+                                                                                const progressHandler = (_: any, p: { processed: number, total: number, message?: string }) => {
+                                                                                    const percent = p.total > 0 ? Math.round((p.processed / p.total) * 100) : 0;
+                                                                                    // Update Bars
+                                                                                    const labelEl = document.getElementById('sync-progress-label');
+                                                                                    if (labelEl) {
+                                                                                        if (p.message) {
+                                                                                            labelEl.innerText = p.message;
+                                                                                        } else {
+                                                                                            labelEl.innerText = p.processed === 0 ? t('settings.backup.initializing') : t('settings.backup.syncingProgress', { processed: p.processed, total: p.total });
+                                                                                        }
+                                                                                    }
 
-                                                                            try {
-                                                                                const res = await (window as any).ipcRenderer.invoke('sync-all-history', {
-                                                                                    token: settings.notionTokens!.accessToken,
-                                                                                    databaseId: settings.notionTokens!.databaseId
-                                                                                });
+                                                                                    const percentEl = document.getElementById('sync-progress-percent');
+                                                                                    if (percentEl) percentEl.innerText = `${percent}%`;
 
-                                                                                if (res.success) {
-                                                                                    setInfoConfig({
-                                                                                        title: t('settings.backup.backupComplete'),
-                                                                                        description: t('settings.backup.backupSuccessMsg', { count: res.count }),
-                                                                                        details: res.details
+                                                                                    const bar = document.getElementById('sync-progress-bar');
+                                                                                    if (bar) bar.style.width = `${percent}%`;
+                                                                                };
+                                                                                (window as any).ipcRenderer.on('notion-sync-progress', progressHandler);
+
+                                                                                try {
+                                                                                    const res = await (window as any).ipcRenderer.invoke('sync-all-history', {
+                                                                                        token: settings.notionTokens!.accessToken,
+                                                                                        databaseId: settings.notionTokens!.databaseId
                                                                                     });
-                                                                                } else if (res.cancelled) {
+
+                                                                                    if (res.success) {
+                                                                                        setInfoConfig({
+                                                                                            title: t('settings.backup.backupComplete'),
+                                                                                            description: t('settings.backup.backupSuccessMsg', { count: res.count }),
+                                                                                            details: res.details
+                                                                                        });
+                                                                                    } else if (res.cancelled) {
+                                                                                        setInfoConfig({
+                                                                                            title: t('settings.backup.backupCancelled'),
+                                                                                            description: t('settings.backup.backupCancelledMsg', { count: res.count || 0 }),
+                                                                                        });
+                                                                                    } else {
+                                                                                        setInfoConfig({
+                                                                                            title: t('settings.backup.backupFailed'),
+                                                                                            description: `Error: ${res.error}`,
+                                                                                            details: res.details
+                                                                                        });
+                                                                                    }
+                                                                                } catch (e) {
+                                                                                    console.error(e);
                                                                                     setInfoConfig({
-                                                                                        title: t('settings.backup.backupCancelled'),
-                                                                                        description: t('settings.backup.backupCancelledMsg', { count: res.count || 0 }),
+                                                                                        title: "Critical Error",
+                                                                                        description: "Backup encountered a critical error. Check console for details.",
                                                                                     });
-                                                                                } else {
-                                                                                    setInfoConfig({
-                                                                                        title: t('settings.backup.backupFailed'),
-                                                                                        description: `Error: ${res.error}`, // Error message might be technical, keeping as is or using generic error? Using generic + error might be better but let's stick to simple replacement. Ideally res.error should be user friendly or we just show it.
-                                                                                        details: res.details
-                                                                                    });
+                                                                                } finally {
+                                                                                    console.log("[SettingsModal] Sync finished (finally block). Resetting state.");
+                                                                                    console.log("[SettingsModal] Sync finished (finally block). Resetting state.");
+                                                                                    if ((window as any).ipcRenderer.removeListener) {
+                                                                                        (window as any).ipcRenderer.removeListener('notion-sync-progress', progressHandler);
+                                                                                    } else {
+                                                                                        (window as any).ipcRenderer.off('notion-sync-progress', progressHandler);
+                                                                                    }
+                                                                                    setIsSyncingHistory(false);
                                                                                 }
-                                                                            } catch (e) {
-                                                                                console.error(e);
-                                                                                setInfoConfig({
-                                                                                    title: "Critical Error",
-                                                                                    description: "Backup encountered a critical error. Check console for details.",
-                                                                                });
-                                                                            } finally {
-                                                                                console.log("[SettingsModal] Sync finished (finally block). Resetting state.");
-                                                                                (window as any).ipcRenderer.removeListener('notion-sync-progress', progressHandler);
-                                                                                setIsSyncingHistory(false);
                                                                             }
                                                                         }
-                                                                    }
-                                                                });
-                                                            }}
-                                                            disabled={isSyncingHistory}
-                                                            className="h-8 gap-2 border-primary/20 text-primary hover:text-primary hover:bg-primary/5"
-                                                        >
-                                                            <RefreshCw className="w-3.5 h-3.5" />
-                                                            {t('settings.backup.syncHistory')}
-                                                        </Button>
-                                                    )}
+                                                                    });
+                                                                }}
+                                                                disabled={isSyncingHistory}
+                                                                className="h-8 gap-2 border-primary/20 text-primary hover:text-primary hover:bg-primary/5"
+                                                            >
+                                                                <RefreshCw className="w-3.5 h-3.5" />
+                                                                {t('settings.backup.syncHistory')}
+                                                            </Button>
 
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => {
-                                                            setConfirmConfig({
-                                                                title: t('settings.backup.disconnectNotionTitle'),
-                                                                description: t('settings.backup.disconnectNotionConfirm'),
-                                                                actionLabel: t('settings.backup.disconnect'),
-                                                                onConfirm: async () => {
-                                                                    onSaveSettings({ ...settings, notionTokens: undefined });
-                                                                    if ((window as any).ipcRenderer) {
-                                                                        await (window as any).ipcRenderer.invoke('logout-notion');
-                                                                    }
-                                                                }
-                                                            });
-                                                        }}
-                                                        className="h-8 text-destructive hover:text-destructive"
-                                                    >
-                                                        {t('settings.backup.disconnect')}
-                                                    </Button>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    setConfirmConfig({
+                                                                        title: t('settings.backup.disconnectNotionTitle'),
+                                                                        description: t('settings.backup.disconnectNotionConfirm'),
+                                                                        actionLabel: t('settings.backup.disconnect'),
+                                                                        onConfirm: async () => {
+                                                                            onSaveSettings({ ...settings, notionTokens: undefined });
+                                                                            if ((window as any).ipcRenderer) {
+                                                                                await (window as any).ipcRenderer.invoke('logout-notion');
+                                                                            }
+                                                                        }
+                                                                    });
+                                                                }}
+                                                                className="h-8 text-destructive hover:text-destructive"
+                                                            >
+                                                                {t('settings.backup.disconnect')}
+                                                            </Button>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (
                                                 <div className="flex flex-col gap-2 w-full max-w-sm">
@@ -1536,25 +2109,6 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         );
     };
 
-    // Confirmation Dialog State
-    const [confirmConfig, setConfirmConfig] = useState<{
-        title: string;
-        description: string;
-        actionLabel: string;
-        onConfirm: () => void;
-    } | null>(null);
-
-
-    const handleConfirmClose = () => {
-        setConfirmConfig(null);
-    };
-
-    // Info Dialog State
-    const [infoConfig, setInfoConfig] = useState<{
-        title: string;
-        description: string;
-        details?: any[];
-    } | null>(null);
 
     return (
         <>
@@ -1563,7 +2117,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                     className="max-w-none w-full h-full p-0 gap-0 bg-transparent border-none shadow-none flex items-center justify-center pointer-events-none transform-none !translate-x-0 !translate-y-0 left-0 top-0"
                     hideCloseButton
                 >
-                    <div className="flex max-w-[1000px] h-[85vh] w-full bg-background border border-border shadow-2xl rounded-lg overflow-hidden font-sans pointer-events-auto relative">
+                    <div className="flex max-w-[1000px] h-[85vh] w-full bg-background border border-border shadow-2xl rounded-lg overflow-hidden font-sans pointer-events-auto relative select-none">
                         <DialogTitle className="sr-only">Settings</DialogTitle>
                         <DialogDescription className="sr-only">Adjust preferences and settings</DialogDescription>
                         {renderSidebar()}
@@ -1608,6 +2162,38 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                 </DialogContent>
             </Dialog>
 
+            {/* Import from Notion Dialog */}
+            <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+                <DialogContent className="max-w-[400px] bg-background border border-border shadow-lg p-6 rounded-lg font-sans z-[60]">
+                    <DialogTitle className="text-lg font-bold mb-2">{t('settings.backup.importNotionTitle')}</DialogTitle>
+                    <DialogDescription className="text-sm text-muted-foreground mb-4">
+                        {t('settings.backup.importNotionDesc')}
+                    </DialogDescription>
+                    <div className="py-4 space-y-4">
+                        <div className="flex flex-col gap-2">
+                            <Label>{t('settings.backup.dateLabel')}</Label>
+                            <Input
+                                type="date"
+                                value={importDate}
+                                onChange={(e) => setImportDate(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setShowImportDialog(false)} disabled={isImporting} size="sm">
+                            {t('common.cancel')}
+                        </Button>
+                        <Button
+                            onClick={handleImport}
+                            disabled={isImporting}
+                            size="sm"
+                        >
+                            {isImporting ? t('settings.backup.importing') : t('settings.backup.import')}
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             {/* Info/Result Dialog */}
             <Dialog open={!!infoConfig} onOpenChange={(open) => !open && setInfoConfig(null)}>
                 <DialogContent className="max-w-[500px] bg-background border border-border shadow-lg p-0 rounded-lg font-sans z-[60] overflow-hidden flex flex-col max-h-[80vh]">
@@ -1621,13 +2207,13 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                     {infoConfig?.details && (
                         <div className="flex-1 overflow-y-auto px-6 py-2 min-h-0 border-y border-border/40 my-2 bg-muted/20">
                             <div className="space-y-1 text-xs font-mono">
-                                {infoConfig.details.map((d: any, i: number) => (
+                                {infoConfig.details.map((d, i) => (
                                     <div key={i} className="flex flex-col py-2 border-b border-border/30 last:border-0 hover:bg-muted/30">
-                                        <div className={cn("flex justify-between items-center", d.status === 'error' ? "text-destructive" : "text-foreground")}>
+                                        <div className={("flex justify-between items-center " + (d.status === 'error' ? "text-destructive" : "text-foreground"))}>
                                             <span className="opacity-90 font-medium">{d.date || d.file}</span>
                                             <div className="flex gap-3 items-center">
                                                 {d.blocks !== undefined && <span className="text-[10px] opacity-60 uppercase tracking-widest">{d.blocks} blocks</span>}
-                                                <span className={cn("font-bold", d.status === 'success' ? "text-green-600" : "text-red-500")}>
+                                                <span className={("font-bold " + (d.status === 'success' ? "text-green-600" : "text-red-500"))}>
                                                     {d.status === 'success' ? "OK" : "ERR"}
                                                 </span>
                                             </div>
@@ -1642,7 +2228,6 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                             </div>
                         </div>
                     )}
-
                     <div className="p-4 flex justify-end bg-muted/10">
                         <Button onClick={() => setInfoConfig(null)} size="sm">
                             Close
@@ -1654,20 +2239,28 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     )
 }
 
-function SidebarButton({ active, onClick, label }: { active: boolean, onClick: () => void, label: string }) {
+interface SidebarButtonProps {
+    active: boolean;
+    onClick: () => void;
+    label: string;
+    icon?: React.ReactNode;
+}
+
+function SidebarButton({ active, onClick, label, icon }: SidebarButtonProps) {
     return (
         <button
             onClick={onClick}
             className={cn(
-                "w-full flex items-center justify-between px-2.5 py-1.5 rounded-md transition-colors mb-0.5 group",
+                "w-full text-left px-3 py-2 rounded-md text-sm transition-all duration-200 flex items-center gap-2",
                 active
-                    ? "bg-accent text-accent-foreground"
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    ? "bg-primary text-primary-foreground shadow-md font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
         >
-            <span className={cn("font-medium text-base md:text-sm", active ? "font-bold" : "")}>{label}</span>
+            {icon}
+            {label}
         </button>
-    )
+    );
 }
 
 function ThemeCard({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
@@ -1675,26 +2268,16 @@ function ThemeCard({ active, onClick, icon, label }: { active: boolean, onClick:
         <div
             onClick={onClick}
             className={cn(
-                "cursor-pointer rounded-lg p-3 flex flex-col items-center gap-2 transition-all border-2",
+                "flex flex-col items-center justify-center gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200 hover:scale-[1.02]",
                 active
-                    ? "bg-muted/50 border-primary"
-                    : "bg-muted/30 border-transparent hover:bg-muted/50"
+                    ? "border-primary bg-primary/5 shadow-md"
+                    : "border-border/40 bg-card hover:border-primary/50 hover:bg-muted/30"
             )}
         >
-
-            <div className={cn("mt-2 p-2 rounded-full bg-background", active ? "text-primary" : "text-muted-foreground")}>
+            <div className={cn("transition-colors", active ? "text-primary" : "text-muted-foreground")}>
                 {icon}
             </div>
-            <span className={cn("text-xs font-bold pt-1 pb-2", active ? "text-foreground" : "text-muted-foreground")}>
-                {label}
-            </span>
-            {active && (
-                <div className="absolute top-2 right-2">
-                    <div className="bg-primary rounded-full p-0.5">
-                        <Check className="w-3 h-3 text-white" />
-                    </div>
-                </div>
-            )}
+            <span className={cn("text-xs font-semibold", active ? "text-primary" : "text-muted-foreground")}>{label}</span>
         </div>
     )
 }

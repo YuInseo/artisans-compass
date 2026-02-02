@@ -53,6 +53,51 @@ let RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
 
 let win: BrowserWindow | null
+let splash: BrowserWindow | null
+
+function createSplashWindow() {
+  splash = new BrowserWindow({
+    width: 300,
+    height: 350,
+    backgroundColor: '#0f172a', // Slate 900
+    frame: false,
+    alwaysOnTop: true,
+    transparent: true,
+    resizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'splash-preload.mjs'), // We'll need to make sure this is built/copied or just use tsc
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+
+  // For production, we might need to adjust this path if electron folder isn't copied as is.
+  // Actually, standard vite-plugin-electron might require us to put splash in public or build it.
+  // For now, let's assume direct file access or simpler serving.
+
+  if (app.isPackaged) {
+    // In packaged app, we can try to serve it from resources or just use data URL for simplicity if small?
+    // Or better, let's serve it via the app protocol or file protocol if it exists in dist-electron
+    // But we just created it in 'electron/' which might not be in dist-electron by default unless we config vite.
+    // Let's rely on it being copied or just put it in a known place.
+    // A safer bet for now is to write the HTML content directly here or assume it's next to main.js? 
+    // Let's assume the user will ensure it's there. 
+    // Actually, let's use a data URL for the splash to be safe and self-contained, OR read the file payload.
+
+    // Let's try loading from resources/app.asar/electron/splash.html if we can't ensure it's in dist.
+    // Actually, simpler: define the HTML string here if it's small, or read it.
+
+    // Attempt to load from parallel directory
+    splash.loadFile(path.join(__dirname, '..', 'electron', 'splash.html'));
+  } else {
+    splash.loadFile(path.join(__dirname, '..', 'electron', 'splash.html'));
+  }
+
+  splash.on('closed', () => {
+    splash = null;
+  });
+}
 
 function createWindow() {
   // In packaged app, __dirname points to dist-electron inside app.asar
@@ -162,9 +207,10 @@ ipcMain.on('toggle-always-on-top', (_event, flag?: boolean) => {
   const win = BrowserWindow.getFocusedWindow();
   if (win) {
     if (typeof flag === 'boolean') {
-      win.setAlwaysOnTop(flag);
+      win.setAlwaysOnTop(flag, 'screen-saver');
     } else {
-      win.setAlwaysOnTop(!win.isAlwaysOnTop());
+      const newState = !win.isAlwaysOnTop();
+      win.setAlwaysOnTop(newState, 'screen-saver');
     }
   }
 });
@@ -179,7 +225,7 @@ ipcMain.on('set-widget-mode', (_event, { mode, height }: { mode: boolean, height
       // Widget Size: 435xHeight (Vertical Strip)
       const targetHeight = height || 800;
       win.setSize(435, targetHeight);
-      win.setAlwaysOnTop(true, 'floating');
+      win.setAlwaysOnTop(true, 'screen-saver');
       // Opacity will be set by the frontend via `set-window-opacity` immediately or stored setting
     } else {
       // Restore Standard Size: 1500x900 (as defined in createWindow)
@@ -208,7 +254,6 @@ ipcMain.on('resize-widget', (_event, { width, height }: { width: number, height:
 });
 
 
-// Added IPC for directory dialog
 ipcMain.handle('dialog:openDirectory', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog({
     properties: ['openDirectory']
@@ -323,93 +368,156 @@ ipcMain.handle('get-auto-launch', async () => {
 });
 
 
+// Flag to prevent multiple launches
+let isAppLaunched = false;
+
+function launchApp() {
+  if (isAppLaunched) return;
+  isAppLaunched = true;
+
+  if (splash) {
+    splash.close();
+    splash = null;
+  }
+  createWindow();
+}
+
 function setupAutoUpdater() {
   log.info('App starting...');
 
   // Read settings
   const settings = readJson(getSettingsPath(), DEFAULT_SETTINGS);
-  const autoUpdateEnabled = settings.autoUpdate || false;
-
-  log.info('[AutoUpdater] Auto-update settings state:', autoUpdateEnabled);
+  const autoUpdateEnabled = settings.autoUpdate !== false;
 
   // Configure logger
   autoUpdater.logger = log;
   (autoUpdater.logger as any).transports.file.level = 'info';
 
+  // Allow updates to pre-release versions
+  autoUpdater.allowPrerelease = true;
+  // Disable auto-download to give user control in main app
+  // But we might want it auto in splash? Let's handle via logic.
+  autoUpdater.autoDownload = false;
+
   // Register Event Listeners
+  const sendToWindows = (channel: string, ...args: any[]) => {
+    splash?.webContents.send(channel, ...args);
+    win?.webContents.send(channel, ...args);
+  };
+
   autoUpdater.on('checking-for-update', () => {
     log.info('Checking for update...');
+    sendToWindows('update-status', 'Checking for updates...');
+    sendToWindows('update-state', { status: 'checking' });
   });
 
   autoUpdater.on('update-available', (info) => {
     log.info('Update available.', info);
-    if (win) win.webContents.send('update_available');
+    sendToWindows('update-status', 'Update available.');
+    sendToWindows('update-state', { status: 'available', info });
+
+    // If we are in splash screen (app not fully launched), auto download
+    if (splash) {
+      splash.webContents.send('update-status', 'Update available. Downloading...');
+      autoUpdater.downloadUpdate();
+    }
   });
 
   autoUpdater.on('update-not-available', (info) => {
     log.info('Update not available.', info);
+    sendToWindows('update-status', 'Up to date.');
+    if (splash) {
+      splash.webContents.send('update-status', 'Starting...');
+      setTimeout(launchApp, 500);
+    } else {
+      // Only trigger toast for main window manually if desired, or let UI handle it via state
+      sendToWindows('update-state', { status: 'idle', message: 'up-to-date' });
+    }
   });
 
   autoUpdater.on('error', (err) => {
     log.error('Error in auto-updater. ' + err);
+    sendToWindows('update-status', 'Error checking updates.');
+    sendToWindows('update-state', { status: 'error', error: err.message });
+
+    if (splash) {
+      splash.webContents.send('update-status', 'Error checking updates. Starting...');
+      setTimeout(launchApp, 500);
+    }
   });
 
   autoUpdater.on('download-progress', (progressObj) => {
     let log_message = "Download speed: " + progressObj.bytesPerSecond;
     log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
     log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
-    log.info(log_message);
-    if (win) win.webContents.send('update_progress', progressObj.percent);
+    // log.info(log_message); // Reduce spam
+    sendToWindows('download-progress', progressObj);
+    sendToWindows('update-state', { status: 'downloading', progress: progressObj });
+    if (splash) {
+      splash.webContents.send('update-status', `Downloading: ${Math.round(progressObj.percent)}%`);
+    }
   });
 
   autoUpdater.on('update-downloaded', (info) => {
     log.info('Update downloaded', info);
-    if (win) win.webContents.send('update_downloaded');
+    sendToWindows('update-status', 'Update ready.');
+    sendToWindows('update-state', { status: 'ready', info });
 
-    dialog.showMessageBox(win!, {
-      type: 'info',
-      title: 'Update Ready',
-      message: 'A new version has been downloaded. Restart now to install?',
-      buttons: ['Restart', 'Later']
-    }).then((returnValue) => {
-      if (returnValue.response === 0) {
+    if (splash) {
+      console.log('Update downloaded in splash mode. Installing...');
+      splash.webContents.send('update-status', 'Update ready. Restarting...');
+      setTimeout(() => {
         autoUpdater.quitAndInstall();
-      }
-    });
-  });
-
-  // Register IPC Handlers
-  // We use removeHandler to avoid potential double-registration errors if this function is called multiple times (though it shouldn't be)
-  ipcMain.removeHandler('check-for-updates');
-  ipcMain.handle('check-for-updates', async () => {
-    try {
-      return await autoUpdater.checkForUpdates();
-    } catch (error) {
-      console.error('Failed to check for updates:', error);
-      throw error;
+      }, 1000);
     }
   });
 
-  ipcMain.removeHandler('quit-and-install');
+  // IPC Handlers for Main Window Control
+  // IPC Handlers for Main Window Control
+  ipcMain.handle('check-for-updates', () => {
+    return autoUpdater.checkForUpdates().catch(err => log.error(err));
+  });
+
+  ipcMain.handle('download-update', () => {
+    return autoUpdater.downloadUpdate().catch(err => log.error(err));
+  });
+
   ipcMain.handle('quit-and-install', () => {
     autoUpdater.quitAndInstall();
   });
 
-  // Check for updates if enabled
-  if (autoUpdateEnabled) {
-    try {
-      autoUpdater.checkForUpdatesAndNotify().catch(err => {
-        log.warn('Update check failed (non-blocking):', err.message);
-      });
-    } catch (err) {
-      log.warn('Update check initialization failed:', err);
+  // Initial Check (Splash Screen Flow)
+  if (splash) {
+    // Ensure we don't hold the user hostage forever in splash
+    const safetyTimeout = setTimeout(() => {
+      if (splash) {
+        log.warn('Update check timed out, launching app.');
+        launchApp();
+      }
+    }, 10000); // 10 seconds timeout
+
+    // Hook into events to clear timeout
+    autoUpdater.once('update-available', () => clearTimeout(safetyTimeout));
+    autoUpdater.once('update-not-available', () => clearTimeout(safetyTimeout));
+    autoUpdater.once('error', () => clearTimeout(safetyTimeout));
+
+    if (!autoUpdateEnabled) {
+      log.info('Auto-update disabled, launching app immediately.');
+      clearTimeout(safetyTimeout);
+      launchApp();
+      return;
     }
-  } else {
-    log.info('[AutoUpdater] Skipping auto-check because autoUpdate is disabled.');
+
+    autoUpdater.checkForUpdates().catch(err => {
+      log.warn('Update check failed:', err);
+      clearTimeout(safetyTimeout);
+      launchApp();
+    });
   }
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Handle 'app://' protocol
   // Handle 'app://' protocol
   protocol.handle('app', (req) => {
     const url = new URL(req.url);
@@ -421,7 +529,27 @@ app.whenReady().then(() => {
     const filePath = path.join(RENDERER_DIST, decodeURIComponent(pathName));
     // console.log('[App Protocol] Serving:', filePath);
 
-    return net.fetch(pathToFileURL(filePath).toString());
+    try {
+      const data = fs.readFileSync(filePath);
+      // Determine mime type strictly if needed, but Response usually guesses or we can set it.
+      // For simple usage, just returning body works, but setting Content-Type is better.
+      const ext = path.extname(filePath).toLowerCase();
+      let contentType = 'application/octet-stream';
+      if (ext === '.html') contentType = 'text/html';
+      else if (ext === '.js') contentType = 'text/javascript';
+      else if (ext === '.css') contentType = 'text/css';
+      else if (ext === '.png') contentType = 'image/png';
+      else if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+      else if (ext === '.svg') contentType = 'image/svg+xml';
+      else if (ext === '.json') contentType = 'application/json';
+
+      return new Response(data, {
+        headers: { 'content-type': contentType }
+      });
+    } catch (err) {
+      console.error('[App Protocol] Failed to read file:', filePath, err);
+      return new Response('File not found', { status: 404 });
+    }
   });
 
   // Robust 'media' protocol handler
@@ -463,12 +591,24 @@ app.whenReady().then(() => {
     }
   });
 
-  setupStorageHandlers();
+  const { getTrackerState } = await import('./tracking/tracker');
+  setupStorageHandlers(getTrackerState);
   setupGoogleAuth();
   setupNotionAuth();
   setupNotionOps(); // Added
-  createWindow();
-  setupAutoUpdater(); // Initialize Auto Updater
+
+  // Decide launch flow
+  if (true || app.isPackaged) {
+    createSplashWindow();
+    setupAutoUpdater(); // This will eventually call launchApp()
+  } else {
+    // In dev, skip splash/updater to save time (or uncomment to test)
+    // setupAutoUpdater(); // Uncomment to test logic in dev
+    // For now, launch directly:
+    createWindow();
+  }
+
+  // setupAutoUpdater(); // MOVED above conditionally
 
   // Safety Check: If in Dev mode and Auto-Launch is somehow enabled (pointing to electron.exe), disable it to fix the user's registry.
   if (!app.isPackaged) {

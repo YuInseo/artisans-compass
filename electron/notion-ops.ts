@@ -1,15 +1,42 @@
 import { ipcMain } from 'electron';
 import { readJson, writeJson, getSettingsPath, getUserDataPath, getProjectsPath, DEFAULT_SETTINGS, AppSettings } from './storage';
+
 import log from 'electron-log';
+
 import fs from 'node:fs';
 import path from 'node:path';
 
 let isHistorySyncCancelled = false;
 
+// Helper for Rate-Limited Fetch
+async function fetchWithRetry(url: string, options: any, retries = 3, backoff = 1000): Promise<Response> {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(url, options);
+            if (res.status === 429) {
+                const retryAfter = res.headers.get('Retry-After');
+                const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : backoff * Math.pow(2, i);
+                log.warn(`[NotionOps] Rate limited. Retrying in ${waitTime}ms...`);
+                await new Promise(r => setTimeout(r, waitTime));
+                continue;
+            }
+            if (!res.ok && res.status >= 500) {
+                await new Promise(r => setTimeout(r, backoff * Math.pow(2, i)));
+                continue;
+            }
+            return res;
+        } catch (e) {
+            if (i === retries - 1) throw e;
+            await new Promise(r => setTimeout(r, backoff * Math.pow(2, i)));
+        }
+    }
+    throw new Error(`Failed to fetch ${url} after ${retries} retries`);
+}
+
 // Helper functions (Module Scope)
 const findAccessiblePage = async (token: string): Promise<string | null> => {
     try {
-        const response = await fetch('https://api.notion.com/v1/search', {
+        const response = await fetchWithRetry('https://api.notion.com/v1/search', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -36,7 +63,7 @@ const findAccessiblePage = async (token: string): Promise<string | null> => {
 
 const createCompassDatabase = async (token: string, pageId: string) => {
     try {
-        const response = await fetch('https://api.notion.com/v1/databases', {
+        const response = await fetchWithRetry('https://api.notion.com/v1/databases', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -102,7 +129,7 @@ const createCompassDatabase = async (token: string, pageId: string) => {
 const updateCompassDatabaseSchema = async (token: string, databaseId: string) => {
     try {
         log.info("[NotionOps] Updating database schema...");
-        const response = await fetch(`https://api.notion.com/v1/databases/${databaseId}`, {
+        const response = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}`, {
             method: 'PATCH',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -141,7 +168,7 @@ export function setupNotionOps() {
     // Search for accessible pages
     ipcMain.handle('get-notion-pages', async (_, token: string) => {
         try {
-            const response = await fetch('https://api.notion.com/v1/search', {
+            const response = await fetchWithRetry('https://api.notion.com/v1/search', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -329,7 +356,8 @@ export function setupNotionOps() {
         }
     });
 
-    // Sync All History
+
+
     ipcMain.handle('sync-all-history', async (event, { token, databaseId }: { token: string, databaseId: string }) => {
         let totalSynced = 0;
         let totalSkipped = 0;
@@ -347,6 +375,9 @@ export function setupNotionOps() {
             isHistorySyncCancelled = false;
 
             // Pre-calculate total items for progress bar
+            // We want to count:
+            // 1. Each Day (1 unit)
+            // 2. Each Screenshot (1 unit)
             let totalItemsToSync = 0;
             // Map to store loaded data so we don't read files twice
             const loadedFiles = new Map<string, any>();
@@ -356,14 +387,28 @@ export function setupNotionOps() {
                     const filePath = path.join(userDataPath, file);
                     const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
                     loadedFiles.set(file, data);
-                    totalItemsToSync += Object.keys(data).length;
+
+                    // Count days
+                    const days = Object.keys(data);
+                    totalItemsToSync += days.length;
+
+                    // Count screenshots inside days
+                    for (const dateStr of days) {
+                        const dayData = data[dateStr];
+                        if (dayData.screenshots && Array.isArray(dayData.screenshots)) {
+                            totalItemsToSync += dayData.screenshots.length;
+                        }
+                    }
+
                 } catch (e) {
                     log.error(`[NotionOps] Error pre-reading ${file}`, e);
                 }
             }
 
+            log.info(`[NotionOps] Total items calculate: ${totalItemsToSync}`);
+
             // Immediately emit initial progress (0/Total) to show UI activity
-            event.sender.send('notion-sync-progress', { processed: 0, total: totalItemsToSync });
+            event.sender.send('notion-sync-progress', { processed: 0, total: totalItemsToSync, message: "Initializing..." });
 
             // Try to update schema first (adds new columns if missing)
             await updateCompassDatabaseSchema(token, databaseId);
@@ -377,33 +422,66 @@ export function setupNotionOps() {
 
                 try {
                     // Iterate over days in the file
-                    for (const dateStr of Object.keys(data)) {
+                    const dates = Object.keys(data);
+                    const batchSize = 2; // Safe: 2 days parallel to avoid Rate Limits
+                    for (let i = 0; i < dates.length; i += batchSize) {
                         if (isHistorySyncCancelled) throw new Error("Sync Cancelled");
+                        const batch = dates.slice(i, i + batchSize);
 
-                        const dayData = data[dateStr];
-                        log.info(`[NotionOps] Syncing history for ${dateStr}...`);
+                        // Batch Start Message
+                        const start = batch[0];
+                        const end = batch[batch.length - 1];
+                        const dateRange = batch.length > 1 ? `${start} ~ ${end}` : start;
 
-                        const result = await syncDailyLog(token, databaseId, dateStr, dayData);
-
-                        const isSuccess = result?.success ?? false;
-                        if (isSuccess) totalSynced++;
-
-                        details.push({
-                            date: dateStr,
-                            status: isSuccess ? 'success' : 'error',
-                            blocks: result?.blockCount || 0,
-                            error: result?.error
+                        event.sender.send('notion-sync-progress', {
+                            processed: currentProgress,
+                            total: totalItemsToSync,
+                            message: `Syncing ${batch.length} days (${dateRange})...`
                         });
 
-                        currentProgress++;
-                        // Emit progress
-                        event.sender.send('notion-sync-progress', { processed: currentProgress, total: totalItemsToSync });
+                        await Promise.all(batch.map(async (dateStr) => {
+                            if (isHistorySyncCancelled) return; // Early exit in map
 
-                        // Check cancellation again
+                            const dayData = data[dateStr];
+                            // Progress for starting the day
+                            currentProgress++;
+
+                            // Just update progress bar, keep the batch message
+                            event.sender.send('notion-sync-progress', {
+                                processed: currentProgress,
+                                total: totalItemsToSync
+                                // No message, so UI keeps previous
+                            });
+
+                            const result = await syncDailyLog(token, databaseId, dateStr, dayData, (msg) => {
+                                // Sub-progress callback (mainly for screenshots)
+                                // If it's a screenshot upload, increment progress
+                                if (msg.startsWith("Uploading")) {
+                                    currentProgress++;
+                                    event.sender.send('notion-sync-progress', {
+                                        processed: currentProgress,
+                                        total: totalItemsToSync,
+                                        message: msg
+                                    });
+                                }
+                            });
+
+                            const isSuccess = result?.success ?? false;
+                            if (isSuccess) totalSynced++;
+
+                            details.push({
+                                date: dateStr,
+                                status: isSuccess ? 'success' : 'error',
+                                blocks: result?.blockCount || 0,
+                                error: result?.error
+                            });
+                        }));
+
+                        // Check cancellation after batch
                         if (isHistorySyncCancelled) throw new Error("Sync Cancelled");
 
-                        // Rate limit: 500ms delay between requests to avoid 429
-                        await new Promise(r => setTimeout(r, 500));
+                        // Rate limit: Pause between batches to let bucket refill
+                        await new Promise(r => setTimeout(r, 1000));
                     }
 
                 } catch (err: any) {
@@ -430,11 +508,21 @@ export function setupNotionOps() {
         }
     });
 
+    // Import Daily Log
+    ipcMain.handle('import-notion-log', async (_, { token, databaseId, dateStr }) => {
+        try {
+            return await importDailyLog(token, databaseId, dateStr);
+        } catch (e: any) {
+            log.error("[NotionOps] Import Failed", e);
+            return { success: false, error: e.message };
+        }
+    });
+
 }
 
 // Standalone function/Export to be used by storage.ts
-// Helper to recursively upload blocks layer-by-layer
-const uploadBlockTree = async (token: string, parentId: string, blocks: any[]) => {
+// Helper function to recursively upload blocks layer-by-layer
+const uploadBlockTree = async (token: string, parentId: string, blocks: any[], onProgress?: (msg: string) => void) => {
     // Notion limit: 100 blocks per batch
     const BATCH_SIZE = 100;
 
@@ -453,7 +541,7 @@ const uploadBlockTree = async (token: string, parentId: string, blocks: any[]) =
         });
 
         try {
-            const response = await fetch(`https://api.notion.com/v1/blocks/${parentId}/children`, {
+            const response = await fetchWithRetry(`https://api.notion.com/v1/blocks/${parentId}/children`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -481,7 +569,7 @@ const uploadBlockTree = async (token: string, parentId: string, blocks: any[]) =
 
                 const type = original.type;
                 if (original[type] && original[type].children && original[type].children.length > 0) {
-                    promises.push(uploadBlockTree(token, created.id, original[type].children));
+                    promises.push(uploadBlockTree(token, created.id, original[type].children, onProgress));
                 }
             }
             // Wait for all sub-trees to upload
@@ -495,11 +583,106 @@ const uploadBlockTree = async (token: string, parentId: string, blocks: any[]) =
     }
 };
 
-export async function syncDailyLog(token: string, databaseId: string, dateStr: string, data: any) {
+const uploadFileToNotion = async (token: string, filePath: string, onProgress?: (msg: string) => void) => {
+    try {
+        const stats = fs.statSync(filePath);
+        const fileSize = stats.size;
+        const fileName = path.basename(filePath);
+        const ext = path.extname(filePath).toLowerCase();
+        let contentType = 'application/octet-stream';
+        if (ext === '.png') contentType = 'image/png';
+        if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+
+        if (onProgress) onProgress(`Uploading ${fileName}...`);
+        log.info(`[NotionOps] Uploading ${fileName} (${fileSize} bytes) to Notion...`);
+
+        // 1. Get Upload URL
+        const uploadRes = await fetchWithRetry('https://api.notion.com/v1/file_uploads', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Notion-Version': '2022-06-28',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filename: fileName,
+                content_type: contentType,
+                file_size: fileSize // Some docs suggest this, safer to include
+            })
+        });
+
+        if (!uploadRes.ok) {
+            throw new Error(`Get Upload URL Failed: ${await uploadRes.text()}`);
+        }
+
+        const uploadData = await uploadRes.json();
+        const fileId = uploadData.id;
+
+        // 2. Upload Content
+        // Notion File Upload API requires POST to /send with multipart/form-data
+        const fileContent = fs.readFileSync(filePath);
+        const sendUrl = `https://api.notion.com/v1/file_uploads/${fileId}/send`;
+
+        let putRes: Response | undefined;
+        for (let i = 0; i < 3; i++) {
+            // Recreate form data to avoid stream consumption issues on retry
+            const formRetry = new FormData();
+            formRetry.append('file', new Blob([fileContent], { type: contentType }), fileName);
+
+            putRes = await fetchWithRetry(sendUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Notion-Version': '2022-06-28'
+                    // Content-Type is automatically set by fetch when using FormData
+                },
+                body: formRetry
+            });
+
+            if (putRes.ok) break;
+
+            if (putRes.status === 400 && i < 2) {
+                log.warn(`[NotionOps] Upload 400 Bad Request. Retrying... (${i + 1}/3)`);
+                await new Promise(r => setTimeout(r, 1000));
+                continue;
+            }
+            break;
+        }
+
+        if (!putRes || !putRes.ok) {
+            const errorText = putRes ? await putRes.text() : "No Response";
+            throw new Error(`Upload Content Failed: ${putRes?.status} ${putRes?.statusText} - ${errorText}`);
+        }
+
+        log.info(`[NotionOps] File uploaded successfully. ID: ${fileId}`);
+
+        // 3. Return Block Structure
+        return {
+            object: 'block',
+            type: 'image',
+            image: {
+                type: 'file_upload',
+                file_upload: {
+                    id: fileId
+                },
+                caption: [{ type: "text", text: { content: fileName } }] // Optional caption
+            }
+        };
+
+    } catch (e) {
+        log.error("[NotionOps] Upload File Failed", e);
+        return null;
+    }
+};
+
+export async function syncDailyLog(token: string, databaseId: string, dateStr: string, data: any, onProgress?: (msg: string) => void) {
+
     if (isHistorySyncCancelled) return { success: false, error: "Sync Cancelled" };
 
     try {
-        log.info(`[NotionOps] Syncing Daily Log for ${dateStr}`);
+        const msg = `Syncing Daily Log for ${dateStr}`;
+        if (onProgress) onProgress(msg);
+        log.info(`[NotionOps] ${msg}`);
         // ... (logging)
 
         // ... (Find Page Logic - omitted for brevity in replace, asserting match context)
@@ -507,7 +690,7 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
 
 
         // 1. Find the page for this date
-        const searchRes = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+        const searchRes = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}/query`, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`,
@@ -540,7 +723,7 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
                         await updateCompassDatabaseSchema(token, newDb.databaseId);
 
                         // Recursive retry with NEW ID
-                        return syncDailyLog(token, newDb.databaseId, dateStr, data);
+                        return syncDailyLog(token, newDb.databaseId, dateStr, data, onProgress);
                     }
                 } else {
                     log.error("[NotionOps] No accessible parent page found for recovery.");
@@ -623,7 +806,7 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
 
         if (!pageId) {
             // Create
-            const createRes = await fetch('https://api.notion.com/v1/pages', {
+            const createRes = await fetchWithRetry('https://api.notion.com/v1/pages', {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -644,7 +827,7 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
             pageId = createData.id;
         } else {
             // Update Properties
-            await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+            await fetchWithRetry(`https://api.notion.com/v1/pages/${pageId}`, {
                 method: 'PATCH',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -660,7 +843,7 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
         // 2. Update Content (Todos)
         // This is destructive: Delete all children, re-add.
         // Get children
-        const childrenRes = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+        const childrenRes = await fetchWithRetry(`https://api.notion.com/v1/blocks/${pageId}/children`, {
             headers: { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28' }
         });
 
@@ -672,12 +855,22 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
             // For now: Just append if empty, or try to update. 
             // To ensure "Sync", replacing is safest but slow.
             // Let's iterate and delete existing blocks.
-            for (const block of childrenData.results) {
-                // Deleting blocks one by one
-                await fetch(`https://api.notion.com/v1/blocks/${block.id}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28' }
-                });
+            if (childrenData.results.length > 0) {
+                const results = childrenData.results;
+                const batchSize = 5; // Reduced Batch
+                for (let i = 0; i < results.length; i += batchSize) {
+                    const batch = results.slice(i, i + batchSize);
+                    await Promise.all(batch.map((block: any) =>
+                        fetchWithRetry(`https://api.notion.com/v1/blocks/${block.id}`, {
+                            method: 'DELETE',
+                            headers: { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28' }
+                        }).catch(e => log.error(`[NotionOps] Failed to delete block ${block.id}`, e))
+                    ));
+                    // Pause between batches
+                    if (i + batchSize < results.length) {
+                        await new Promise(r => setTimeout(r, 200));
+                    }
+                }
             }
         }
 
@@ -819,6 +1012,51 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
             }
         }
 
+        // 4. SCREENSHOTS (Optimized: Parallel + Toggle)
+        const settings = readJson(getSettingsPath(), DEFAULT_SETTINGS);
+        const includeScreenshots = settings.notionConfig?.includeScreenshots !== false; // Default true
+
+        if (includeScreenshots && data.screenshots && data.screenshots.length > 0) {
+            log.info(`[NotionOps] Processing ${data.screenshots.length} screenshots for backup...`);
+
+            const screenshotBlocks: any[] = [];
+            const concurrency = 3; // Safe: 3 images parallel
+            const screenshots = data.screenshots;
+
+            for (let i = 0; i < screenshots.length; i += concurrency) {
+                const batch = screenshots.slice(i, i + concurrency);
+                const results = await Promise.all(batch.map(async (path: string) => {
+                    try {
+                        if (fs.existsSync(path)) {
+                            return await uploadFileToNotion(token, path, onProgress);
+                        }
+                    } catch (imgErr) {
+                        log.error(`[NotionOps] Failed to upload screenshot ${path}`, imgErr);
+                    }
+                    return null;
+                }));
+
+                results.forEach(block => {
+                    if (block) screenshotBlocks.push(block);
+                });
+            }
+
+            if (screenshotBlocks.length > 0) {
+                if (blocks.length > 0) {
+                    blocks.push({ object: 'block', type: 'divider', divider: {} });
+                }
+                // Create Toggle Block
+                blocks.push({
+                    object: 'block',
+                    type: 'toggle',
+                    toggle: {
+                        rich_text: [{ type: 'text', text: { content: `Screenshots (${screenshotBlocks.length})` } }],
+                        children: screenshotBlocks // Nested children
+                    }
+                });
+            }
+        }
+
         log.info(`[NotionOps] Generated ${blocks.length} blocks to sync.`);
         if (blocks.length > 0) {
             log.info(`[NotionOps] First block sample: ${JSON.stringify(blocks[0])}`);
@@ -826,7 +1064,7 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
 
         if (blocks.length > 0) {
             // Use recursive uploader
-            await uploadBlockTree(token, pageId, blocks);
+            await uploadBlockTree(token, pageId, blocks, onProgress);
         } else {
             log.warn("[NotionOps] No blocks generated to sync. closingNote: " + (data.closingNote ? "YES" : "NO") + ", todos: " + (data.todos ? "YES" : "NO"));
         }
@@ -837,5 +1075,138 @@ export async function syncDailyLog(token: string, databaseId: string, dateStr: s
         if (isHistorySyncCancelled || error.message === "Sync Cancelled" || error === "Sync Cancelled") throw new Error("Sync Cancelled");
         log.error("[NotionOps] Sync failed", error);
         return { success: false, error: (error as any).message, blockCount: 0 };
+    }
+}
+
+export async function importDailyLog(token: string, databaseId: string, dateStr: string) {
+    log.info(`[NotionOps] Importing Daily Log for ${dateStr}`);
+
+    try {
+        // 1. Find Page
+        const searchRes = await fetchWithRetry(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Notion-Version': '2022-06-28',
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filter: {
+                    property: "Date",
+                    date: { equals: dateStr }
+                }
+            })
+        });
+
+        if (!searchRes.ok) throw new Error(`Query Failed: ${await searchRes.text()}`);
+        const searchData = await searchRes.json();
+
+        if (searchData.results.length === 0) {
+            return { success: false, error: "No page found for this date" };
+        }
+
+        const page = searchData.results[0];
+        const pageId = page.id;
+
+        // 2. Parse Properties (Status, etc.)
+        // This is minimal; we mainly want the content.
+        // But let's check status just in case.
+        // const status = page.properties["Status"]?.select?.name;
+        // const isCompleted = status === "Completed";
+
+        // 3. Fetch Blocks
+        const blocksRes = await fetchWithRetry(`https://api.notion.com/v1/blocks/${pageId}/children`, {
+            headers: { 'Authorization': `Bearer ${token}`, 'Notion-Version': '2022-06-28' }
+        });
+
+        if (!blocksRes.ok) throw new Error(`Fetch Blocks Failed: ${await blocksRes.text()}`);
+        const blocksData = await blocksRes.json();
+
+        // 4. Parse Blocks -> DailyLogData
+        // We need to reconstruct 'todos', 'closingNote', etc.
+        // This is tricky because we flattened everything into blocks.
+        // Heuristic: 
+        // - "Quest Log" header starts the Todos section.
+        // - "Project: ..." header starts project todos.
+        // - "Screenshots" header starts screenshots.
+        // - Everything before "Quest Log" is Closing Note.
+
+        const todos: any[] = [];
+        let closingNote = "";
+
+        let mode: 'note' | 'todos' | 'project' | 'screenshots' = 'note';
+        // If we didn't use a header for note, start in note mode.
+
+        // If we didn't use a header for note, start in note mode.
+
+        for (const block of blocksData.results) {
+            // Check headers to switch mode
+            if (block.type === 'heading_3' || block.type === 'heading_2' || block.type === 'heading_1') {
+                const text = block[block.type].rich_text.map((t: any) => t.plain_text).join("");
+
+                if (text === "Quest Log") {
+                    mode = 'todos';
+                    continue;
+                }
+                if (text.startsWith("Project: ")) {
+                    mode = 'project';
+                    // We don't really support importing project todos back into specific projects easily yet
+                    // without parsing the project name accurately.
+                    // For now, let's treat them as general todos or ignore if complex.
+                    // Let's dump them into 'todos' for safety so they aren't lost.
+                    continue;
+                }
+                if (text === "Screenshots") {
+                    mode = 'screenshots';
+                    continue;
+                }
+
+                // If it's a random header, it's part of the note
+                mode = 'note';
+            }
+
+            if (block.type === 'divider') continue;
+
+            if (mode === 'note') {
+                // Reconstruct Markdown
+                if (block.type === 'paragraph') {
+                    closingNote += block.paragraph.rich_text.map((t: any) => t.plain_text).join("") + "\n\n";
+                } else if (block.type === 'heading_1') {
+                    closingNote += "# " + block.heading_1.rich_text.map((t: any) => t.plain_text).join("") + "\n";
+                } else if (block.type === 'heading_2') {
+                    closingNote += "## " + block.heading_2.rich_text.map((t: any) => t.plain_text).join("") + "\n";
+                } else if (block.type === 'heading_3') {
+                    closingNote += "### " + block.heading_3.rich_text.map((t: any) => t.plain_text).join("") + "\n";
+                } else if (block.type === 'bulleted_list_item') {
+                    closingNote += "- " + block.bulleted_list_item.rich_text.map((t: any) => t.plain_text).join("") + "\n";
+                } else if (block.type === 'to_do') { // Checklist in note
+                    const checked = block.to_do.checked ? "[x]" : "[ ]";
+                    closingNote += `- ${checked} ` + block.to_do.rich_text.map((t: any) => t.plain_text).join("") + "\n";
+                }
+            } else if (mode === 'todos' || mode === 'project') {
+                if (block.type === 'to_do') {
+                    todos.push({
+                        id: block.id, // Use block ID as temporary ID
+                        text: block.to_do.rich_text.map((t: any) => t.plain_text).join(""),
+                        completed: block.to_do.checked,
+                        children: []
+                    });
+                }
+            }
+        }
+
+        return {
+            success: true,
+            data: {
+                closingNote: closingNote.trim(),
+                todos: todos
+                // We don't import screenshots back to local disk yet
+                // We don't import specific project mappings yet
+            }
+        };
+
+    } catch (e: any) {
+        log.error("[NotionOps] Import Failed", e);
+        throw e;
     }
 }

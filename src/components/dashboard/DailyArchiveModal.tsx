@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 import { format, addDays } from "date-fns";
 import { Moon, ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 
 interface DailyArchiveModalProps {
     date: Date;
@@ -14,6 +16,7 @@ interface DailyArchiveModalProps {
 }
 
 export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: DailyArchiveModalProps) {
+    const { t } = useTranslation();
     const { getDailyLog, settings, projects } = useDataStore();
     const [logData, setLogData] = useState<any>(null);
     const formattedDate = format(date, 'yyyy-MM-dd');
@@ -38,15 +41,25 @@ export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: Daily
     }, [isOpen, formattedDate, getDailyLog]);
 
     // Keyboard Navigation
+    // Keyboard Navigation
     useEffect(() => {
         if (!isOpen) return;
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Ignore if user is typing in an input or interacting with a slider OR is in fullscreen media mode
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable || target.closest('[role="slider"]') || document.querySelector('.screenshot-slider-fullscreen')) {
+                return;
+            }
+
             if (e.key === 'ArrowLeft' && onDateChange) {
                 onDateChange(addDays(date, -1));
             } else if (e.key === 'ArrowRight' && onDateChange) {
-                // Prevent going to future? Assuming future is allowed in calendar logic but maybe empty.
-                // Parent logic ensures we don't go past today if we want, but let's allow navigation freely here.
-                onDateChange(addDays(date, 1));
+                const nextDay = addDays(date, 1);
+                if (nextDay > new Date()) {
+                    toast.error(t('calendar.cannotTravelFuture'));
+                    return;
+                }
+                onDateChange(nextDay);
             }
         };
         window.addEventListener('keydown', handleKeyDown);
@@ -77,7 +90,14 @@ export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: Daily
                             <span className="text-sm font-mono font-medium min-w-[120px] text-center">
                                 {format(date, 'MMM dd, yyyy')}
                             </span>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDateChange(addDays(date, 1))}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => {
+                                const nextDay = addDays(date, 1);
+                                if (nextDay > new Date()) {
+                                    toast.error(t('calendar.cannotTravelFuture'));
+                                    return;
+                                }
+                                onDateChange(nextDay);
+                            }}>
                                 <ArrowRight className="w-4 h-4" />
                             </Button>
                         </div>
@@ -104,9 +124,10 @@ export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: Daily
                                 questAchieved: logData.stats?.questAchieved || false
                             }}
                             timelapseDurationSeconds={settings?.timelapseDurationSeconds || 5}
-                            checkboxVisibility={settings?.checkboxVisibility || 'high'}
+                            showIndentationGuides={settings?.showIndentationGuides}
                             className="bg-card h-full"
                             onClose={onClose}
+                            readOnly={true}
                         />
                     ) : (
                         <div className="h-full flex flex-col items-center justify-center text-muted-foreground">

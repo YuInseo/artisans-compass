@@ -25,7 +25,12 @@ import { toast } from 'sonner';
 function App() {
   // Prevent Refresh (Ctrl+R, F5) logic moved to main listener below
   const { settings, saveSettings, loading, projects, searchQuery, undo: dataUndo, redo: dataRedo, lastActionTime: dataTime } = useDataStore();
-  const { undo: todoUndo, redo: todoRedo, lastActionTime: todoTime } = useTodoStore();
+  const { undo: todoUndo, redo: todoRedo, lastActionTime: todoTime, loadTodos } = useTodoStore();
+
+  // Load Todos on Startup (Fix for Carry-over visibility)
+  useEffect(() => {
+    loadTodos();
+  }, [loadTodos]);
 
 
 
@@ -75,6 +80,37 @@ function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [dataUndo, dataRedo, todoUndo, todoRedo, dataTime, todoTime]);
+
+  // Apply Theme Preset
+  useEffect(() => {
+    const root = document.documentElement;
+    // Remove all theme preset classes
+    root.classList.remove('theme-discord', 'theme-midnight', 'theme-custom');
+
+    // Add current preset if set and not default
+    if (settings?.themePreset && settings.themePreset !== 'default') {
+      root.classList.add(`theme-${settings.themePreset}`);
+    }
+  }, [settings?.themePreset]);
+
+  // Apply Custom CSS
+  useEffect(() => {
+    const styleId = 'custom-user-css';
+    let styleTag = document.getElementById(styleId);
+
+    if (settings?.themePreset === 'custom' && settings?.customCSS) {
+      if (!styleTag) {
+        styleTag = document.createElement('style');
+        styleTag.id = styleId;
+        document.head.appendChild(styleTag);
+      }
+      styleTag.textContent = settings.customCSS;
+    } else {
+      if (styleTag) {
+        styleTag.remove();
+      }
+    }
+  }, [settings?.customCSS, settings?.themePreset]);
 
   // Archive State
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);

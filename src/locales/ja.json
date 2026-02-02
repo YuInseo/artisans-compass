@@ -22,7 +22,7 @@
             "indentationLines": "インデントガイド",
             "indentationLinesDesc": "ネストされたタスクをつなぐ垂直線を表示します."
         },
-        "timeline": "タイムライン",
+        "timelineLabel": "タイムライン",
         "timelineConfig": "タイムライン設定",
         "tracking": {
             "title": "価値観とプライバシー",
@@ -83,6 +83,7 @@
         "startupBehavior": "起動動作",
         "autoLaunch": "起動時に自動実行",
         "autoLaunchDesc": "ログイン時にArtisans Compassを自動的に起動します。",
+        "updateLog": "アップデートログ",
         "widgetSettings": "ウィジェット設定",
         "checkboxVisibility": "チェックボックス表示",
         "indentationLines": "インデントガイド",
@@ -226,7 +227,10 @@
         "visualRecap": "ビジュアルリキャップ",
         "totalWork": "総作業時間",
         "closeArchive": "アーカイブを閉じる",
-        "questClear": "クエスト完了"
+        "questClear": "クエスト完了",
+        "avgFocus": "平均集中時間",
+        "totalFocus": "総集中時間",
+        "appUsage": "アプリ使用状況"
     },
     "ritual": {
         "title": "計画と準備",

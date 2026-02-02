@@ -193,9 +193,13 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
         if (onSelect) onSelect(today);
     };
 
+
+    // Determine the active project (Prop or Selection)
+    const activeProject = focusedProject || projects.find(p => selectedIds.has(p.id));
+
     const handleGoToProject = () => {
-        if (focusedProject) {
-            const start = parseISO(focusedProject.startDate);
+        if (activeProject) {
+            const start = parseISO(activeProject.startDate);
             setDate(start);
             setDisplayedMonth(start); // Navigate calendar view to project's month
         }
@@ -212,13 +216,21 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
     const selectedProjectRangeMatcher = (date: Date) => {
         if (selectedIds.size === 0) return false;
         const currentStr = format(date, 'yyyy-MM-dd');
-
-        // Find visible projects that are selected
-        const selectedProjects = projects.filter(p => selectedIds.has(p.id));
-
-        return selectedProjects.some(p => {
+        return projects.filter(p => selectedIds.has(p.id)).some(p => {
             return currentStr >= p.startDate && currentStr <= p.endDate;
         });
+    };
+
+    const selectedRangeStartMatcher = (date: Date) => {
+        if (selectedIds.size === 0) return false;
+        const currentStr = format(date, 'yyyy-MM-dd');
+        return projects.filter(p => selectedIds.has(p.id)).some(p => p.startDate === currentStr);
+    };
+
+    const selectedRangeEndMatcher = (date: Date) => {
+        if (selectedIds.size === 0) return false;
+        const currentStr = format(date, 'yyyy-MM-dd');
+        return projects.filter(p => selectedIds.has(p.id)).some(p => p.endDate === currentStr);
     };
 
     const isWorkDay = (day: Date) => {
@@ -251,7 +263,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
     })();
 
     return (
-        <div className="h-full w-full flex flex-col p-4 bg-background">
+        <div className="h-full w-full flex flex-col p-4 bg-background select-none">
             <div className="flex-1 border border-border rounded-xl bg-card shadow-sm overflow-hidden flex flex-col p-4 min-h-[300px] relative">
 
                 {viewMode === 'calendar' ? (
@@ -268,15 +280,22 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 <span>{t('calendar.today')}: <span className="font-semibold text-foreground">{format(new Date(), 'MMM d')}</span></span>
                             </Button>
 
-                            {focusedProject && (
+                            {activeProject && (
                                 <Button
                                     variant="outline"
                                     size="sm"
                                     className="h-8 px-3 text-xs gap-2 border-blue-500/30 hover:bg-blue-100/50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 transition-colors"
                                     onClick={handleGoToProject}
+                                    title={activeProject.name}
                                 >
                                     <Target className="w-3.5 h-3.5" />
-                                    <span>{t('calendar.project')}: <span className="font-semibold">{format(parseISO(focusedProject.startDate), 'MMM d')}</span></span>
+                                    <span className="max-w-[100px] truncate hidden sm:inline-block">{activeProject.name}</span>
+                                    {activeProject.type && (
+                                        <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm font-medium uppercase tracking-wider">
+                                            {activeProject.type}
+                                        </span>
+                                    )}
+                                    <span><span className="font-semibold">{format(parseISO(activeProject.startDate), 'MMM d')}</span></span>
                                 </Button>
                             )}
                         </div>
@@ -290,31 +309,35 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                             className="w-full h-full flex flex-col"
                             modifiers={{
                                 projectRange: projectRangeMatcher,
-                                selectedRange: selectedProjectRangeMatcher
+                                selectedRange: selectedProjectRangeMatcher,
+                                sStart: selectedRangeStartMatcher,
+                                sEnd: selectedRangeEndMatcher
                             }}
                             modifiersClassNames={{
                                 projectRange: "bg-blue-500/10 text-blue-600 font-bold border-y border-blue-500/20 first:rounded-l-md last:rounded-r-md first:border-l last:border-r",
-                                selectedRange: "bg-amber-500/20 text-amber-600 dark:text-amber-400 font-bold border border-amber-500/50 z-20"
+                                selectedRange: "bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 font-bold first:rounded-l-lg last:rounded-r-lg !rounded-none mx-0 w-full relative z-0",
+                                sStart: "!rounded-l-lg",
+                                sEnd: "!rounded-r-lg"
                             }}
                             classNames={{
-                                months: "flex flex-col w-full h-full",
-                                month: "w-full h-full flex flex-col",
+                                months: "flex flex-col w-full h-full space-y-0",
+                                month: "w-full h-full flex flex-col space-y-0",
                                 caption: "flex justify-start items-center mb-4 px-2 shrink-0 relative h-8",
                                 caption_label: "text-base font-serif font-bold text-foreground tracking-tight pl-1",
                                 nav: "flex items-center gap-1 absolute right-1 top-0 bottom-0",
                                 nav_button: "h-7 w-7 bg-transparent p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all flex items-center justify-center border border-transparent hover:border-border",
                                 nav_button_previous: "static",
                                 nav_button_next: "static",
-                                table: "w-full h-full border-collapse flex flex-col",
-                                head_row: "flex justify-between w-full mb-2 px-1 shrink-0",
+                                table: "w-full h-full border-collapse flex flex-col space-y-0",
+                                head_row: "grid grid-cols-7 w-full mb-2 shrink-0 gap-0",
                                 head_cell: "text-muted-foreground w-full text-center font-mono text-[10px] uppercase tracking-widest opacity-60",
-                                tbody: "flex-1 flex flex-col justify-between w-full",
-                                row: "flex w-full justify-between flex-1 items-center",
+                                tbody: "flex-1 flex flex-col w-full gap-0 space-y-0",
+                                row: "grid grid-cols-7 w-full flex-1 gap-0 mt-0",
                                 cell: "relative p-0 text-center w-full h-full flex items-center justify-center focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-transparent",
                                 day: cn(
                                     "h-full w-full p-0 font-normal aria-selected:opacity-100 hover:bg-muted/50 transition-all duration-200 rounded-lg group relative flex flex-col items-center justify-start pt-2 text-sm text-foreground"
                                 ),
-                                day_selected: "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground shadow-md shadow-primary/20 scale-[0.95] z-10",
+                                day_selected: "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground shadow-sm z-10",
                                 day_today: "text-blue-600 dark:text-blue-400 font-bold bg-blue-500/5 border border-blue-500/20",
                                 day_outside: "text-muted-foreground/30 opacity-50",
                                 day_disabled: "text-muted-foreground opacity-30",
@@ -340,9 +363,9 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                                 <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-primary/20 rounded-full"></div>
                                             )}
 
-                                            {/* Data Indicator (Dot) */}
+                                            {/* Data Indicator (Bar) */}
                                             {hasData && !isQuestAchieved && (
-                                                <div className="mt-1 w-1 h-1 bg-foreground/50 rounded-full"></div>
+                                                <div className="mt-1 w-3 h-1 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500 opacity-90 shadow-[0_2px_4px_rgba(99,102,241,0.2)]"></div>
                                             )}
 
                                             {/* Quest Achieved Checkmark */}

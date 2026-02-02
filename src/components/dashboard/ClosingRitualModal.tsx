@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,16 +9,14 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 
-import { ArrowRight, ArrowLeft, Moon, ListTodo, Sparkles, LogOut } from "lucide-react";
+import { ArrowRight, Moon, ListTodo, Sparkles, LogOut } from "lucide-react";
 import { Todo, Project } from "@/types";
 import { DailyArchiveView } from "./DailyArchiveView";
 
-import { useTodoStore } from "@/hooks/useTodoStore";
-// BlockNote Imports
-import { useCreateBlockNote } from "@blocknote/react";
-import { BlockNoteView } from "@blocknote/shadcn";
-import { todosToBlocks, blocksToTodos, customSchema } from "@/utils/blocknote-utils";
-import "@blocknote/shadcn/style.css"; // Ensure styles are imported if not globally available, though they might be safely duped or already global
+
+import { useTodoStore, insertNode, updateNode, deleteNode, indentNode, unindentNode, moveNodes } from "@/hooks/useTodoStore";
+import { TodoEditor } from "./TodoEditor";
+import { v4 as uuidv4 } from 'uuid';
 
 interface ClosingRitualModalProps {
     isOpen: boolean;
@@ -32,145 +30,7 @@ interface ClosingRitualModalProps {
 
 // --- BlockNote Components for Modal ---
 
-interface BlueprintEditorProps {
-    initialTodos: Todo[];
-    onChange: (todos: Todo[]) => void;
-    projectId: string; // Used for keying blocknote instance
-}
 
-function BlueprintEditor({ initialTodos, onChange }: BlueprintEditorProps) {
-    const initialBlocks = useMemo(() => {
-        if (initialTodos.length > 0) {
-            return todosToBlocks(initialTodos);
-        }
-        return [{
-            type: "checkListItem",
-            content: ""
-        }];
-    }, [initialTodos]); // Only rely on initialTodos when mounting? No, we might switch projects.
-
-    // Key to force re-creation of editor when projectId changes, ensuring clean slate/initialization
-    // actually, useCreateBlockNote handles updates? typically no, it inits once.
-    // So we should key the component.
-    const editor = useCreateBlockNote({
-        initialContent: initialBlocks as any,
-        schema: customSchema,
-    });
-
-    useEffect(() => {
-        // Debounce? BlockNote usually fine.
-        const unsubscribe = editor.onChange(() => {
-            const blocks = editor.document as any;
-            const newTodos = blocksToTodos(blocks);
-            onChange(newTodos);
-        });
-        return unsubscribe;
-    }, [editor, onChange]);
-    const containerRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // DEBUG
-            // console.log("Native Key:", e.key);
-
-            // Manual Navigation Override (Fix for "Up arrow not working")
-            if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-                const selection = editor.getTextCursorPosition();
-                if (selection) {
-                    // Helper to flatten blocks including children
-                    const getFlatBlocks = (blocks: any[]): any[] => {
-                        let flat: any[] = [];
-                        for (const b of blocks) {
-                            flat.push(b);
-                            if (b.children && b.children.length > 0) {
-                                flat = flat.concat(getFlatBlocks(b.children));
-                            }
-                        }
-                        return flat;
-                    };
-
-                    const flat = getFlatBlocks(editor.document);
-                    const idx = flat.findIndex(b => b.id === selection.block.id);
-
-                    if (e.key === "ArrowUp" && idx > 0) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Focus previous block at end
-                        editor.setTextCursorPosition(flat[idx - 1], 'end');
-                    } else if (e.key === "ArrowDown" && idx < flat.length - 1) {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        // Focus next block at start
-                        editor.setTextCursorPosition(flat[idx + 1], 'start');
-                    }
-                }
-                // If not found or at edge, let default happen (though default might be broken for Up)
-            }
-
-            if (e.key === "Enter" && !e.shiftKey) {
-                const selection = editor.getTextCursorPosition();
-                if (selection && selection.block.type === "checkListItem") {
-                    const text = Array.isArray(selection.block.content)
-                        ? selection.block.content.map(c => c.type === 'text' ? c.text : '').join('')
-                        : '';
-
-                    if (text === "") {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        editor.insertBlocks(
-                            [{ type: "checkListItem", props: { checked: false } }],
-                            selection.block,
-                            "after"
-                        );
-                        // Cursor usually moves to next block automatically with insertBlocks "after" if active
-                    }
-                }
-            }
-            if (e.key === "Backspace") {
-                const selection = editor.getTextCursorPosition();
-                if (selection && selection.block.type === "checkListItem") {
-                    const text = Array.isArray(selection.block.content)
-                        ? selection.block.content.map(c => c.type === 'text' ? c.text : '').join('')
-                        : '';
-
-                    if (text === "") {
-                        e.preventDefault();
-                        e.stopPropagation();
-
-                        // Smart Deletion: Un-nest children if they exist
-                        if (selection.block.children.length > 0) {
-                            editor.insertBlocks(selection.block.children as any, selection.block, "after");
-                        }
-
-                        editor.removeBlocks([selection.block]);
-                    }
-                }
-            }
-        };
-
-        // Capture phase is crucial here to beat BlockNote/Prosemirror
-        container.addEventListener("keydown", handleKeyDown, { capture: true });
-        return () => container.removeEventListener("keydown", handleKeyDown, { capture: true });
-    }, [editor]);
-
-    return (
-        <div ref={containerRef}>
-            <BlockNoteView
-                editor={editor}
-                theme="light" // CSS overrides handle it
-                className="min-h-[300px] p-4 rounded-md"
-                slashMenu={false}
-                formattingToolbar={false}
-                onChange={() => {
-                    // Schema handles defaults now
-                }}
-            />
-        </div>
-    );
-}
 
 // --- Leftover Render Helper ---
 const LeftoverList = ({ todos, depth = 0, movedIds, onMove }: { todos: Todo[], depth?: number, movedIds: Set<string>, onMove: (t: Todo) => void }) => {
@@ -210,7 +70,7 @@ import { useTranslation } from "react-i18next";
 
 export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, screenshots = [], sessions = [], projects = [] }: ClosingRitualModalProps) {
     const { t } = useTranslation();
-    const { projectTodos, activeProjectId, carryOverTodos } = useTodoStore();
+    const { projectTodos, activeProjectId, saveFutureTodos } = useTodoStore();
     const [step, setStep] = useState<1 | 2>(1);
 
     const [tomorrowPlans, setTomorrowPlans] = useState<Record<string, Todo[]>>({});
@@ -221,7 +81,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
 
 
     const [movedIds, setMovedIds] = useState<Set<string>>(new Set());
-    const [editorVersion, setEditorVersion] = useState(0);
+
 
     // Filter projects to only those with activity today (valid tasks)
     const activeProjects = useMemo(() => {
@@ -246,6 +106,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
             console.log("Opening Ritual Modal");
             setStep(1);
             setTomorrowPlans({});
+
             // Default to active project if valid, otherwise first active project
             if (activeProjectId && activeProjectId !== 'none' && activeProjects.find(p => p.id === activeProjectId)) {
                 setSelectedProjectId(activeProjectId);
@@ -257,9 +118,59 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
             setIsSaving(false);
             setMaterialChecked(true);
             setMovedIds(new Set());
-            setEditorVersion(0);
+
+            // Load Tomorrow's Plans (to avoid overwriting)
+            const loadTomorrow = async () => {
+                const now = new Date();
+                const tomorrow = new Date(now);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                // Adjust for timezone offset to match the simple YYYY-MM-DD format used elsewhere
+                const offset = tomorrow.getTimezoneOffset();
+                const localTomorrow = new Date(tomorrow.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
+
+                // We need to access the store's loadTodosForDate function. 
+                // Since it's not destructured above, we need to add it or use the store directly if possible.
+                // Assuming it's available in the hook return.
+                const plans = await useTodoStore.getState().loadTodosForDate(localTomorrow);
+                if (plans) {
+                    console.log("Loaded existing plans for tomorrow:", plans);
+                    setTomorrowPlans(plans);
+                }
+            };
+            loadTomorrow();
+
+            // Fetch latest data to ensure timeline is up-to-date
+            const fetchLatestLog = async () => {
+                if ((window as any).ipcRenderer) {
+                    try {
+                        // Use local date for today
+                        const today = new Date();
+                        const offset = today.getTimezoneOffset();
+                        const localToday = new Date(today.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
+
+                        const dateStr = localToday; // Simple local calculation
+
+                        const latestLog = await (window as any).ipcRenderer.invoke('get-daily-log', dateStr);
+                        if (latestLog) {
+                            console.log("ClosingRitual: Fetched fresh log", latestLog);
+                            if (latestLog.sessions) setFreshSessions(latestLog.sessions);
+                            // We can also update stats if they are stored in log, or let DailyArchiveView calc them from sessions.
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch fresh daily log", e);
+                    }
+                }
+            };
+            fetchLatestLog();
         }
     }, [isOpen, activeProjectId, activeProjects, projects]);
+
+    const [freshSessions, setFreshSessions] = useState<any[]>(sessions);
+
+    // Sync prop sessions to freshSessions when modal opens or props change (initially)
+    useEffect(() => {
+        if (!isOpen) setFreshSessions(sessions);
+    }, [sessions, isOpen]);
 
     // Ensure selectedProjectId is valid
     useEffect(() => {
@@ -272,7 +183,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
         console.log("Advancing to Plan step");
         setStep(2);
     };
-    const handleBack = () => setStep(1);
+
 
     // Serialization for Save
     const handleFinish = async () => {
@@ -280,6 +191,17 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
         await new Promise(r => setTimeout(r, 800)); // Visual delay
 
         let finalLog = "";
+
+        // Helper to clean todos (remove empty/placeholders)
+        const cleanTodos = (list: Todo[]): Todo[] => {
+            return list.filter(t => {
+                return t.text && t.text.trim().length > 0 && t.text !== "Untitled" && t.text !== "New task...";
+            }).map(t => ({
+                ...t,
+                carriedOver: true,
+                children: t.children ? cleanTodos(t.children) : []
+            }));
+        };
 
         // Helper to serialize a tree of todos to markdown
         const serializeTodos = (todos: Todo[], depth = 0): string => {
@@ -303,24 +225,36 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
             finalLog += `## ${t('ritual.focusPoints')}\n${t('ritual.noTasksCompleted')}\n\n`;
         }
 
+        // Prepare Tomorrow's Blueprint (Cleaned)
+        const cleanedTomorrowPlans: Record<string, Todo[]> = {};
+        Object.keys(tomorrowPlans).forEach(key => {
+            const cleaned = cleanTodos(tomorrowPlans[key] || []);
+            if (cleaned.length > 0) {
+                cleanedTomorrowPlans[key] = cleaned;
+            }
+        });
+
         // 2. Tomorrow's Blueprint
         finalLog += `## ${t('ritual.tomorrowsBlueprint')}\n`;
         projects.forEach(p => {
-            const planList = tomorrowPlans[p.id];
+            const planList = cleanedTomorrowPlans[p.id];
             if (planList && planList.length > 0) {
                 finalLog += `### ${p.name}\n${serializeTodos(planList)}\n\n`;
             }
         });
-        const miscPlan = tomorrowPlans['all'];
+        const miscPlan = cleanedTomorrowPlans['all'];
         if (miscPlan && miscPlan.length > 0) {
             finalLog += `### ${t('ritual.miscellaneous')}\n${serializeTodos(miscPlan)}\n`;
         }
 
         // PERSIST tomorrow's plans to store for next day
-        for (const [projectId, todos] of Object.entries(tomorrowPlans)) {
-            if (todos.length > 0) {
-                await carryOverTodos(todos, projectId);
-            }
+        // Calculate tomorrow's date
+        const now = new Date();
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        if (Object.keys(cleanedTomorrowPlans).length > 0) {
+            await saveFutureTodos(tomorrow, cleanedTomorrowPlans);
         }
 
         onSaveLog(finalLog);
@@ -341,12 +275,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
     // (Most handling is now internal to BlockNote, we just sync state)
 
     // Sync Handler for Blueprint
-    const handleBlueprintChange = (todos: Todo[]) => {
-        setTomorrowPlans(prev => ({
-            ...prev,
-            [selectedProjectId]: todos
-        }));
-    };
+
 
     // --- Move Handler ---
     const handleMoveLeftover = (todo: Todo) => {
@@ -368,8 +297,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
             return next;
         });
 
-        // Force Right Panel refresh
-        setEditorVersion(v => v + 1);
+
     };
 
     // Derived Logic
@@ -378,7 +306,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
     const filteredLeftovers = useMemo(() => {
         const clean = (list: Todo[]): Todo[] => {
             return list.filter(t => {
-                const hasText = t.text && t.text.trim().length > 0 && t.text !== "Untitled";
+                const hasText = t.text && t.text.trim().length > 0 && t.text !== "Untitled" && t.text !== "New task...";
                 const isCompleted = t.completed;
                 return hasText && !isCompleted;
             }).map(t => ({
@@ -400,7 +328,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                         <div className="bg-primary/10 p-1.5 rounded-lg border border-primary/20">
                             <Moon className="w-4 h-4 text-primary" />
                         </div>
-                        <DialogTitle className="text-lg font-medium tracking-tight text-foreground">
+                        <DialogTitle className="text-lg font-medium tracking-tight text-foreground select-none">
                             {t('ritual.title')}
                         </DialogTitle>
                         <DialogDescription className="sr-only">End of Day Ritual Review and Planning</DialogDescription>
@@ -416,7 +344,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                 date={new Date()}
                                 todos={todayTodos}
                                 screenshots={screenshots}
-                                sessions={sessions}
+                                sessions={freshSessions}
                                 stats={currentStats}
                                 hideCloseButton={true}
                             />
@@ -429,7 +357,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                             {/* Toolbar / Project Selector */}
                             <div className="px-8 py-3 bg-card border-b border-border flex items-center justify-between">
                                 <div className="flex items-center gap-4">
-                                    <span className="text-sm font-medium text-muted-foreground">{t('ritual.planningContext')}:</span>
+                                    <span className="text-sm font-medium text-muted-foreground select-none">{t('ritual.planningContext')}:</span>
                                     <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                                         <SelectTrigger className="w-[240px] h-9">
                                             <SelectValue placeholder={t('dashboard.selectProject')} />
@@ -446,16 +374,18 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <span className="text-xs text-muted-foreground">
+                                <span className="text-xs text-muted-foreground select-none">
                                     {t('ritual.organizeTasksFor', { project: currentProjectName })}
                                 </span>
                             </div>
 
                             <div className="flex-1 flex overflow-hidden">
-                                {/* Left Column: Leftovers (Interactive List) */}
+
+
+                                {/* Middle Column: Leftovers (Interactive List) */}
                                 <div className="w-1/3 border-r border-border bg-muted/10 flex flex-col min-w-[300px]">
                                     <div className="px-6 py-4 border-b border-border/50">
-                                        <h3 className="text-xs font-bold text-muted-foreground flex items-center gap-2 uppercase tracking-wider">
+                                        <h3 className="text-xs font-bold text-muted-foreground flex items-center gap-2 uppercase tracking-wider select-none">
                                             <ListTodo className="w-3 h-3" />
                                             {t('ritual.todaysLeftovers')}
                                         </h3>
@@ -477,21 +407,79 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                 {/* Right Column: Blueprint (Active BlockNote) */}
                                 <div className="flex-1 flex flex-col bg-card">
                                     <div className="px-6 py-4 border-b border-border/50">
-                                        <h3 className="text-xs font-bold text-muted-foreground flex items-center gap-2 uppercase tracking-wider">
+                                        <h3 className="text-xs font-bold text-muted-foreground flex items-center gap-2 uppercase tracking-wider select-none">
                                             <Sparkles className="w-3 h-3" />
                                             {t('ritual.tomorrowsBlueprint')}
                                         </h3>
                                     </div>
 
-                                    <div className="flex-1 overflow-y-auto p-0 custom-scrollbar relative">
-                                        <div className="p-4 min-h-full">
-                                            <BlueprintEditor
-                                                key={`${selectedProjectId}-${editorVersion}`}
-                                                initialTodos={tomorrowPlans[selectedProjectId] || []}
-                                                onChange={handleBlueprintChange}
-                                                projectId={selectedProjectId}
-                                            />
-                                        </div>
+                                    <div className="flex-1 overflow-y-auto pr-4 custom-scrollbar overflow-x-hidden relative flex flex-col">
+                                        <TodoEditor
+                                            todos={tomorrowPlans[selectedProjectId] || []}
+                                            isWidgetMode={false}
+                                            actions={{
+                                                addTodo: (text, parentId, afterId) => {
+                                                    const newTodo: Todo = {
+                                                        id: uuidv4(),
+                                                        text,
+                                                        completed: false,
+                                                        children: [],
+                                                        isCollapsed: false
+                                                    };
+                                                    setTomorrowPlans(prev => {
+                                                        const list = prev[selectedProjectId] || [];
+                                                        return { ...prev, [selectedProjectId]: insertNode(list, parentId || null, afterId || null, newTodo) };
+                                                    });
+                                                    return newTodo.id;
+                                                },
+                                                updateTodo: (id, updates) => {
+                                                    setTomorrowPlans(prev => {
+                                                        const list = prev[selectedProjectId] || [];
+                                                        return { ...prev, [selectedProjectId]: updateNode(list, id, updates) };
+                                                    });
+                                                },
+                                                deleteTodo: (id) => {
+                                                    setTomorrowPlans(prev => {
+                                                        const list = prev[selectedProjectId] || [];
+                                                        return { ...prev, [selectedProjectId]: deleteNode(list, id) };
+                                                    });
+                                                },
+                                                deleteTodos: (ids) => {
+                                                    setTomorrowPlans(prev => {
+                                                        const list = prev[selectedProjectId] || [];
+                                                        let newList = list;
+                                                        ids.forEach(id => {
+                                                            newList = deleteNode(newList, id);
+                                                        });
+                                                        return { ...prev, [selectedProjectId]: newList };
+                                                    });
+                                                },
+                                                indentTodo: (id) => {
+                                                    setTomorrowPlans(prev => {
+                                                        const list = prev[selectedProjectId] || [];
+                                                        return { ...prev, [selectedProjectId]: indentNode(list, id) };
+                                                    });
+                                                },
+                                                unindentTodo: (id) => {
+                                                    setTomorrowPlans(prev => {
+                                                        const list = prev[selectedProjectId] || [];
+                                                        return { ...prev, [selectedProjectId]: unindentNode(list, id) };
+                                                    });
+                                                },
+                                                moveTodo: (activeId, parentId, index) => {
+                                                    setTomorrowPlans(prev => {
+                                                        const list = prev[selectedProjectId] || [];
+                                                        return { ...prev, [selectedProjectId]: moveNodes(list, [activeId], parentId, index) };
+                                                    });
+                                                },
+                                                moveTodos: (activeIds, parentId, index) => {
+                                                    setTomorrowPlans(prev => {
+                                                        const list = prev[selectedProjectId] || [];
+                                                        return { ...prev, [selectedProjectId]: moveNodes(list, activeIds, parentId, index) };
+                                                    });
+                                                }
+                                            }}
+                                        />
                                     </div>
 
 
@@ -512,9 +500,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                         </>
                     ) : (
                         <>
-                            <Button onClick={handleBack} variant="ghost" className="text-muted-foreground hover:text-foreground hover:bg-muted rounded-xl px-6 h-12 text-sm font-medium transition-all">
-                                <ArrowLeft className="w-4 h-4 mr-2" /> {t('ritual.dailyArchive')}
-                            </Button>
+
                             <Button
                                 onClick={handleFinish}
                                 disabled={isSaving || !materialChecked}

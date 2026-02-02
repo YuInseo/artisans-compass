@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Artisans Compass</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #0f172a;
+            /* Slate 900 */
+            color: #f8fafc;
+            /* Slate 50 */
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            user-select: none;
+            overflow: hidden;
+            -webkit-app-region: drag;
+        }
+
+        .logo-container {
+            position: relative;
+            width: 128px;
+            height: 128px;
+            margin-bottom: 32px;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        /* Simple CSS Compass Icon */
+        .compass-icon {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4f46e5, #9333ea);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 40px rgba(124, 58, 237, 0.3);
+        }
+
+        .status-text {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 24px;
+            color: #94a3b8;
+            /* Slate 400 */
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            height: 24px;
+            /* fixed height to prevent jump */
+        }
+
+        .progress-bar-container {
+            width: 200px;
+            height: 4px;
+            background-color: #1e293b;
+            /* Slate 800 */
+            border-radius: 2px;
+            overflow: hidden;
+            position: relative;
+            display: none;
+            /* Hidden by default */
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: #c084fc;
+            /* Violet 400 */
+            width: 0%;
+            transition: width 0.2s ease-out;
+            box-shadow: 0 0 10px rgba(192, 132, 252, 0.5);
+        }
+
+        @keyframes float {
+            0% {
+                transform: translateY(0px) rotate(0deg);
+            }
+
+            50% {
+                transform: translateY(-10px) rotate(2deg);
+            }
+
+            100% {
+                transform: translateY(0px) rotate(0deg);
+            }
+        }
+
+        /* Dots animation */
+        .dots::after {
+            content: '';
+            animation: dots 1.5s infinite;
+        }
+
+        @keyframes dots {
+            0% {
+                content: '';
+            }
+
+            25% {
+                content: '.';
+            }
+
+            50% {
+                content: '..';
+            }
+
+            75% {
+                content: '...';
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="logo-container">
+        <!-- SVG Logo Placeholder or CSS shape -->
+        <div class="compass-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none"
+                stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" />
+            </svg>
+        </div>
+    </div>
+
+    <div id="status" class="status-text">Checking for updates<span class="dots"></span></div>
+
+    <div id="progress" class="progress-bar-container">
+        <div id="progress-fill" class="progress-bar-fill"></div>
+    </div>
+
+    <script>
+        // Use window.electron interface exposed by preload
+        window.electron.onUpdateStatus((message) => {
+            const statusEl = document.getElementById('status');
+            statusEl.textContent = message;
+
+            // Re-add dots if we want them, or simplify
+            if (message.includes('Downloading') || message.includes('Checking')) {
+                // Logic to re-add dots class if we removed it
+            }
+        });
+
+        window.electron.onDownloadProgress((percent) => {
+            const barContainer = document.getElementById('progress');
+            const barFill = document.getElementById('progress-fill');
+            const statusEl = document.getElementById('status');
+
+            barContainer.style.display = 'block';
+            barFill.style.width = Math.round(percent) + '%';
+            statusEl.textContent = `Drinking coffee... ${Math.round(percent)}%`;
+        });
+    </script>
+</body>
+
+</html>

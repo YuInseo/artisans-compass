@@ -1,0 +1,18 @@
+{
+    "version": "0.0.79",
+    "deploy_date": "2026-02-02 18:05:00",
+    "logs": {
+        "ko": {
+            "title": "업데이트 확인 무한 로딩 수정",
+            "description": "업데이트 확인 시 멈추는 문제를 해결하기 위해 IPC 이벤트를 올바르게 수정했습니다."
+        },
+        "ja": {
+            "title": "アップデート確認の無限ローディング修正",
+            "description": "アップデート確認時にフリーズする問題を解決するため、IPCイベントを正しく修正しました。"
+        },
+        "en": {
+            "title": "Fix Infinite Loading in Update Check",
+            "description": "Corrected IPC events to resolve the infinite loading issue during update checks."
+        }
+    }
+}

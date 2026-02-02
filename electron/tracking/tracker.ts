@@ -37,12 +37,13 @@ const STATE: TrackingState = {
 function reloadSettings() {
     const loaded = readJson(getSettingsPath(), DEFAULT_SETTINGS);
     STATE.settings = { ...DEFAULT_SETTINGS, ...loaded };
+    console.log(`[Tracker] Settings Reloaded. Idle Threshold: ${STATE.settings.idleThresholdSeconds}s, Mode: ${STATE.settings.screenshotMode}`);
 }
 
 export function setupTracker(win: BrowserWindow) {
     STATE.mainWindow = win; // Store reference
     // Initial load
-    console.log("!!! VERSION: 30 MINUTE FIX ACTIVE (D DRIVE) !!!");
+    console.log("!!! VERSION: TRACKER V2 ACTIVE !!!");
     reloadSettings();
     // Handler moved to bottom to include screenshot reschedule
 
@@ -73,7 +74,12 @@ export function setupTracker(win: BrowserWindow) {
     setInterval(async () => {
         // 1. Check Idle
         const idleSeconds = powerMonitor.getSystemIdleTime();
+        const prevIdle = STATE.isIdle;
         STATE.isIdle = idleSeconds > STATE.settings.idleThresholdSeconds;
+
+        if (prevIdle !== STATE.isIdle) {
+            console.log(`[Tracker] Idle State Changed: ${prevIdle} -> ${STATE.isIdle} (Seconds: ${idleSeconds}, Threshold: ${STATE.settings.idleThresholdSeconds})`);
+        }
 
         // 2. Check Active Window
         await pollActiveWindow();
@@ -125,6 +131,11 @@ export function setupTracker(win: BrowserWindow) {
 function processSessionLogic() {
     if (STATE.isIdle) {
         if (STATE.currentSession) {
+            // Update duration one last time to capture the 'wait' threshold time
+            const now = Date.now();
+            STATE.currentSession.end = now;
+            STATE.currentSession.duration = Math.floor((now - STATE.currentSession.start) / 1000);
+
             closeAndSaveSession(STATE.currentSession);
             STATE.currentSession = null;
         }
@@ -160,7 +171,7 @@ function processSessionLogic() {
             } else {
                 // Normal update (extend current session)
                 STATE.currentSession.end = now;
-                STATE.currentSession.duration = Math.round((now - STATE.currentSession.start) / 1000);
+                STATE.currentSession.duration = Math.floor((now - STATE.currentSession.start) / 1000);
             }
 
         } else {
@@ -175,6 +186,12 @@ function processSessionLogic() {
     } else {
         // Not a target app
         if (STATE.currentSession) {
+            // Update duration one last time to capture the time until this check
+            // This prevents a 'drop' of ~1s (or more if blocked) when switching away/minimizing.
+            const now = Date.now();
+            STATE.currentSession.end = now;
+            STATE.currentSession.duration = Math.floor((now - STATE.currentSession.start) / 1000);
+
             closeAndSaveSession(STATE.currentSession);
             STATE.currentSession = null;
         }
@@ -187,32 +204,14 @@ function closeAndSaveSession(session: Session) {
     const sessionDate = new Date(session.start);
     const dateKey = format(sessionDate, 'yyyy-MM-dd');
 
-    // We need to read current data to append session
-    // Actually, saveDailyLogInternal logic replaces arrays if provided.
-    // So we need to read, push, then save.
-
-    // Optimization: We can just use saveDailyLogInternal if we can pass a function or if we assume concurrency isn't high.
-    // Let's read first.
-    const yearMonth = format(sessionDate, 'yyyy-MM');
-    const filePath = getDailyLogPath(yearMonth);
-    const logData = readJson<Record<string, DailyLogData>>(filePath, {});
-
-    // Ensure day exists
-    if (!logData[dateKey]) {
-        logData[dateKey] = { sessions: [], todos: [], quest_cleared: false, screenshots: [], is_rest_day: false };
+    // Notify Frontend immediately to prevent UI 'drop' (race condition with tracking-update)
+    if (STATE.mainWindow && !STATE.mainWindow.isDestroyed()) {
+        STATE.mainWindow.webContents.send('session-completed', session);
     }
 
-    const sessions = logData[dateKey].sessions || [];
-    sessions.push(session);
-
-    // Use internal save which triggers Sync
+    // Use atomic append helper for storage
     import('../storage').then(mod => {
-        mod.saveDailyLogInternal(dateKey, { sessions });
-
-        // Notify Frontend to update stats immediately
-        if (STATE.mainWindow && !STATE.mainWindow.isDestroyed()) {
-            STATE.mainWindow.webContents.send('session-completed', session);
-        }
+        mod.appendSession(dateKey, session);
     });
 
     console.log(`Saved session: ${session.process} (${session.duration}s) to ${dateKey}`);
@@ -263,6 +262,11 @@ async function captureSmartScreenshot() {
             if (matchesTarget) {
                 shouldCapture = true;
                 log.info(`[Screenshot] Specific App match found: '${activeProcess}'`);
+            } else if (STATE.settings.screenshotOnlyWhenActive === false && targetApp) {
+                // Background Capture Mode: Target is NOT active, but user wants to capture it anyway.
+                // We will attempt to find it in background sources.
+                shouldCapture = true;
+                log.info(`[Screenshot] Specific App (Background) requested for: '${targetApp}'`);
             }
         }
 
@@ -291,6 +295,19 @@ async function captureSmartScreenshot() {
         // 2. Capture Logic
         // window = Smart Screen (No Crop), process/active-app = Window Crop
         const isProcessMode = STATE.settings.screenshotMode === 'process' || STATE.settings.screenshotMode === 'active-app';
+        let useBackgroundSearch = false;
+
+        // If in 'process' mode and strict match FAILED, we must search background.
+        if (STATE.settings.screenshotMode === 'process' && STATE.settings.screenshotOnlyWhenActive === false) {
+            const targetApp = STATE.settings.screenshotTargetProcess || '';
+            const normalizedActive = activeProcess.toLowerCase().replace(/\s+/g, '');
+            const normalizedTarget = targetApp.toLowerCase().replace(/\s+/g, '');
+
+            // If active process is NOT the target, force background search
+            if (!normalizedActive.includes(normalizedTarget)) {
+                useBackgroundSearch = true;
+            }
+        }
 
         if (!isProcessMode) {
             // SCREEN MODE (Fixed or Smart)
@@ -368,7 +385,8 @@ async function captureSmartScreenshot() {
         }
 
         // 1.5 Determine which Display contains the window (For Cropping)
-        if (currentWin && currentWin.bounds) {
+        // Skip this if we are forcing background search (since active window is NOT our target)
+        if (currentWin && currentWin.bounds && !useBackgroundSearch) {
             const { screen } = await import('electron');
             try {
                 const display = screen.getDisplayMatching(currentWin.bounds as any);
@@ -421,11 +439,14 @@ async function captureSmartScreenshot() {
         }
 
         // Fallback (Rare/Impossible if active-win works): Use desktopCapturer.
-        console.log('[Screenshot] active-win bounds missing. Falling back to desktopCapturer.');
+        console.log('[Screenshot] active-win bounds missing OR Background Mode. Using desktopCapturer.');
 
         const types: ('screen' | 'window')[] = ['window']; // Only window mode falls here
-        const { desktopCapturer } = await import('electron');
-        const thumbSize = { width: 960, height: 540 }; // Keep small for performance
+        const { desktopCapturer, screen } = await import('electron');
+
+        // Use Primary Display size for better resolution (avoid tiny 960x540 default)
+        const primarySize = screen.getPrimaryDisplay().size;
+        const thumbSize = { width: primarySize.width, height: primarySize.height };
 
         const sources = await desktopCapturer.getSources({
             types,
@@ -438,7 +459,16 @@ async function captureSmartScreenshot() {
         const activeWinId = currentWin?.id || STATE.activeWindowId;
         console.log(`[Screenshot] Looking for window ID: ${activeWinId} (Type: ${typeof activeWinId}), Title: ${currentWin?.title}`);
 
-        if (activeWinId) {
+        if (useBackgroundSearch) {
+            const targetProcessName = STATE.settings.screenshotTargetProcess || '';
+            // Search by Name
+            if (targetProcessName) {
+                const lowerTarget = targetProcessName.toLowerCase().replace('.exe', '');
+                targetSource = sources.find(s => s.name.toLowerCase().includes(lowerTarget));
+                if (targetSource) console.log(`[Screenshot] Background Search found: ${targetSource.name}`);
+            }
+        }
+        else if (activeWinId) {
             const idStr = String(activeWinId);
             // 1. Precise Match with colons (window:123:0)
             targetSource = sources.find(s => s.id.includes(`:${idStr}:`) || s.id.endsWith(`:${idStr}`));

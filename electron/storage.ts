@@ -31,6 +31,7 @@ export interface AppSettings {
     screenshotMode?: 'window' | 'screen' | 'process' | 'active-app';
     screenshotDisplayId?: string;
     screenshotTargetProcess?: string;
+    screenshotOnlyWhenActive?: boolean;
     googleDriveTokens?: {
         accessToken: string;
         refreshToken: string;
@@ -47,8 +48,13 @@ export interface AppSettings {
     notionConfig?: {
         clientId: string;
         clientSecret: string;
+        includeScreenshots?: boolean;
     };
     autoUpdate?: boolean;
+    enableSpellCheck?: boolean;
+    themePreset?: 'default' | 'discord' | 'midnight' | 'custom';
+    customCSS?: string;
+    customThemes?: { id: string; name: string; css: string }[];
 }
 
 export interface Session {
@@ -96,7 +102,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     enableScreenshots: true,
     screenshotDisplayId: '',
     screenshotTargetProcess: '',
-    autoUpdate: false
+    screenshotOnlyWhenActive: true,
+    autoUpdate: false,
+    enableSpellCheck: false,
+    customThemes: [],
+    customCSS: ""
 };
 
 // --- Storage Paths ---
@@ -230,7 +240,56 @@ export function saveDailyLogInternal(dateStr: string, newData: any) {
     return saved;
 }
 
-export function setupStorageHandlers() {
+export function appendSession(dateStr: string, session: Session) {
+    const yearMonth = dateStr.slice(0, 7);
+    const filePath = getDailyLogPath(yearMonth);
+
+    try {
+        const currentData = readJson(filePath, {}) as Record<string, any>;
+
+        // Init day if needed
+        if (!currentData[dateStr]) {
+            currentData[dateStr] = {
+                sessions: [],
+                todos: [],
+                stats: { totalWorkSeconds: 0, questAchieved: false },
+                assets: [],
+                isRestDay: false
+            };
+        }
+
+        // Append safely
+        const dayData = currentData[dateStr];
+        if (!dayData.sessions) dayData.sessions = [];
+        dayData.sessions.push(session);
+
+        // Save
+        const saved = writeJson(filePath, currentData);
+
+        // Backup Hook (Simplified from saveDailyLogInternal)
+        if (saved) {
+            try {
+                const settings = readJson(getSettingsPath(), DEFAULT_SETTINGS);
+                if (settings.backupPaths && settings.backupPaths.length > 0) {
+                    const fileName = path.basename(filePath);
+                    settings.backupPaths.forEach(backupDir => {
+                        if (fs.existsSync(backupDir)) {
+                            fs.copyFileSync(filePath, path.join(backupDir, fileName));
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error("Backup trigger failed in appendSession", e);
+            }
+        }
+        return saved;
+    } catch (error) {
+        log.error(`[Storage] Error appending session to ${filePath}:`, error);
+        return false;
+    }
+}
+
+export function setupStorageHandlers(getTrackerState?: () => any) {
     // Settings
     ipcMain.handle('get-settings', () => {
         return readJson(getSettingsPath(), DEFAULT_SETTINGS);
@@ -263,6 +322,36 @@ export function setupStorageHandlers() {
 
     ipcMain.handle('save-daily-log', (_, dateStr, newData) => {
         return saveDailyLogInternal(dateStr, newData);
+    });
+
+    // Get Single Day Log (with Live Session Merge for Today)
+    ipcMain.handle('get-daily-log', (_, dateStr: string) => {
+        const yearMonth = dateStr.slice(0, 7); // "YYYY-MM"
+        const filePath = getDailyLogPath(yearMonth);
+        const monthlyData = readJson<Record<string, any>>(filePath, {});
+        const dayData = monthlyData[dateStr] || null;
+
+        // If asking for TODAY, try to merge live session
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (dateStr === todayStr && getTrackerState) {
+            try {
+                const state = getTrackerState();
+                if (state && state.currentSession) {
+                    // Clone dayData or init
+                    const mergedDay = dayData ? JSON.parse(JSON.stringify(dayData)) : { sessions: [], todos: [], screenshots: [] };
+                    if (!mergedDay.sessions) mergedDay.sessions = [];
+
+                    // Append current live session
+                    mergedDay.sessions.push(state.currentSession);
+
+                    return mergedDay;
+                }
+            } catch (e) {
+                console.error("[Storage] Failed to merge live session:", e);
+            }
+        }
+
+        return dayData;
     });
 
     // Also expose a helper to get data path for debugging

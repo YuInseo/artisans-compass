@@ -1,0 +1,18 @@
+{
+    "version": "0.0.76",
+    "deploy_date": "2026-02-02 17:41:00",
+    "logs": {
+        "ko": {
+            "title": "설정 모달 빌드 오류 수정",
+            "description": "설정 모달(Settings Modal)의 중복 코드 및 구문 오류를 수정하여 빌드 안정성을 확보했습니다."
+        },
+        "ja": {
+            "title": "設定モーダルのビルドエラー修正",
+            "description": "設定モーダルの重複コードと構文エラーを修正し、ビルドの安定性を確保しました。"
+        },
+        "en": {
+            "title": "Fix Settings Modal Build Errors",
+            "description": "Resolved duplicate code and syntax errors in the Settings Modal to ensure build stability."
+        }
+    }
+}

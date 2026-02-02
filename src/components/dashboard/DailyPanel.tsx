@@ -3,7 +3,7 @@ import { Sparkles, Lock, Unlock, Moon, Sun, Eraser, CheckCircle } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo, useRef } from "react";
-import { format, differenceInSeconds } from "date-fns";
+import { format } from "date-fns";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useTheme } from "@/components/theme-provider";
@@ -37,9 +37,10 @@ interface DailyPanelProps {
     isSidebarOpen?: boolean;
 }
 
-export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: DailyPanelProps) {
+export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPanelProps) {
     const { t } = useTranslation();
-    const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+    const [isWidgetLocked, setIsWidgetLocked] = useState(false);
+    const [isPinned, setIsPinned] = useState(false);
 
     // Timer Logic for Widget Mode
     const [now, setNow] = useState(new Date());
@@ -50,12 +51,6 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
             setNow(new Date());
         }, 1000);
         return () => clearInterval(interval);
-    }, []);
-
-    useEffect(() => {
-        const handleResize = () => setWindowWidth(window.innerWidth);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
     }, []);
 
 
@@ -73,9 +68,15 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
 
     const { settings, isWidgetMode, setWidgetMode, saveSettings } = useDataStore();
 
-    const isCompactMode = !isWidgetMode && ((isSidebarOpen && windowWidth < 1500) || windowWidth < 1280);
-    const [isWidgetLocked, setIsWidgetLocked] = useState(false);
-    const [isPinned, setIsPinned] = useState(false);
+    const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+
+    useEffect(() => {
+        const handleResize = () => setWindowWidth(window.innerWidth);
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    const isCompactMode = !isWidgetMode && ((isSidebarOpen && windowWidth < 1200) || windowWidth < 1024);
     const { theme, setTheme } = useTheme();
     const headerRef = useRef<HTMLDivElement>(null);
     const editorContentRef = useRef<HTMLDivElement>(null);
@@ -113,6 +114,9 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
     useEffect(() => {
         if (!isWidgetMode || !headerRef.current || !editorContentRef.current || !(window as any).ipcRenderer) return;
 
+        // Skip auto-resize if disabled by user
+        if (settings?.widgetAutoResize === false) return;
+
         const calculateAndResize = () => {
             const headerHeight = headerRef.current?.offsetHeight || 0;
             const contentHeight = editorContentRef.current?.offsetHeight || 0;
@@ -146,7 +150,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
             observer.disconnect();
             if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
         };
-    }, [isWidgetMode, todos, settings?.widgetMaxHeight]);
+    }, [isWidgetMode, todos, settings?.widgetMaxHeight, settings?.widgetAutoResize]);
 
     const togglePin = async () => {
         const newState = !isPinned;
@@ -209,11 +213,41 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
     }, [loadTodos]);
 
 
+    // Filter Sessions based on settings
+    const filteredSessions = useMemo(() => {
+        if (!settings?.filterTimelineByWorkApps) {
+            return sessions;
+        }
+        if (!settings?.workApps?.length) {
+            return [];
+        }
+        return sessions.filter(session => {
+            if (!session.process) return false;
+            return settings.workApps!.some(app => session.process!.toLowerCase().includes(app.toLowerCase()));
+        });
+    }, [sessions, settings?.filterTimelineByWorkApps, settings?.workApps]);
+
+    const filteredLiveSession = useMemo(() => {
+        if (!liveSession) return null;
+
+        if (!settings?.filterTimelineByWorkApps) {
+            return liveSession;
+        }
+
+        if (!settings?.workApps?.length) {
+            return null;
+        }
+
+        const processName = liveSession.process || "";
+        const isWork = settings.workApps!.some(app => processName.toLowerCase().includes(app.toLowerCase()));
+        return isWork ? liveSession : null;
+    }, [liveSession, settings?.filterTimelineByWorkApps, settings?.workApps]);
+
     return (
         <ContextMenu>
             <ContextMenuTrigger asChild>
                 <div
-                    className="h-full w-full flex flex-row text-foreground font-sans transition-colors duration-300"
+                    className="h-full w-full flex flex-row text-foreground font-sans transition-colors duration-300 select-none"
                     style={{
                         backgroundColor: isWidgetMode
                             ? (settings?.widgetOpacity === 0 ? 'transparent' : `hsl(var(--card) / ${settings?.widgetOpacity ?? 0.95})`)
@@ -221,10 +255,10 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                     }}
                 >
                     {/* Split Content */}
-                    <div className={cn("flex-1 flex", isWidgetMode ? "gap-6 px-2 pt-2 pb-2" : "gap-6 px-6 py-4 relative")}>
+                    <div className={cn("flex-1 flex min-w-0", isWidgetMode ? "gap-6 px-2 pt-2 pb-2" : "gap-6 px-6 py-4 relative")}>
                         {/* Left Panel: Focus List */}
                         <div
-                            className={cn("flex flex-col overflow-hidden relative transition-all duration-300 min-w-[300px]", isWidgetMode ? "w-full" : "flex-1")}
+                            className={cn("flex flex-col min-w-0 overflow-hidden relative transition-all duration-300", isWidgetMode ? "w-full" : "flex-1")}
                         >
                             {/* Header Wrapper for Measure */}
                             <div ref={headerRef} className="shrink-0">
@@ -242,7 +276,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                                 <div className="h-6 flex-1 max-w-[180px]">
                                                     <Select value={activeProjectId} onValueChange={setActiveProjectId}>
                                                         <SelectTrigger
-                                                            className="h-6 w-full bg-transparent border-none p-0 text-xs font-bold text-muted-foreground hover:text-foreground focus:ring-0 shadow-none uppercase tracking-widest gap-1 no-drag"
+                                                            className="h-6 w-full bg-transparent border-none p-0 text-xs font-bold text-muted-foreground hover:text-foreground focus:ring-0 shadow-none uppercase tracking-widest gap-1 no-drag justify-start text-left"
                                                             style={{ WebkitAppRegion: 'no-drag' } as any}
                                                         >
                                                             <Sparkles className="w-3.5 h-3.5 text-primary/70 shrink-0 mr-1" />
@@ -412,6 +446,19 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                                                             className="scale-75 origin-right"
                                                                         />
                                                                     </div>
+
+                                                                    {/* Auto-Height Toggle */}
+                                                                    <div className="flex items-center justify-between">
+                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-up-down"><path d="m21 16-4 4-4-4" /><path d="m17 20V4" /><path d="m3 8 4-4 4 4" /><path d="m7 4v16" /></svg>
+                                                                            {t('dashboard.autoHeight') || "Auto-Height"}
+                                                                        </span>
+                                                                        <Switch
+                                                                            checked={settings?.widgetAutoResize ?? true} // Default to true
+                                                                            onCheckedChange={(checked) => settings && saveSettings({ ...settings, widgetAutoResize: checked })}
+                                                                            className="scale-75 origin-right"
+                                                                        />
+                                                                    </div>
                                                                 </div>
 
                                                             </div>
@@ -429,9 +476,37 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                                     <p className="text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed">
                                                         "{[
                                                             "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
-                                                            // ... (truncated for brevity, keep existing array)
-                                                            "몰입은 최고의 휴식이다."
-                                                        ][new Date().getDate() % 30]}"
+                                                            "완벽함이 아니라 탁월함을 추구하라.",
+                                                            "시작이 반이다.",
+                                                            "몰입은 최고의 휴식이다.",
+                                                            "단순함은 궁극의 정교함이다.",
+                                                            "가장 좋은 방법은 시작하는 것이다.",
+                                                            "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
+                                                            "어제보다 나은 내일을 만들어라.",
+                                                            "작은 진전이 모여 큰 결과를 만든다.",
+                                                            "실패는 성공으로 가는 이정표다.",
+                                                            "코딩은 21세기의 마법이다.",
+                                                            "디테일이 퀄리티를 만든다.",
+                                                            "꾸준함이 재능을 이긴다.",
+                                                            "기록하지 않으면 기억되지 않는다.",
+                                                            "오늘의 노력이 내일의 실력이 된다.",
+                                                            "문제는 해결책을 찾기 위해 존재한다.",
+                                                            "배움에는 끝이 없다.",
+                                                            "나만의 속도로 가라.",
+                                                            "휴식도 훈련의 일부다.",
+                                                            "상상력은 지식보다 중요하다.",
+                                                            "도전하지 않으면 아무것도 얻을 수 없다.",
+                                                            "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
+                                                            "천리길도 한 걸음부터.",
+                                                            "성공은 포기하지 않는 자의 것이다.",
+                                                            "당신의 한계는 당신의 생각뿐이다.",
+                                                            "지금 흘린 땀은 내일의 눈물을 닦아준다.",
+                                                            "위대한 일은 작은 일들이 모여 이루어진다.",
+                                                            "늦었다고 생각할 때가 가장 빠르다.",
+                                                            "열정 없는 천재는 없다.",
+                                                            "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
+                                                            "당신의 작품이 당신을 말해준다."
+                                                        ][new Date().getDate() % 31] || "창의성은 실수를 허용하는 것이다."}"
                                                     </p>
                                                     <button
                                                         onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
@@ -471,13 +546,30 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                                 {/* Timer Calculation */}
                                                 {(() => {
                                                     let totalFocusTime = 0;
-                                                    const allSessions = liveSession ? [...sessions, liveSession] : sessions;
+                                                    // Deduplicate: If liveSession start time matches any completed session, ignore liveSession (it's transitioning)
+                                                    const isLiveAlreadyCompleted = liveSession && sessions.some(s => s.start === liveSession.start);
+                                                    const effectiveLiveSession = isLiveAlreadyCompleted ? null : liveSession;
+
+                                                    const allSessions = effectiveLiveSession ? [...sessions, effectiveLiveSession] : sessions;
+
                                                     allSessions.forEach(session => {
+                                                        const isLive = session === effectiveLiveSession;
+
+                                                        // Use stored duration for completed sessions to match backend rounding
+                                                        if (!isLive && typeof session.duration === 'number') {
+                                                            totalFocusTime += session.duration;
+                                                            return;
+                                                        }
+
                                                         const s = new Date(session.start);
-                                                        const isLive = session === liveSession;
                                                         const e = isLive ? now : new Date(session.end);
                                                         if (isNaN(s.getTime()) || isNaN(e.getTime())) return;
-                                                        const duration = differenceInSeconds(e, s);
+
+                                                        // Fallback calculation for live sessions or missing duration
+                                                        // Use Math.floor to match backend perfectly and prevent "jumps" vs "floors"
+                                                        const msDiff = e.getTime() - s.getTime();
+                                                        const duration = Math.floor(msDiff / 1000);
+
                                                         if (duration > 0) totalFocusTime += duration;
                                                     });
 
@@ -492,7 +584,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                                                 </div>
                                                             </div>
 
-                                                            {liveSession && (
+                                                            {liveSession ? (
                                                                 <div className="flex flex-col items-end justify-center">
                                                                     <div className="flex items-center gap-2 mb-1">
                                                                         <span className="relative flex h-2 w-2">
@@ -502,9 +594,38 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                                                         <span className="text-[10px] font-bold text-green-500 uppercase tracking-wider">{t('calendar.focusing')}</span>
                                                                     </div>
                                                                     <div className="text-xs font-medium text-foreground max-w-[100px] truncate text-right border-t border-border/50 pt-1 mt-1" title={liveSession.process}>
-                                                                        {liveSession.process || 'Unknown App'}
+                                                                        {liveSession.process}
                                                                     </div>
                                                                 </div>
+                                                            ) : (
+                                                                (() => {
+                                                                    // Find last session (by end date)
+                                                                    const lastSession = sessions.length > 0
+                                                                        ? sessions.reduce((prev, current) => (new Date(prev.end) > new Date(current.end)) ? prev : current)
+                                                                        : null;
+
+                                                                    if (lastSession) {
+                                                                        const h = Math.floor(lastSession.duration / 3600);
+                                                                        const m = Math.floor((lastSession.duration % 3600) / 60);
+                                                                        const s = lastSession.duration % 60;
+                                                                        const durationText = h > 0 ? `${h}h ${m}m ${s}s` : (m > 0 ? `${m}m ${s}s` : `${s}s`);
+
+                                                                        return (
+                                                                            <div className="flex flex-col items-end justify-center opacity-70">
+                                                                                <div className="flex items-center gap-2 mb-1">
+                                                                                    <span className="relative flex h-2 w-2">
+                                                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground/50"></span>
+                                                                                    </span>
+                                                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('calendar.lastFocus')}</span>
+                                                                                </div>
+                                                                                <div className="text-xs font-medium text-muted-foreground text-right border-t border-border/50 pt-1 mt-1">
+                                                                                    {lastSession.process} <span className="text-[10px] opacity-70 ml-1">({durationText})</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                })()
                                                             )}
 
                                                             <button
@@ -523,7 +644,8 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                     </>
                                 )}
 
-                                {!isWidgetMode && projects.length > 0 && (
+                                {/* Dashboard Header: Only visible when NOT in widget mode */}
+                                {!isWidgetMode && (
                                     <div className="flex items-end justify-between mb-6 px-1 shrink-0">
                                         <div className="flex items-center gap-2">
                                             <div>
@@ -534,28 +656,19 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                             </div>
                                         </div>
 
-                                        {/* Controls: Project Dropdown + Pin */}
+                                        {/* Controls: Project Dropdown + Action Buttons */}
                                         <div className="flex items-center gap-3">
                                             {/* Project Dropdown */}
-                                            <div className="relative" style={{ WebkitAppRegion: 'no-drag' } as any}>
+                                            <div className="relative">
                                                 <Select value={activeProjectId} onValueChange={setActiveProjectId}>
                                                     <SelectTrigger className="w-[180px]">
                                                         <SelectValue placeholder={t('dashboard.selectProject')} />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        {(() => {
-                                                            const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                                            const activeProjects = projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
-
-                                                            return (
-                                                                <>
-                                                                    {activeProjects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
-                                                                    {activeProjects.map(p => (
-                                                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                                                    ))}
-                                                                </>
-                                                            );
-                                                        })()}
+                                                        {projects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
+                                                        {projects.map(p => (
+                                                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                        ))}
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -572,7 +685,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                                     <Eraser className="w-[18px] h-[18px]" />
                                                 </Button>
 
-                                                {/* Pin Button (Only show if NOT in widget mode) */}
+                                                {/* Pin Button */}
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
@@ -592,8 +705,10 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                             {/* Editor Area (Scrollable) - Only show if projects exist or in widget mode */}
                             {(isWidgetMode || (projects.length > 0 && activeProjectId && activeProjectId !== 'none')) ? (
                                 <div className={cn(
-                                    "relative pr-2 custom-scrollbar overflow-x-hidden",
-                                    isWidgetMode ? "flex-1 overflow-y-auto pb-6" : "flex-1 overflow-y-auto pb-20"
+                                    "relative pr-2 custom-scrollbar overflow-x-hidden w-full", // Added w-full
+                                    isWidgetMode
+                                        ? "flex-1 overflow-y-auto pb-6 -ml-2 pl-0"
+                                        : "flex-1 overflow-y-auto pb-20" // Removed -ml-6 pl-6 to allow full width
                                 )}
                                     style={{ scrollbarGutter: 'stable' }}
                                 >
@@ -603,7 +718,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                                         className="min-h-full"
                                     >
                                         <TodoEditor
-                                            activeProjectId={activeProjectId}
+                                            key={isWidgetMode ? 'widget' : 'full'}
                                             todos={todos}
                                             isWidgetMode={isWidgetMode}
                                             isWidgetLocked={isWidgetLocked}
@@ -641,20 +756,31 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen = true }: Da
                         </div>
 
                         {/* RIGHT PANEL - TIMETABLE GRAPH & END DAY */}
-                        {/* Only visible in desktop/non-widget mode */}
                         {!isWidgetMode && (
                             <div className={cn(
-                                "shrink-0 border-l border-border/50 flex flex-col transition-all duration-300 ease-in-out bg-background/95 backdrop-blur z-20",
+                                "shrink-0 border-l border-border/50 flex flex-col transition-all duration-300 ease-in-out bg-background/95 backdrop-blur z-20 group/rightpanel",
                                 isCompactMode
-                                    ? "absolute right-0 top-0 bottom-0 w-2 hover:w-[300px] shadow-2xl border-l-4 hover:border-l border-primary/50"
-                                    : "w-[300px] relative pl-6"
+                                    ? "absolute right-0 top-0 bottom-0 w-2 hover:w-[350px] shadow-2xl border-l-[6px] hover:border-l border-primary"
+                                    : "w-[300px] relative"
                             )}>
-                                <div className={cn("flex-1 pt-4 h-full", isCompactMode ? "opacity-0 hover:opacity-100 transition-opacity duration-300 px-4" : "")}>
-                                    <TimeTableGraph
-                                        sessions={sessions}
-                                        activeProjectId={activeProjectId}
-                                        liveSession={liveSession}
-                                    />
+                                <div className={cn(
+                                    "flex-1 pt-4 h-full overflow-y-auto custom-scrollbar px-1 transition-all duration-300",
+                                    isCompactMode ? "opacity-0 group-hover/rightpanel:opacity-100 px-4" : "opacity-100"
+                                )}>
+                                    <div className="flex flex-col h-full gap-6">
+                                        {/* Timeline & App Usage Section */}
+                                        <div className="flex-1">
+                                            <TimeTableGraph
+                                                sessions={filteredSessions}
+                                                allSessions={sessions}
+                                                activeProjectId={activeProjectId}
+                                                liveSession={filteredLiveSession}
+                                                allLiveSession={liveSession}
+                                                projects={projects}
+                                                nightTimeStart={settings?.nightTimeStart}
+                                            />
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}

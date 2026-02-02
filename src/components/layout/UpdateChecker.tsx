@@ -1,125 +1,146 @@
 import { useEffect, useState } from 'react';
 import { Button } from "@/components/ui/button";
-import { CircleArrowUp, Loader2, Check } from "lucide-react";
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
-
-type UpdateStatus = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'error' | 'up-to-date';
+import { Download, RefreshCw, Loader2, PartyPopper } from "lucide-react";
+import { toast } from "sonner";
 
 export function UpdateChecker() {
-    const [status, setStatus] = useState<UpdateStatus>('idle');
-    const [progress, setProgress] = useState<number>(0);
+    const [status, setStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'>('idle');
+    const [progress, setProgress] = useState(0);
 
     useEffect(() => {
-        const electron = (window as any).electron;
-        if (!electron) return;
+        const ipc = (window as any).ipcRenderer;
+        if (!ipc || !ipc.onUpdateState) return;
 
-        // Listen for update events
-        const cleanups = [
-            electron.on('update_available', () => setStatus('available')),
-            electron.on('update_not_available', () => {
-                setStatus('up-to-date');
-                setTimeout(() => setStatus('idle'), 3000); // Hide after 3s
-            }),
-            electron.on('update_downloaded', () => setStatus('downloaded')),
-            electron.on('update_error', () => {
-                setStatus('error');
-                setTimeout(() => setStatus('idle'), 5000);
-            }),
-            electron.on('update_progress', (percent: number) => {
-                setStatus('downloading');
-                setProgress(percent);
-            }),
-        ];
+        const cleanup = ipc.onUpdateState((state: any) => {
+            console.log('Update State:', state);
+            setStatus(state.status);
+            if (state.status === 'downloading' && state.progress) {
+                setProgress(state.progress.percent);
+            }
+            if (state.status === 'available') {
+                toast("Update Available", {
+                    description: "A new version is available. Click to download.",
+                    action: {
+                        label: "Download",
+                        onClick: () => ipc.send('download-update')
+                    }
+                });
+            }
+            if (state.status === 'ready') {
+                toast("Update Ready", {
+                    description: "Restart to apply the update.",
+                    action: {
+                        label: "Restart",
+                        onClick: () => ipc.send('quit-and-install')
+                    }
+                });
+            }
+            if (state.status === 'idle' && state.message === 'up-to-date') {
+                toast("Up to Date", {
+                    description: "You are using the latest version."
+                });
+            }
+            if (state.status === 'error') {
+                console.error("Update Error:", state.error);
+                toast.error("Update Failed", {
+                    description: state.error || "Failed to check for updates."
+                });
+            }
+        });
 
-        return () => cleanups.forEach((cleanup: any) => cleanup());
+        return cleanup;
     }, []);
 
-    const checkForUpdates = async () => {
-        if (status === 'checking' || status === 'downloading') return;
-
-        if (status === 'downloaded') {
-            try {
-                await (window as any).electron.invoke('quit-and-install');
-            } catch (e) {
-                console.error("Failed to quit and install", e);
-            }
-            return;
-        }
-
+    const handleCheck = () => {
         setStatus('checking');
-        try {
-            await (window as any).electron.invoke('check-for-updates');
-        } catch (e) {
-            console.error(e);
-            setStatus('error');
-            setTimeout(() => setStatus('idle'), 3000);
-        }
+        const ipc = (window as any).ipcRenderer;
+        if (ipc) ipc.send('check-for-updates');
     };
 
-    if (status === 'idle') {
-        // Show subtle icon or hidden? User asked for visible updater.
-        // Let's show visible ghost icon that can be clicked.
+    const handleDownload = () => {
+        const ipc = (window as any).ipcRenderer;
+        if (ipc) ipc.send('download-update');
+    };
+
+    const handleRestart = () => {
+        const ipc = (window as any).ipcRenderer;
+        if (ipc) ipc.send('quit-and-install');
+    };
+
+    if (status === 'idle' || status === 'error') {
         return (
-            <TooltipProvider>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8 text-neutral-400 hover:text-white"
-                            onClick={checkForUpdates}
-                        >
-                            <CircleArrowUp className="h-5 w-5" />
-                        </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                        <p>Check for Updates</p>
-                    </TooltipContent>
-                </Tooltip>
-            </TooltipProvider>
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground no-drag"
+                onClick={handleCheck}
+                title="Check for Updates"
+                style={{ WebkitAppRegion: 'no-drag' } as any}
+            >
+                <RefreshCw className="w-3.5 h-3.5" />
+            </Button>
         );
     }
 
-    return (
-        <TooltipProvider>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className={cn(
-                            "h-8 w-8",
-                            status === 'error' ? "text-red-500" :
-                                status === 'downloaded' ? "text-green-500" :
-                                    "text-neutral-400 hover:text-white"
-                        )}
-                        onClick={checkForUpdates}
-                        disabled={status === 'checking' || status === 'downloading'}
-                    >
-                        {status === 'checking' || status === 'downloading' ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : status === 'up-to-date' ? (
-                            <Check className="h-4 w-4 text-green-500" />
-                        ) : (
-                            <CircleArrowUp className={cn("h-5 w-5", status === 'available' && "animate-bounce text-blue-400")} />
-                        )}
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                    {status === 'checking' && <p>Checking...</p>}
-                    {status === 'available' && <p>Update Available</p>}
-                    {status === 'downloading' && <p>Downloading {Math.round(progress)}%</p>}
-                    {status === 'downloaded' && <p>Ready to Restart (Check Dialog)</p>}
-                    {status === 'up-to-date' && <p>Up to Date</p>}
-                    {status === 'error' && <p>Error Checking</p>}
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
+    if (status === 'checking') {
+        return (
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0 text-muted-foreground no-drag cursor-default"
+                disabled
+                style={{ WebkitAppRegion: 'no-drag' } as any}
+            >
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            </Button>
+        );
+    }
+
+    if (status === 'available') {
+        return (
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs font-medium text-blue-500 hover:text-blue-600 hover:bg-blue-500/10 no-drag gap-1.5"
+                onClick={handleDownload}
+                title="Download Update"
+                style={{ WebkitAppRegion: 'no-drag' } as any}
+            >
+                <Download className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Update</span>
+            </Button>
+        );
+    }
+
+    if (status === 'downloading') {
+        return (
+            <div className="flex items-center gap-2 px-2 h-7 bg-muted/50 rounded-md no-drag" title={`Downloading: ${Math.round(progress)}%`}>
+                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                <div className="w-16 h-1.5 bg-muted-foreground/20 rounded-full overflow-hidden">
+                    <div
+                        className="h-full bg-primary transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                    />
+                </div>
+            </div>
+        );
+    }
+
+    if (status === 'ready') {
+        return (
+            <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs font-bold text-green-600 hover:text-green-700 hover:bg-green-500/10 no-drag gap-1.5 animate-pulse"
+                onClick={handleRestart}
+                title="Restart to Update"
+                style={{ WebkitAppRegion: 'no-drag' } as any}
+            >
+                <PartyPopper className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Restart</span>
+            </Button>
+        );
+    }
+
+    return null;
 }

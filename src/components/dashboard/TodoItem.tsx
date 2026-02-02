@@ -1,13 +1,13 @@
 import React, { useRef, useEffect } from 'react';
 import { Todo } from '@/types';
 import { cn } from '@/lib/utils';
-import { ChevronRight, ChevronDown, CheckSquare, GripVertical } from 'lucide-react';
+import { CheckSquare, GripVertical } from 'lucide-react';
 import TextareaAutosize from 'react-textarea-autosize';
 
 interface TodoItemProps {
     todo: Todo;
     depth: number;
-    onUpdate: (id: string, updates: Partial<Todo>) => void;
+    onUpdate: (id: string, updates: Partial<Todo>, skipHistory?: boolean) => void;
     onAdd: (parentId: string | null, afterId: string | null) => void;
     onDelete: (id: string) => void;
     onIndent: (id: string) => void;
@@ -18,9 +18,13 @@ interface TodoItemProps {
     style?: React.CSSProperties;
     dragHandleProps?: any;
     isDragging?: boolean;
-    checkboxVisibility?: 'high' | 'low';
+    showIndentationGuides?: boolean;
     isLocked?: boolean;
-    onNavigate?: (direction: 'up' | 'down', id: string) => void;
+    onNavigate?: (direction: 'up' | 'down', id: string, shiftKey: boolean) => void;
+    isSelected?: boolean;
+    onSelectClick?: (id: string, shiftKey: boolean) => void;
+    onSelectAll?: () => void;
+    spellCheck?: boolean;
 }
 
 export const TodoItem: React.FC<TodoItemProps> = ({
@@ -36,11 +40,18 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     style,
     dragHandleProps,
     isDragging,
-    checkboxVisibility = 'high',
+    showIndentationGuides = true,
     isLocked = false,
-    onNavigate
-}) => {
+    onNavigate,
+    isSelected,
+    onSelectClick,
+    onSelectAll,
+    spellCheck = false,
+    isWidgetMode = false,
+    'data-todo-id': dataTodoId
+}: TodoItemProps & { 'data-todo-id'?: string, isWidgetMode?: boolean }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const BASE_PADDING = isWidgetMode ? 24 : 76; // Reduced padding for widget mode
 
     // Auto-focus logic
     useEffect(() => {
@@ -48,7 +59,11 @@ export const TodoItem: React.FC<TodoItemProps> = ({
             // Use requestAnimationFrame to break synchronous focus loops
             requestAnimationFrame(() => {
                 if (document.activeElement !== textareaRef.current && textareaRef.current) {
-                    textareaRef.current.focus();
+                    const el = textareaRef.current;
+                    el.focus();
+                    // Move cursor to end
+                    const len = el.value.length;
+                    el.setSelectionRange(len, len);
                 }
             });
         }
@@ -56,95 +71,133 @@ export const TodoItem: React.FC<TodoItemProps> = ({
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (isLocked) return;
-        if (e.nativeEvent.isComposing) return;
+        // if (e.nativeEvent.isComposing) return; // Allow keys during composition to be safe, or handle specifically?
+        // Usually IME ignores Enter/Tab/Arrows, but we should be careful. 
+        // Let's rely on default behavior unless we explicitly handle it.
 
         if (e.key === 'Enter') {
-            e.preventDefault();
-            onAdd(null, todo.id); // Add sibling by default
+            if (!e.nativeEvent.isComposing) {
+                e.preventDefault();
+                // If has children, insert as first child
+                if (todo.children && todo.children.length > 0) {
+                    onAdd(todo.id, todo.id);
+                } else {
+                    onAdd(null, todo.id); // Add sibling by default
+                }
+            }
         } else if (e.key === 'Tab') {
-            e.preventDefault();
+            e.preventDefault(); // Always prevent tab navigation
             if (e.shiftKey) {
                 onUnindent(todo.id);
             } else {
                 onIndent(todo.id);
             }
-            onDelete(todo.id);
+            // Removed erroneous onDelete(todo.id) here!
+        } else if (e.key === 'Backspace') {
+            // Delete if empty OR at start of line (merge behavior requested)
+            if (e.currentTarget.value === '' || (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0)) {
+                e.preventDefault();
+                onDelete(todo.id);
+            }
         } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            onNavigate?.('up', todo.id);
+            // e.preventDefault(); // Don't prevent default immediately, let onNavigate decide? 
+            // Actually, for Up/Down, we likely want to override native multiline behavior only if we are at edge.
+            // But since these are mostly single lines, let's just trigger navigation.
+            // Check if composing to avoid breaking IME selection
+            if (!e.nativeEvent.isComposing) {
+                e.preventDefault(); // Prevent cursor moving to start of line repeatedly
+                onNavigate?.('up', todo.id, e.shiftKey);
+            }
         } else if (e.key === 'ArrowDown') {
-            e.preventDefault();
-            onNavigate?.('down', todo.id);
+            if (!e.nativeEvent.isComposing) {
+                e.preventDefault();
+                onNavigate?.('down', todo.id, e.shiftKey);
+            }
+        } else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+            // Smart Select All
+            if (e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === e.currentTarget.value.length) {
+                // If already fully selected, bubble up to select all todos
+                e.preventDefault();
+                onSelectAll?.();
+            }
+            // Otherwise, let default Ctrl+A happen (selects text)
+        } else if (e.key === 'Escape') {
+            // Optional: Block selection entry point?
+            // For now, let's just blur or something? 
+            // Better: trigger a 'select self' action
+            if (onSelectClick) onSelectClick(todo.id, false);
+            e.currentTarget.blur();
         }
     };
 
-    const toggleCollapse = () => {
-        onUpdate(todo.id, { isCollapsed: !todo.isCollapsed });
-    };
+    // const toggleCollapse = () => { ... } // Removed
 
     const toggleComplete = () => {
         onUpdate(todo.id, { completed: !todo.completed });
     };
 
 
-    const hasChildren = todo.children && todo.children.length > 0;
+    // const hasChildren = todo.children && todo.children.length > 0; // Unused
+    // const hasChildren = todo.children && todo.children.length > 0; // Unused
+    // const dataTodoId = todo.id; // Removed duplicate
 
     return (
         <div
             className={cn(
-                "group flex items-start gap-1 py-[2px] px-2 transition-colors hover:bg-muted/50 rounded-sm text-base min-h-[30px]", // Increased text size and height
+                "group flex items-start gap-0 py-[2px] pl-2 pr-12 transition-colors duration-100 rounded-sm text-base min-h-[30px] w-full relative", // Added w-full and relative
                 todo.completed && "opacity-60",
-                isDragging && "opacity-50 bg-muted"
+                isDragging && "opacity-50 bg-muted",
+                isSelected ? "bg-primary/20 hover:bg-primary/25" : "hover:bg-muted/50"
             )}
             style={{
-                marginLeft: `${depth * 24}px`,
+                paddingLeft: `${(depth * 24) + BASE_PADDING}px`, // Adjusted base padding
                 ...style
             }}
+            onClick={(e) => {
+                // If clicking content area
+                if (onSelectClick) onSelectClick(todo.id, e.shiftKey);
+            }}
+            data-todo-id={dataTodoId} // Applied here
         >
-            {/* Drag Handle */}
+            {/* Indentation Lines */}
+            {showIndentationGuides && depth > 0 && Array.from({ length: depth }).map((_, i) => (
+                <div
+                    key={i}
+                    className="absolute w-[1px] bg-border/50 h-full"
+                    style={{
+                        left: `${BASE_PADDING + (i * 24)}px` // Aligned with the padding steps
+                    }}
+                />
+            ))}
+
+            {/* Collapse/Expand Toggle Removed as requested */}
+
+            {/* Drag Handle - Moved after Toggle to be closer to checkbox */}
             {!isLocked && (
                 <div
-                    className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-6 w-4 cursor-move text-muted-foreground/40 hover:text-muted-foreground transition-opacity -ml-1.5 mr-0.5"
+                    className="opacity-20 group-hover:opacity-100 flex items-center justify-center h-6 w-4 cursor-move text-muted-foreground/40 hover:text-muted-foreground transition-opacity mr-1"
                     {...dragHandleProps}
+                    data-dnd-handle // Explicit marker for checking in TodoEditor
                 >
                     <GripVertical size={16} />
                 </div>
             )}
             {isLocked && <div className="w-3" />}
 
-            {/* Collapse/Expand Toggle */}
-            <div className="w-5 h-6 flex items-center justify-center shrink-0">
-                {hasChildren ? (
-                    <button
-                        onClick={toggleCollapse}
-                        className="text-muted-foreground/60 hover:text-foreground transition-colors p-0.5 hover:bg-muted rounded"
-                        onPointerDown={(e) => e.stopPropagation()}
-                    >
-                        {todo.isCollapsed ? <ChevronRight size={16} strokeWidth={2} /> : <ChevronDown size={16} strokeWidth={2} />}
-                    </button>
-                ) : (
-                    <div className="w-5" />
-                )}
-            </div>
-
             {/* Checkbox */}
             <div className={cn(
-                "h-6 flex items-center justify-center shrink-0 ml-1 mr-2 transition-opacity duration-200",
-                checkboxVisibility === 'low' && !todo.completed ? "opacity-0 group-hover:opacity-100 focus-within:opacity-100" : "opacity-100"
+                "h-6 flex items-center justify-center shrink-0 mr-2 transition-opacity duration-200 opacity-100", // Always visible
+                "relative"
             )}>
+
                 <button
                     onClick={toggleComplete}
                     onPointerDown={(e) => e.stopPropagation()}
                     className={cn(
                         "w-4 h-4 flex items-center justify-center rounded-[4px] transition-colors focus:outline-none",
                         todo.completed
-                            ? "bg-primary border border-primary text-primary-foreground hover:bg-primary/90"
-                            : cn(
-                                "border bg-card",
-                                checkboxVisibility === 'high'
-                                    ? "border-zinc-500 bg-zinc-800 hover:border-zinc-400 hover:bg-zinc-700"
-                                    : "border-zinc-700 bg-zinc-800 hover:border-zinc-500"
-                            )
+                            ? "bg-primary border-2 border-primary text-primary-foreground hover:bg-primary/90"
+                            : "border-2 bg-card border-muted-foreground/60 bg-transparent hover:border-muted-foreground/80 hover:bg-muted/10"
                     )}
                     title={todo.completed ? "Mark as incomplete" : "Mark as complete"}
                 >
@@ -157,22 +210,44 @@ export const TodoItem: React.FC<TodoItemProps> = ({
             </div>
 
             {/* Content */}
-            <div className="flex-1 min-w-0 flex py-[3px]">
-                <TextareaAutosize
-                    ref={textareaRef}
-                    value={todo.text}
-                    onChange={(e) => !isLocked && onUpdate(todo.id, { text: e.target.value })}
-                    onKeyDown={handleKeyDown}
-                    onFocus={() => onFocus(todo.id)}
-                    readOnly={isLocked}
-                    minRows={1}
-                    placeholder={isLocked ? "" : "New task..."}
-                    className={cn(
-                        "w-full bg-transparent resize-none outline-none leading-normal overflow-hidden min-h-[1.5rem] pt-0 placeholder:text-muted-foreground/30 font-medium block h-auto",
-                        todo.completed ? "line-through text-muted-foreground/60" : "text-foreground focus:text-foreground",
-                        isLocked && "cursor-default"
-                    )}
-                />
+            <div className="flex-1 min-w-0 flex">
+                {focusedId === todo.id ? (
+                    <TextareaAutosize
+                        ref={textareaRef}
+                        spellCheck={spellCheck}
+                        value={todo.text}
+                        onChange={(e) => !isLocked && onUpdate(todo.id, { text: e.target.value }, true)}
+                        onBlur={(e) => !isLocked && onUpdate(todo.id, { text: e.target.value }, false)}
+                        onKeyDown={handleKeyDown}
+                        readOnly={isLocked}
+                        minRows={1}
+                        placeholder={isLocked ? "" : "New task..."}
+                        className={cn(
+                            "bg-transparent resize-none outline-none leading-normal overflow-hidden min-h-[1.5rem] pt-0 placeholder:text-muted-foreground/30 font-medium block h-auto",
+                            "w-full max-w-full select-text break-all",
+                            todo.completed ? "line-through text-muted-foreground/60" : "text-foreground focus:text-foreground",
+                            isLocked && "cursor-default"
+                        )}
+                    />
+                ) : (
+                    <div
+                        className={cn(
+                            "bg-transparent leading-normal min-h-[1.5rem] pt-0 font-medium block h-auto whitespace-pre-wrap break-words break-all",
+                            "w-full max-w-full cursor-text",
+                            todo.completed ? "line-through text-muted-foreground/60" : "text-foreground",
+                            isLocked && "cursor-default"
+                        )}
+                        data-editable-text
+                        onClick={(e) => {
+                            if (!isLocked) {
+                                e.stopPropagation(); // Don't trigger row selection
+                                onFocus(todo.id);
+                            }
+                        }}
+                    >
+                        {todo.text || <span className="text-muted-foreground/30 italic">New task...</span>}
+                    </div>
+                )}
             </div>
         </div>
     );

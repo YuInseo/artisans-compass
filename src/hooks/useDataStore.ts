@@ -98,7 +98,10 @@ const useStore = create<DataStore>((set, get) => ({
                     },
                     enableCustomProjectColors: false,
                     showIndentationGuides: true,
-                    showTimelinePreview: true
+                    customThemes: [],
+                    workApps: [],
+                    filterTimelineByWorkApps: false,
+                    nightTimeStart: 22
                 };
 
                 const [settings, projects] = await Promise.all([
@@ -154,10 +157,7 @@ const useStore = create<DataStore>((set, get) => ({
 
     getDailyLog: async (dateStr: string) => {
         if (!(window as any).ipcRenderer) return null;
-        const date = new Date(dateStr);
-        const yearMonth = format(date, 'yyyy-MM');
-        const monthlyData = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
-        return monthlyData?.[dateStr] || null;
+        return await (window as any).ipcRenderer.invoke('get-daily-log', dateStr);
     },
 }));
 
