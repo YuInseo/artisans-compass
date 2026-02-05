@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Play, Clock, CheckCircle2, Check, CornerDownRight, Import } from "lucide-react";
+import { Play, Clock, CheckCircle2, Check, CornerDownRight, Import, ChevronsUp, ChevronDown, Briefcase } from "lucide-react";
 import { Todo, Session, Project } from "@/types";
 import { TimeTableGraph } from "./TimeTableGraph";
 import { format } from "date-fns";
 import { ScreenshotSlider } from "./ScreenshotSlider";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { toast } from "sonner";
-// import { ArchiveBlockNote } from "./ArchiveBlockNote";
+import { TodoEditor } from "./TodoEditor";
+import { Button } from "@/components/ui/button";
+import { useTranslation } from "react-i18next";
 import {
     Select,
     SelectContent,
@@ -21,7 +23,6 @@ import {
     ContextMenuCheckboxItem,
     ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Button } from "@/components/ui/button";
 
 interface DailyArchiveViewProps {
     date: Date;
@@ -43,17 +44,35 @@ interface DailyArchiveViewProps {
     readOnly?: boolean;
 }
 
-import { useTranslation } from "react-i18next";
-
 export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false }: DailyArchiveViewProps) {
     const { t } = useTranslation();
     const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
     const { carryOverTodos } = useTodoStore();
+    const [isGeneralOpen, setIsGeneralOpen] = useState(false);
+
+    // General Work Logic
+    const generalTodos = useMemo(() => {
+        return projectTodos['general'] || [];
+    }, [projectTodos]);
+
+    const uniqueGeneralTodos = useMemo(() => {
+        const seen = new Set();
+        return generalTodos.filter(t => {
+            if (seen.has(t.id)) return false;
+            seen.add(t.id);
+            return true;
+        });
+    }, [generalTodos]);
+
+    const uniqueGeneralCompletion = useMemo(() => {
+        if (uniqueGeneralTodos.length === 0) return 0;
+        const completed = uniqueGeneralTodos.filter(t => t.completed).length;
+        return (completed / uniqueGeneralTodos.length) * 100;
+    }, [uniqueGeneralTodos]);
 
     // Filter todos based on selected project
     const filteredTodos = useMemo(() => {
         if (selectedProjectId === "all" || !projectTodos || Object.keys(projectTodos).length === 0) {
-            // Apply clean filter to initialTodos as well if it's the fallback
             const cleanFilter = (list: Todo[]): Todo[] => {
                 return list.filter(item => {
                     const hasText = item.text && item.text.trim().length > 0;
@@ -70,11 +89,19 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                     children: item.children ? cleanFilter(item.children) : []
                 }));
             };
-            return cleanFilter(initialTodos);
+
+            let sourceTodos = initialTodos;
+            if (projectTodos && Object.keys(projectTodos).length > 0) {
+                const allExceptGeneral = Object.entries(projectTodos)
+                    .filter(([pid]) => pid !== 'general')
+                    .flatMap(([_, todos]) => todos);
+                sourceTodos = allExceptGeneral;
+            }
+
+            return cleanFilter(sourceTodos);
         }
         const currentList = projectTodos[selectedProjectId] || [];
 
-        // Filter out empty todos (and no children) for cleaner Archive view
         const cleanFilter = (list: Todo[]): Todo[] => {
             return list.map(item => ({
                 ...item,
@@ -98,7 +125,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
         return localStorage.getItem('hasSeenFetchUncheckedHint') !== 'true';
     });
     const [autoCloseOnFetch, setAutoCloseOnFetch] = useState(() => {
-        // Default to true as requested, but respect user preference if set
         const stored = localStorage.getItem('autoCloseArchiveOnFetch');
         return stored === null ? true : stored === 'true';
     });
@@ -109,7 +135,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
             const timer = setTimeout(() => {
                 setShowHint(false);
                 localStorage.setItem('hasSeenFetchUncheckedHint', 'true');
-            }, 5000); // Auto hide after 5s
+            }, 5000);
             return () => clearTimeout(timer);
         }
     }, [showHint]);
@@ -122,12 +148,10 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
     useEffect(() => {
         const loadData = async () => {
             if ((window as any).ipcRenderer) {
-                // Screenshots
                 const dateStr = format(date, 'yyyy-MM-dd');
                 const images = await (window as any).ipcRenderer.invoke('get-daily-screenshots', dateStr);
                 setDynamicScreenshots(images);
 
-                // Settings
                 const settings = await (window as any).ipcRenderer.invoke('get-settings');
                 if (settings && typeof settings.enableSpellCheck === 'boolean') {
                     setEnableSpellCheck(settings.enableSpellCheck);
@@ -140,15 +164,10 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
         loadData();
     }, [date]);
 
-    // Sync filteredTodos to state when project selection or data changes
     useEffect(() => {
         setTodos(filteredTodos);
     }, [filteredTodos]);
 
-    // Recalculate stats from sessions to ensure consistency with TimeTableGraph
-
-
-    // Todo Logic
     const updateTodoText = (id: string, text: string) => {
         const newTodos = JSON.parse(JSON.stringify(todos));
         const updateRecursive = (list: Todo[]) => {
@@ -183,17 +202,12 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
         onUpdateTodos?.(newTodos);
     };
 
-    // Full traversal with parent pointers is easier
     const traverseAndModify = (
         items: Todo[],
         id: string,
         action: 'indent' | 'unindent' | 'delete' | 'enter'
     ): Todo[] => {
-        // This is tricky to do immutably deep down without a path.
-        // Let's use mutable draft copy.
         const root = JSON.parse(JSON.stringify(items));
-
-        // Helper to find parent array and index
         const find = (list: Todo[], targetId: string, parents: { list: Todo[], item: Todo | null }[] = []): { list: Todo[], index: number, parents: { list: Todo[], item: Todo | null }[] } | null => {
             for (let i = 0; i < list.length; i++) {
                 if (list[i].id === targetId) return { list, index: i, parents };
@@ -217,25 +231,18 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                 list.splice(index, 1);
                 prevSibling.children = prevSibling.children || [];
                 prevSibling.children.push(item);
-                // Expand checked?
             }
         } else if (action === 'unindent') {
             const parentContext = parents[parents.length - 1];
             if (parentContext && parentContext.item) {
-                // We are in children of parentContext.item
-                // parentContext.list is the list containing the parent.
                 const item = list[index];
-                list.splice(index, 1); // Remove from current parent
-
-                // Find parent's index in grandparent list
+                list.splice(index, 1);
                 const parentIndex = parentContext.list.findIndex(p => p.id === parentContext.item!.id);
                 parentContext.list.splice(parentIndex + 1, 0, item);
             }
         }
-
         return root;
     };
-
 
     const handleKeyDown = (e: React.KeyboardEvent, id: string) => {
         if (e.key === 'Tab') {
@@ -244,10 +251,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
             const newTodos = traverseAndModify(todos, id, action);
             setTodos(newTodos);
             onUpdateTodos?.(newTodos);
-            // Need to maintain focus? React re-render might lose focus if keys change or DOM thrashes.
-            // Using `key={todo.id}` helps.
-            // But we need to insure `autoFocus` logic or ref.
-            // For now, let's rely on manual focus recovery or hope React keeps it (it usually does if key persists).
             setTimeout(() => {
                 const el = document.getElementById(`todo-input-${id}`);
                 el?.focus();
@@ -257,7 +260,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
 
     const handleFetchUnchecked = async () => {
         if (!projectTodos || Object.keys(projectTodos).length === 0) {
-            // Fallback for flat todo list
             const filterIncomplete = (list: Todo[]): Todo[] => {
                 return list.filter(t => !t.completed && t.text.trim() !== "").map(t => ({
                     ...t,
@@ -312,7 +314,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
     const renderTodo = (todo: Todo, level = 0) => (
         <div key={todo.id} className="mb-px relative">
             <div className={`flex items-start gap-2 py-1 group ${level > 0 ? 'ml-6' : ''}`}>
-                {/* Checkbox */}
                 <div
                     onClick={() => !readOnly && toggleTodo(todo.id)}
                     className={cn(
@@ -324,20 +325,18 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                 "border-muted-foreground/30 bg-transparent",
                                 !readOnly && "hover:border-primary/50 hover:bg-primary/5"
                             ),
-                        "opacity-100" // Always visible now
+                        "opacity-100"
                     )}
                 >
                     {todo.completed && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                 </div>
 
-                {/* Incomplete / Carried Over Indicator (Visualize as carried over to next day) */}
                 {!todo.completed && (
                     <div className="absolute -left-3 top-2 text-muted-foreground/40" title={t('calendar.carriedOver')}>
                         <CornerDownRight size={12} />
                     </div>
                 )}
 
-                {/* Input Text */}
                 {readOnly ? (
                     <span className={cn(
                         "w-full p-0 text-sm leading-relaxed rounded px-1 transition-colors cursor-default",
@@ -361,13 +360,12 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                     />
                 )}
             </div>
-            {/* Children with Indentation Guide */}
             {todo.children && todo.children.length > 0 && (
                 <div className="relative">
                     {showIndentationGuides && (
                         <div
                             className="absolute bg-border/40 w-px h-[calc(100%-12px)] top-0"
-                            style={{ left: `${(level + 1) * 24 + 7}px` }} // Calculated to align with checkbox center of children
+                            style={{ left: `${(level + 1) * 24 + 7}px` }}
                         />
                     )}
                     {todo.children.map(child => renderTodo(child, level + 1))}
@@ -380,7 +378,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
 
     return (
         <div className={`h-full flex divide-x divide-border select-none ${className}`}>
-            {/* Column 1: Visual (Timelapse) - Flex 5 (Left) - Conditional */}
             {hasScreenshots && (
                 <div className="flex-[5] min-w-0 p-6 flex flex-col bg-muted/30 relative group/visual justify-center">
                     <div className="absolute top-6 left-6 flex items-center gap-2 z-10">
@@ -400,10 +397,9 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                 </div>
             )}
 
-            {/* Column 2: Today's Focus/Journey Archive - Flex 4 or grow */}
             <div className={cn(
                 "min-w-0 p-8 flex flex-col bg-muted/30 text-foreground border-l border-border/50",
-                hasScreenshots ? "flex-[4]" : "flex-[6]" // Take more space if no visual
+                hasScreenshots ? "flex-[4]" : "flex-[6]"
             )}>
                 <div className="flex items-center justify-between mb-1">
                     <h3 className="text-xs font-bold text-zinc-500 flex items-center gap-2 uppercase tracking-widest">
@@ -411,7 +407,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                     </h3>
 
                     <div className="flex items-center gap-2">
-                        {/* Fetch Unchecked Button - Icon Only with Hint */}
                         <div className="relative">
                             <ContextMenu>
                                 <ContextMenuTrigger>
@@ -434,23 +429,16 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                 </ContextMenuContent>
                             </ContextMenu>
 
-                            {/* Speech Bubble Hint */}
                             {showHint && (
                                 <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 z-50 animate-in fade-in slide-in-from-right-2 duration-500 pointer-events-none">
                                     <div className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap relative">
                                         {t('calendar.fetchUncheckedDesc')}
-                                        {/* Triangle Arrow */}
                                         <div className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-0 h-0 border-y-[6px] border-y-transparent border-l-[8px] border-l-primary" />
                                     </div>
                                 </div>
                             )}
                         </div>
-                        {/* Actually, let's just use ContextMenu properly if available, or just a small gear? 
-                           Left Click: Fetch
-                           Right Click: Options
-                        */}
 
-                        {/* Project Selector */}
                         {projects.length > 0 && (
                             <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
                                 <SelectTrigger className="w-[160px] h-7 text-xs bg-zinc-800 border-zinc-700 text-zinc-300">
@@ -488,14 +476,100 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                         </div>
                     )}
                 </div>
+
+                {/* General Work Floating Panel */}
+                <div className={cn(
+                    "absolute bottom-6 z-30 pointer-events-auto transition-all duration-300 ease-in-out",
+                    isGeneralOpen ? "left-6 right-6" : "left-6"
+                )}>
+                    {/* Collapsed State: FAB Button */}
+                    {!isGeneralOpen && uniqueGeneralTodos.length > 0 && (
+                        <div className="animate-in fade-in zoom-in duration-300">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-14 w-14 rounded-full shadow-xl bg-card/80 backdrop-blur-md border border-border/50 hover:scale-105 transition-all group"
+                                onClick={() => setIsGeneralOpen(true)}
+                            >
+                                <div className="relative">
+                                    <ChevronsUp className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                                    {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                        <span className="sr-only">
+                                            {uniqueGeneralTodos.filter(t => !t.completed).length} uncompleted items
+                                        </span>
+                                    )}
+                                </div>
+                            </Button>
+                        </div>
+                    )}
+
+                    {/* Expanded State: Full Panel */}
+                    {isGeneralOpen && (
+                        <div className="bg-card/95 backdrop-blur-md shadow-2xl border border-border/50 rounded-xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col max-h-[500px]">
+                            {/* Header */}
+                            <div
+                                className="flex items-center gap-2 p-3 cursor-pointer select-none transition-colors hover:bg-muted/30 border-b border-border/40"
+                                onClick={() => setIsGeneralOpen(false)}
+                            >
+                                <div className={cn(
+                                    "p-1.5 rounded-full transition-colors flex items-center justify-center text-primary bg-primary/10"
+                                )}>
+                                    <ChevronDown className="w-4 h-4" />
+                                </div>
+
+                                <div className="flex items-center gap-2 flex-1">
+                                    <Briefcase className="w-4 h-4 text-primary" />
+                                    <span className="text-sm font-semibold text-foreground">
+                                        {t('dashboard.generalWork') || "일반 작업"}
+                                    </span>
+                                    {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
+                                            {uniqueGeneralTodos.filter(t => !t.completed).length}
+                                        </span>
+                                    )}
+                                </div>
+
+                                {/* Mini Progress Bar */}
+                                <div className="w-24 h-1.5 bg-muted/50 rounded-full overflow-hidden mr-1">
+                                    <div className="h-full bg-primary/60 transition-all duration-500" style={{ width: `${uniqueGeneralCompletion}%` }} />
+                                </div>
+                            </div>
+
+                            {/* Content */}
+                            <div className="overflow-y-auto custom-scrollbar bg-background/50 flex-1 min-h-0">
+                                <div className="p-2 pl-1">
+                                    <TodoEditor
+                                        key="general-archive-section"
+                                        todos={uniqueGeneralTodos}
+                                        isWidgetMode={false}
+                                        isWidgetLocked={readOnly}
+                                        actions={{
+                                            addTodo: (text, parentId, afterId) => {
+                                                if (!readOnly && (window as any).ipcRenderer) return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
+                                                return "";
+                                            },
+                                            updateTodo: (id, updates) => { if (!readOnly) useTodoStore.getState().updateTodo(id, updates, false, 'general'); },
+                                            deleteTodo: (id) => { if (!readOnly) useTodoStore.getState().deleteTodo(id, 'general'); },
+                                            deleteTodos: (ids) => { if (!readOnly) useTodoStore.getState().deleteTodos(ids, 'general'); },
+
+                                            indentTodo: (id) => { if (!readOnly) useTodoStore.getState().indentTodo(id, 'general'); },
+                                            unindentTodo: (id) => { if (!readOnly) useTodoStore.getState().unindentTodo(id, 'general'); },
+                                            moveTodo: (id, pid, idx) => { if (!readOnly) useTodoStore.getState().moveTodo(id, pid, idx, 'general'); },
+                                            moveTodos: (ids, pid, idx) => { if (!readOnly) useTodoStore.getState().moveTodos(ids, pid, idx, 'general'); },
+                                        }}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+
             </div>
 
-            {/* Column 3: Time Table (Vertical) - Flex 3 or 4 */}
             <div className={cn(
                 "min-w-0 p-0 flex flex-col bg-card overflow-hidden border-l border-border",
                 hasScreenshots ? "flex-[3]" : "flex-[4]"
             )}>
-                {/* Header */}
                 <div className="p-4 bg-card border-b border-border flex justify-between items-center shrink-0">
                     <h3 className="text-sm font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
                         <Clock className="w-4 h-4 text-blue-500" />
@@ -507,12 +581,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                     <TimeTableGraph sessions={sessions} date={date} projects={projects} nightTimeStart={nightTimeStart} />
                 </div>
 
-                {/* Footer Stack: Stats */}
                 <div className="p-4 pt-2 flex flex-col gap-3 bg-card shrink-0 pb-6 border-t border-border mt-auto">
-
-
-
-                    {/* Close Button Attached Below */}
                     {!hideCloseButton && onClose && (
                         <button
                             onClick={onClose}
@@ -522,7 +591,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                         </button>
                     )}
 
-                    {/* Quest Clear */}
                     {stats.questAchieved && (
                         <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3 flex items-center justify-start gap-2 shadow-sm">
                             <CheckCircle2 className="w-5 h-5 text-green-600 fill-green-100 dark:text-green-400 dark:fill-green-900" />
@@ -531,6 +599,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                     )}
                 </div>
             </div>
-        </div >
+        </div>
     );
 }

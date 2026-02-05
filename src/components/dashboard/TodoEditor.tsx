@@ -110,6 +110,7 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, action
     const moveTodo = actions?.moveTodo || store.moveTodo;
     const moveTodos = actions?.moveTodos || store.moveTodos;
 
+
     // We strictly control focus via state
     const [focusedId, setFocusedId] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

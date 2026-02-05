@@ -56,6 +56,8 @@ export interface AppSettings {
     enableScreenshots?: boolean;
     autoLaunch?: boolean;
     autoUpdate?: boolean;
+    developerMode?: boolean; // toggle for F12 devtools
+    debuggerMode?: boolean; // toggle for visual debug overlay
     enableSpellCheck?: boolean; // default: false
     themePreset?: 'default' | 'discord' | 'midnight' | 'custom'; // default: 'default'
     customCSS?: string; // User-defined CSS injection

@@ -343,6 +343,8 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                             <DailyArchiveView
                                 date={new Date()}
                                 todos={todayTodos}
+                                projectTodos={projectTodos}
+                                projects={projects}
                                 screenshots={screenshots}
                                 sessions={freshSessions}
                                 stats={currentStats}

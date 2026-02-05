@@ -8,6 +8,10 @@ import { autoUpdater } from 'electron-updater';
 import log from 'electron-log';
 // @ts-ignore
 import * as dotenv from 'dotenv';
+
+let win: BrowserWindow | null = null;
+let splash: BrowserWindow | null = null;
+
 // Configure electron-log to save to logs.txt
 // Note: File path will be set after app is ready
 log.transports.file.level = 'info';
@@ -16,6 +20,22 @@ log.transports.console.level = 'debug';
 
 // Redirect console methods to electron-log (so they also save to file)
 Object.assign(console, log.functions);
+
+// Hook into electron-log to stream logs to renderer
+log.hooks.push((message: any) => {
+  if (win && !win.isDestroyed()) {
+    try {
+      // message.data is array of args
+      win.webContents.send('backend-log', {
+        level: message.level,
+        message: message.data.map((d: any) => typeof d === 'object' ? JSON.stringify(d) : String(d)).join(' ')
+      });
+    } catch (e) {
+      // ignore
+    }
+  }
+  return message;
+});
 
 // Load .env file (in packaged app, it's at app root)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -51,9 +71,6 @@ export const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron')
 let RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path.join(process.env.APP_ROOT, 'public') : RENDERER_DIST
-
-let win: BrowserWindow | null
-let splash: BrowserWindow | null
 
 function createSplashWindow() {
   splash = new BrowserWindow({
@@ -201,6 +218,11 @@ ipcMain.on('toggle-maximize-window', () => {
 ipcMain.on('close-window', () => {
   const win = BrowserWindow.getFocusedWindow();
   win?.close();
+});
+
+ipcMain.on('toggle-dev-tools', () => {
+  const win = BrowserWindow.getFocusedWindow();
+  win?.webContents.toggleDevTools();
 });
 
 ipcMain.on('toggle-always-on-top', (_event, flag?: boolean) => {
@@ -633,5 +655,15 @@ app.whenReady().then(async () => {
 ipcMain.handle('open-external', async (_, url: string) => {
   if (url && (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('mailto:'))) {
     await shell.openExternal(url);
+  }
+});
+
+ipcMain.on('toggle-devtools', (_event, show) => {
+  if (win) {
+    if (show) {
+      win.webContents.openDevTools();
+    } else {
+      win.webContents.closeDevTools();
+    }
   }
 });

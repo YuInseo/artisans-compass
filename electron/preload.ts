@@ -15,10 +15,14 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   },
   send(...args: Parameters<typeof ipcRenderer.send>) {
     const [channel, ...omit] = args
+    // Internal Log for Debug Overlay
+    console.log(`[IPC Send] ${channel}`, ...omit);
     return ipcRenderer.send(channel, ...omit)
   },
   invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
     const [channel, ...omit] = args
+    // Internal Log for Debug Overlay
+    console.log(`[IPC Invoke] ${channel}`, ...omit);
     return ipcRenderer.invoke(channel, ...omit)
   },
 
@@ -47,5 +51,10 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
     const listener = (_event: any, state: any) => callback(state);
     ipcRenderer.on('update-state', listener);
     return () => ipcRenderer.off('update-state', listener);
+  },
+  onBackendLog: (callback: (log: any) => void) => {
+    const listener = (_event: any, log: any) => callback(log);
+    ipcRenderer.on('backend-log', listener);
+    return () => ipcRenderer.off('backend-log', listener);
   },
 })

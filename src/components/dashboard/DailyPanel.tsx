@@ -1,5 +1,5 @@
 import { Session, Todo, Project } from "@/types";
-import { Sparkles, Lock, Unlock, Moon, Sun, Eraser, CheckCircle } from "lucide-react";
+import { ChevronsUp, Sparkles, Lock, Unlock, Moon, Sun, Eraser, CheckCircle, ChevronDown, Briefcase } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -65,6 +65,20 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
 
     // Stable Selector for Todos
     const todos = useMemo(() => projectTodos[activeProjectId] || [], [projectTodos, activeProjectId]);
+
+    // Filter duplicates to prevent dnd-kit ID collisions
+    const uniqueGeneralTodos = useMemo(() => {
+        const rawGeneral = projectTodos['general'] || [];
+        const mainIds = new Set(todos.map(t => t.id));
+        return rawGeneral.filter(t => !mainIds.has(t.id));
+    }, [todos, projectTodos]);
+
+    // Calculate generic completion for the unique list
+    const uniqueGeneralCompletion = useMemo(() => {
+        if (uniqueGeneralTodos.length === 0) return 0;
+        const completed = uniqueGeneralTodos.filter(t => t.completed).length;
+        return Math.round((completed / uniqueGeneralTodos.length) * 100);
+    }, [uniqueGeneralTodos]);
 
     const { settings, isWidgetMode, setWidgetMode, saveSettings } = useDataStore();
 
@@ -242,6 +256,12 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
         const isWork = settings.workApps!.some(app => processName.toLowerCase().includes(app.toLowerCase()));
         return isWork ? liveSession : null;
     }, [liveSession, settings?.filterTimelineByWorkApps, settings?.workApps]);
+
+    const [isGeneralOpen, setIsGeneralOpen] = useState(true);
+
+
+
+
 
     return (
         <ContextMenu>
@@ -708,7 +728,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                     "relative pr-2 custom-scrollbar overflow-x-hidden w-full", // Added w-full
                                     isWidgetMode
                                         ? "flex-1 overflow-y-auto pb-6 -ml-2 pl-0"
-                                        : "flex-1 overflow-y-auto pb-20" // Removed -ml-6 pl-6 to allow full width
+                                        : "flex-1 overflow-y-auto pb-40" // Heavily increased padding to clear floating elements
                                 )}
                                     style={{ scrollbarGutter: 'stable' }}
                                 >
@@ -723,6 +743,8 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                             isWidgetMode={isWidgetMode}
                                             isWidgetLocked={isWidgetLocked}
                                         />
+
+                                        {/* General Work Section REMOVED from here to float outside */}
                                     </div>
 
                                     {/* FOOTER AREA - REMOVED, moving to Right Panel */}
@@ -736,6 +758,95 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                     <div className="text-xs opacity-60 max-w-[200px] text-center">
                                         {t('dashboard.createProjectHint')}
                                     </div>
+                                </div>
+                            )}
+
+                            {/* General Work Floating Panel */}
+                            {/* General Work Floating Panel */}
+                            {!isWidgetMode && (
+                                <div className={cn(
+                                    "absolute bottom-6 z-30 pointer-events-auto transition-all duration-300 ease-in-out",
+                                    isGeneralOpen ? "left-6 right-6" : "left-6"
+                                )}>
+                                    {/* Collapsed State: FAB Button */}
+                                    {!isGeneralOpen && (
+                                        <div className="animate-in fade-in zoom-in duration-300">
+                                            <Button
+                                                variant="outline"
+                                                size="icon"
+                                                className="h-14 w-14 rounded-full shadow-xl bg-card/80 backdrop-blur-md border border-border/50 hover:scale-105 transition-all group"
+                                                onClick={() => setIsGeneralOpen(true)}
+                                            >
+                                                <div className="relative">
+                                                    <ChevronsUp className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                                                    {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                                        <span className="sr-only">
+                                                            {uniqueGeneralTodos.filter(t => !t.completed).length} uncompleted items
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </Button>
+                                        </div>
+                                    )}
+
+                                    {/* Expanded State: Full Panel */}
+                                    {isGeneralOpen && (
+                                        <div className="bg-card/95 backdrop-blur-md shadow-2xl border border-border/50 rounded-xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col max-h-[500px]">
+                                            {/* Header */}
+                                            <div
+                                                className="flex items-center gap-2 p-3 cursor-pointer select-none transition-colors hover:bg-muted/30 border-b border-border/40"
+                                                onClick={() => setIsGeneralOpen(false)}
+                                            >
+                                                <div className={cn(
+                                                    "p-1.5 rounded-full transition-colors flex items-center justify-center text-primary bg-primary/10"
+                                                )}>
+                                                    <ChevronDown className="w-4 h-4" />
+                                                </div>
+
+                                                <div className="flex items-center gap-2 flex-1">
+                                                    <Briefcase className="w-4 h-4 text-primary" />
+                                                    <span className="text-sm font-semibold text-foreground">
+                                                        {t('dashboard.generalWork') || "일반 작업"}
+                                                    </span>
+                                                    {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
+                                                            {uniqueGeneralTodos.filter(t => !t.completed).length}
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Mini Progress Bar */}
+                                                <div className="w-24 h-1.5 bg-muted/50 rounded-full overflow-hidden mr-1">
+                                                    <div className="h-full bg-primary/60 transition-all duration-500" style={{ width: `${uniqueGeneralCompletion}%` }} />
+                                                </div>
+                                            </div>
+
+                                            {/* Content */}
+                                            <div className="overflow-y-auto custom-scrollbar bg-background/50 flex-1 min-h-0">
+                                                <div className="p-2 pl-1">
+                                                    <TodoEditor
+                                                        key="general-section"
+                                                        todos={uniqueGeneralTodos}
+                                                        isWidgetMode={false}
+                                                        isWidgetLocked={false}
+                                                        actions={{
+                                                            addTodo: (text, parentId, afterId) => {
+                                                                return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
+                                                            },
+                                                            updateTodo: (id, updates) => useTodoStore.getState().updateTodo(id, updates, false, 'general'),
+                                                            deleteTodo: (id) => useTodoStore.getState().deleteTodo(id, 'general'),
+                                                            deleteTodos: (ids) => useTodoStore.getState().deleteTodos(ids, 'general'),
+
+                                                            indentTodo: (id) => useTodoStore.getState().indentTodo(id, 'general'),
+                                                            unindentTodo: (id) => useTodoStore.getState().unindentTodo(id, 'general'),
+                                                            moveTodo: (id, pid, idx) => useTodoStore.getState().moveTodo(id, pid, idx, 'general'),
+                                                            moveTodos: (ids, pid, idx) => useTodoStore.getState().moveTodos(ids, pid, idx, 'general'),
+                                                        }}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

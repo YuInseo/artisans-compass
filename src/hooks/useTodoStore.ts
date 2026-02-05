@@ -13,19 +13,19 @@ interface TodoStore {
     // Actions
     setActiveProjectId: (id: string) => void;
     setTodos: (todos: Todo[], shouldSave?: boolean) => void;
-    addTodo: (text: string, parentId?: string | null, afterId?: string | null) => string;
-    updateTodo: (id: string, updates: Partial<Todo>, skipHistory?: boolean) => void;
-    deleteTodo: (id: string) => void;
-    deleteTodos: (ids: string[]) => void;
-    updateTodoText: (id: string, text: string, skipHistory?: boolean) => void;
-    toggleTodo: (id: string) => void;
-    toggleCollapse: (id: string) => void;
+    addTodo: (text: string, parentId?: string | null, afterId?: string | null, targetProjectId?: string) => string;
+    updateTodo: (id: string, updates: Partial<Todo>, skipHistory?: boolean, targetProjectId?: string) => void;
+    deleteTodo: (id: string, targetProjectId?: string) => void;
+    deleteTodos: (ids: string[], targetProjectId?: string) => void;
+    updateTodoText: (id: string, text: string, skipHistory?: boolean, targetProjectId?: string) => void;
+    toggleTodo: (id: string, targetProjectId?: string) => void;
+    toggleCollapse: (id: string, targetProjectId?: string) => void;
 
     // Tree Actions
-    indentTodo: (id: string) => void;
-    unindentTodo: (id: string) => void;
-    moveTodo: (activeId: string, parentId: string | null, index: number) => void;
-    moveTodos: (activeIds: string[], parentId: string | null, index: number) => void;
+    indentTodo: (id: string, targetProjectId?: string) => void;
+    unindentTodo: (id: string, targetProjectId?: string) => void;
+    moveTodo: (activeId: string, parentId: string | null, index: number, targetProjectId?: string) => void;
+    moveTodos: (activeIds: string[], parentId: string | null, index: number, targetProjectId?: string) => void;
     clearUntitledTodos: () => void;
 
     // Persistence
@@ -294,13 +294,14 @@ export const useTodoStore = create<TodoStore>()(
                 if (shouldSave) saveToIPC(newProjectTodos);
             },
 
-            addTodo: (text, parentId = null, afterId = null) => {
+            addTodo: (text, parentId = null, afterId = null, targetProjectId) => {
                 get().addToHistory();
                 const newId = uuidv4();
                 const newNode: Todo = { id: newId, text, completed: false, children: [] };
 
                 const { activeProjectId, projectTodos } = get();
-                const currentTodos = projectTodos[activeProjectId] || [];
+                const projectIdToUse = targetProjectId || activeProjectId;
+                const currentTodos = projectTodos[projectIdToUse] || [];
 
                 let nextTodos: Todo[];
 
@@ -324,32 +325,34 @@ export const useTodoStore = create<TodoStore>()(
                     nextTodos = [...currentTodos, newNode];
                 }
 
-                const newProjectTodos = { ...projectTodos, [activeProjectId]: nextTodos };
+                const newProjectTodos = { ...projectTodos, [projectIdToUse]: nextTodos };
                 set({ projectTodos: newProjectTodos });
                 saveToIPC(newProjectTodos);
                 return newId;
             },
 
-            updateTodo: (id, updates, skipHistory = false) => {
+            updateTodo: (id, updates, skipHistory = false, targetProjectId) => {
                 if (!skipHistory) get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
-                const currentTodos = projectTodos[activeProjectId] || [];
+                const projectIdToUse = targetProjectId || activeProjectId;
+                const currentTodos = projectTodos[projectIdToUse] || [];
 
                 const nextTodos = updateNode(currentTodos, id, updates);
-                const newProjectTodos = { ...projectTodos, [activeProjectId]: nextTodos };
+                const newProjectTodos = { ...projectTodos, [projectIdToUse]: nextTodos };
 
                 set({ projectTodos: newProjectTodos });
                 saveToIPC(newProjectTodos);
             },
 
-            deleteTodo: (id) => {
-                get().deleteTodos([id]);
+            deleteTodo: (id, targetProjectId) => {
+                get().deleteTodos([id], targetProjectId);
             },
 
-            deleteTodos: (ids) => {
+            deleteTodos: (ids, targetProjectId) => {
                 get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
-                const currentTodos = projectTodos[activeProjectId] || [];
+                const projectIdToUse = targetProjectId || activeProjectId;
+                const currentTodos = projectTodos[projectIdToUse] || [];
 
                 const idsSet = new Set(ids);
                 const deleteNodesRecursive = (list: Todo[]): Todo[] => {
@@ -391,20 +394,21 @@ export const useTodoStore = create<TodoStore>()(
                 };
 
                 const nextTodos = processList(currentTodos);
-                const newProjectTodos = { ...projectTodos, [activeProjectId]: nextTodos };
+                const newProjectTodos = { ...projectTodos, [projectIdToUse]: nextTodos };
 
                 set({ projectTodos: newProjectTodos });
                 saveToIPC(newProjectTodos);
             },
 
-            updateTodoText: (id, text, skipHistory = false) => {
-                get().updateTodo(id, { text }, skipHistory);
+            updateTodoText: (id, text, skipHistory = false, targetProjectId) => {
+                get().updateTodo(id, { text }, skipHistory, targetProjectId);
             },
 
-            toggleTodo: (id) => {
+            toggleTodo: (id, targetProjectId) => {
                 get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
-                const currentTodos = projectTodos[activeProjectId] || [];
+                const projectIdToUse = targetProjectId || activeProjectId;
+                const currentTodos = projectTodos[projectIdToUse] || [];
 
                 const toggleNode = (list: Todo[]): Todo[] => {
                     return list.map(item => {
@@ -415,15 +419,16 @@ export const useTodoStore = create<TodoStore>()(
                 };
 
                 const newTodos = toggleNode(currentTodos);
-                const newProjectTodos = { ...projectTodos, [activeProjectId]: newTodos };
+                const newProjectTodos = { ...projectTodos, [projectIdToUse]: newTodos };
                 set({ projectTodos: newProjectTodos });
                 saveToIPC(newProjectTodos);
             },
 
-            toggleCollapse: (id) => {
+            toggleCollapse: (id, targetProjectId) => {
                 get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
-                const currentTodos = projectTodos[activeProjectId] || [];
+                const projectIdToUse = targetProjectId || activeProjectId;
+                const currentTodos = projectTodos[projectIdToUse] || [];
 
                 const toggleNode = (list: Todo[]): Todo[] => {
                     return list.map(item => {
@@ -438,27 +443,29 @@ export const useTodoStore = create<TodoStore>()(
                 };
 
                 const newTodos = toggleNode(currentTodos);
-                const newProjectTodos = { ...projectTodos, [activeProjectId]: newTodos };
+                const newProjectTodos = { ...projectTodos, [projectIdToUse]: newTodos };
                 set({ projectTodos: newProjectTodos });
                 saveToIPC(newProjectTodos);
             },
 
-            indentTodo: (id) => {
+            indentTodo: (id, targetProjectId) => {
                 get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
-                const currentTodos = projectTodos[activeProjectId] || [];
+                const projectIdToUse = targetProjectId || activeProjectId;
+                const currentTodos = projectTodos[projectIdToUse] || [];
                 const nextTodos = indentNode(currentTodos, id);
-                set({ projectTodos: { ...projectTodos, [activeProjectId]: nextTodos } });
-                saveToIPC({ ...projectTodos, [activeProjectId]: nextTodos });
+                set({ projectTodos: { ...projectTodos, [projectIdToUse]: nextTodos } });
+                saveToIPC({ ...projectTodos, [projectIdToUse]: nextTodos });
             },
 
-            unindentTodo: (id) => {
+            unindentTodo: (id, targetProjectId) => {
                 get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
-                const currentTodos = projectTodos[activeProjectId] || [];
+                const projectIdToUse = targetProjectId || activeProjectId;
+                const currentTodos = projectTodos[projectIdToUse] || [];
                 const nextTodos = unindentNode(currentTodos, id);
-                set({ projectTodos: { ...projectTodos, [activeProjectId]: nextTodos } });
-                saveToIPC({ ...projectTodos, [activeProjectId]: nextTodos });
+                set({ projectTodos: { ...projectTodos, [projectIdToUse]: nextTodos } });
+                saveToIPC({ ...projectTodos, [projectIdToUse]: nextTodos });
             },
 
             clearUntitledTodos: () => {
@@ -479,19 +486,20 @@ export const useTodoStore = create<TodoStore>()(
                 saveToIPC({ ...projectTodos, [activeProjectId]: newTodos });
             },
 
-            moveTodo: (activeId: string, parentId: string | null, index: number) => {
-                get().moveTodos([activeId], parentId, index);
+            moveTodo: (activeId: string, parentId: string | null, index: number, targetProjectId?: string) => {
+                get().moveTodos([activeId], parentId, index, targetProjectId);
             },
 
-            moveTodos: (activeIds: string[], parentId: string | null, index: number) => {
+            moveTodos: (activeIds: string[], parentId: string | null, index: number, targetProjectId?: string) => {
                 get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
-                const currentTodos = projectTodos[activeProjectId] || [];
+                const projectIdToUse = targetProjectId || activeProjectId;
+                const currentTodos = projectTodos[projectIdToUse] || [];
 
                 const nextTodos = moveNodes(currentTodos, activeIds, parentId, index);
 
-                set({ projectTodos: { ...projectTodos, [activeProjectId]: nextTodos } });
-                saveToIPC({ ...projectTodos, [activeProjectId]: nextTodos });
+                set({ projectTodos: { ...projectTodos, [projectIdToUse]: nextTodos } });
+                saveToIPC({ ...projectTodos, [projectIdToUse]: nextTodos });
             },
 
             loadTodos: async () => {
