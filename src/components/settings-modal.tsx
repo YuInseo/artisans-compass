@@ -342,28 +342,54 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         if (open && activeTab === 'updatelog') {
             fetch('/updates/index.json')
                 .then(res => res.json())
-                .then(data => {
+                .then(async (data) => {
                     // Filter out "no release" versions or versions without proper title
-                    const releasedUpdates = data.filter((update: any) =>
+                    let candidates = data.filter((update: any) =>
                         update.title &&
                         update.title.toLowerCase() !== 'no release' &&
                         !update.title.toLowerCase().includes('unreleased')
                     );
 
-                    setUpdates(releasedUpdates);
-                    // Select first by default if nothing selected
-                    if (releasedUpdates.length > 0 && !selectedUpdate) {
-                        const lang = i18n.language || 'en';
-                        const v = releasedUpdates[0].version;
-                        const f = releasedUpdates[0].file;
-                        const localizedPath = `/updates/${lang}/${v}.md`;
+                    // Pre-validate candidates to filter out missing files (404/HTML fallback)
+                    const lang = i18n.language || 'en';
+                    const validatedUpdates = [];
 
-                        fetch(localizedPath)
-                            .then(res => {
-                                if (res.ok) return res.text();
-                                return fetch(`/updates/${f}`).then(res => res.text());
-                            })
-                            .then(text => setSelectedUpdate({ version: v, content: text }));
+                    for (const update of candidates) {
+                        const v = update.version;
+                        const f = update.file;
+                        // Try localized first, then default
+                        const localizedPath = `/updates/${lang}/${v}.md`;
+                        const defaultPath = `/updates/${f}`;
+
+                        try {
+                            // Try localized
+                            let res = await fetch(localizedPath);
+                            let text = "";
+                            if (!res.ok) {
+                                // Fallback
+                                res = await fetch(defaultPath);
+                            }
+
+                            if (res.ok) {
+                                text = await res.text();
+                                // Check for HTML fallback (SPA 404)
+                                if (!text.trim().toLowerCase().startsWith('<!doctype html>')) {
+                                    validatedUpdates.push(update);
+                                }
+                            }
+                        } catch (e) {
+                            // Build error? Ignore.
+                        }
+                    }
+
+                    setUpdates(validatedUpdates);
+
+                    // Select first by default if nothing selected and list is not empty
+                    if (validatedUpdates.length > 0 && !selectedUpdate) {
+                        const first = validatedUpdates[0];
+                        // We already verified it exists, so just fetch again or assume it works
+                        // To be safe and consistent with handleSelectUpdate logic:
+                        handleSelectUpdate(first.version, first.file);
                     }
                 })
                 .catch(err => console.error("Failed to fetch updates index", err));
@@ -478,15 +504,21 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         };
 
         return lines.map((line, i) => {
+            const trimmed = line.trim();
             if (line.startsWith('# ')) {
                 return <h1 key={i} className="text-2xl font-bold mb-4 mt-6 border-b pb-2">{parseInline(line.replace('# ', ''))}</h1>;
             } else if (line.startsWith('## ')) {
                 return <h2 key={i} className="text-xl font-semibold mb-3 mt-5">{parseInline(line.replace('## ', ''))}</h2>;
             } else if (line.startsWith('### ')) {
                 return <h3 key={i} className="text-lg font-medium mb-2 mt-4">{parseInline(line.replace('### ', ''))}</h3>;
-            } else if (line.startsWith('- ')) {
-                return <li key={i} className="ml-4 list-disc mb-1 pl-1 text-sm text-foreground/90">{parseInline(line.replace('- ', ''))}</li>;
-            } else if (line.trim() === '') {
+            } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+                // Remove the bullet marker
+                const content = trimmed.substring(2);
+                return <div key={i} className="flex items-start mb-1 ml-4">
+                    <span className="mr-2 text-foreground/70">•</span>
+                    <span className="text-sm text-foreground/90 leading-relaxed">{parseInline(content)}</span>
+                </div>;
+            } else if (trimmed === '') {
                 return <div key={i} className="h-2" />;
             } else {
                 return <p key={i} className="mb-2 text-sm leading-relaxed text-muted-foreground">{parseInline(line)}</p>;
