@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { Todo } from '@/types';
-import { format, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 
 interface TodoStore {
@@ -46,22 +46,38 @@ interface TodoStore {
 
 // ... imports ...
 
+// Debounce helper
+function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T {
+    let timeout: NodeJS.Timeout;
+    return function (this: any, ...args: Parameters<T>) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    } as T;
+}
+
 // Helper to save to IPC
-const saveToIPC = async (projectTodos: Record<string, Todo[]>) => {
+const existingSaveToIPC = async (projectTodos: Record<string, Todo[]>) => {
     if ((window as any).ipcRenderer) {
         const now = new Date();
         const yearMonth = format(now, 'yyyy-MM');
         const dateStr = format(now, 'yyyy-MM-dd');
-        const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
-        const todayLog = logs[dateStr] || {};
 
-        logs[dateStr] = {
-            ...todayLog,
-            projectTodos
-        };
-        await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
+        try {
+            const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
+            const todayLog = logs[dateStr] || {};
+
+            logs[dateStr] = {
+                ...todayLog,
+                projectTodos
+            };
+            await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
+        } catch (e) {
+            console.error("Failed to save todos to IPC", e);
+        }
     }
 };
+
+const saveToIPC = debounce(existingSaveToIPC, 2000);
 
 // --- Helpers ---
 export const insertNode = (list: Todo[], parentId: string | null, afterId: string | null, newNode: Todo): Todo[] => {
@@ -247,7 +263,9 @@ export const useTodoStore = create<TodoStore>()(
 
             addToHistory: () => {
                 const { projectTodos, history } = get();
-                const newHistory = [...history, JSON.parse(JSON.stringify(projectTodos))];
+                // Optimization: Store reference instead of Deep Clone.
+                // Since all updates (insertNode, updateNode, etc.) are immutable, the old 'projectTodos' ref represents the snapshot.
+                const newHistory = [...history, projectTodos];
                 if (newHistory.length > 50) newHistory.shift(); // Limit history
                 set({ history: newHistory, future: [] });
             },
@@ -535,102 +553,16 @@ export const useTodoStore = create<TodoStore>()(
 
                     // 2. Perform Carry Over if needed
                     if (needsCarryOver) {
-                        console.log("[useTodoStore] Checking yesterday for carry-over...");
-
-                        const yesterday = subDays(now, 1);
-                        const yDateStr = format(yesterday, 'yyyy-MM-dd');
-                        const yYearMonth = format(yesterday, 'yyyy-MM');
-
-                        let yData = null;
-
-                        if (yYearMonth === yearMonth) {
-                            yData = logs[yDateStr];
-                        } else {
-                            const yLogs = await (window as any).ipcRenderer.getMonthlyLog(yYearMonth);
-                            yData = yLogs ? yLogs[yDateStr] : null;
-                        }
-
-                        if (yData && (yData.projectTodos || yData.todos)) {
-                            console.log(`[useTodoStore] Found data for yesterday (${yDateStr}), processing unfinished tasks...`);
-
-                            const sourceTodos = yData.projectTodos || { 'none': yData.todos || [] };
-
-                            // Recursive filter to keep only incomplete tasks
-                            const filterIncomplete = (list: Todo[]): Todo[] => {
-                                return list.filter(t => !t.completed).map(t => ({
-                                    ...t,
-                                    carriedOver: true,
-                                    children: t.children ? filterIncomplete(t.children) : []
-                                }));
-                            };
-
-                            let hasCarryOver = false;
-                            const carriedOverProjectTodos: Record<string, Todo[]> = {};
-
-                            Object.keys(sourceTodos).forEach(projectId => {
-                                const incomplete = filterIncomplete(sourceTodos[projectId]);
-                                if (incomplete.length > 0) {
-                                    carriedOverProjectTodos[projectId] = incomplete;
-                                    hasCarryOver = true;
-                                }
-                            });
-
-                            if (hasCarryOver) {
-                                console.log("[useTodoStore] Carrying over tasks:", carriedOverProjectTodos);
-
-                                // MERGE STRATEGY: Combine current (planned) + carried over
-                                // Avoid ID collisions? Usually UUIDs are unique, but let's be safe.
-                                // Actually better to just append. 
-                                // If 'currentProjectTodos' has tasks (from planning), we add carried over tasks to them.
-
-                                const newProjectTodos = { ...currentProjectTodos };
-
-                                Object.keys(carriedOverProjectTodos).forEach(projectId => {
-                                    const existing = newProjectTodos[projectId] || [];
-                                    const incoming = carriedOverProjectTodos[projectId];
-
-                                    // Make sure we don't duplicate if they somehow exist (though unlikely with UUIDs)
-                                    const existingIds = new Set(existing.map(t => t.id));
-                                    const toAdd = incoming.filter(t => !existingIds.has(t.id));
-
-                                    newProjectTodos[projectId] = [...existing, ...toAdd];
-                                });
-
-                                currentProjectTodos = newProjectTodos;
-
-                                // Mark as carried over so we don't do it again
-                                // We need to update the log immediately
-                                if (logs) {
-                                    if (!logs[dateStr]) logs[dateStr] = {};
-                                    logs[dateStr].carriedOver = true;
-                                    logs[dateStr].projectTodos = currentProjectTodos;
-
-                                    // Note: We should assume saveToIPC logic or similar
-                                    // Since saveTodos updates the store state then saves, let's just set state and save.
-                                }
-                            }
-                        }
+                        // User Request: "Only todos added in the 2nd modal (Closing Ritual) should be carried over."
+                        // We do NOT merge yesterday's leftovers anymore. We strictly use what's in the log (planned) or start empty.
+                        console.log("[useTodoStore] Auto carry-over DISABLED by user request.");
                     }
 
                     // 3. Update Store State
                     set({ projectTodos: currentProjectTodos, hasLoaded: true });
 
-                    // 4. Persist if we did carry-over (or if we just created a blank day but want to mark checked?)
-                    // If we modified the log (by merging), we should save.
-                    // If needsCarryOver was true, we likely want to save the 'carriedOver: true' flag even if nothing was carried over,
-                    // to prevent re-checking every reload? 
-                    // Let's safe-guard: if we found yesterday data but it was empty, we can still mark carriedOver=true to avoid repeated lookups.
-
-                    if (needsCarryOver) {
-                        // We need to force a save with the flag.
-                        // But `saveToIPC` typically takes projectTodos from state or argument.
-                        // It doesn't natively support setting extra flags like 'carriedOver' in the existing implementation helper.
-                        // We need to modify `saveToIPC` or manually do it here.
-                        // Let's look at `saveToIPC` usage.
-                        // It does: logs[dateStr] = { ...todayLog, projectTodos };
-                        // We want to add carriedOver.
-
-                        // Modification: Manually invoking IPC save here for precision
+                    // 4. Ensure day log entry exists (even if empty) to prevent re-checks or issues
+                    if (needsCarryOver || !logs[dateStr]) {
                         const finalLogs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
                         const todayLog = finalLogs[dateStr] || {};
                         finalLogs[dateStr] = {

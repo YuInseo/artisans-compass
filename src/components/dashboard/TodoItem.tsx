@@ -51,7 +51,13 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     'data-todo-id': dataTodoId
 }: TodoItemProps & { 'data-todo-id'?: string, isWidgetMode?: boolean }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [localText, setLocalText] = React.useState(todo.text);
     const BASE_PADDING = isWidgetMode ? 24 : 76; // Reduced padding for widget mode
+
+    // Sync local state with prop
+    useEffect(() => {
+        setLocalText(todo.text);
+    }, [todo.text]);
 
     // Auto-focus logic
     useEffect(() => {
@@ -78,6 +84,12 @@ export const TodoItem: React.FC<TodoItemProps> = ({
         if (e.key === 'Enter') {
             if (!e.nativeEvent.isComposing) {
                 e.preventDefault();
+
+                // FORCE SAVE: Ensure current text is saved before switching focus/adding new task
+                if (localText !== todo.text) {
+                    onUpdate(todo.id, { text: localText }, false);
+                }
+
                 // If has children, insert as first child
                 if (todo.children && todo.children.length > 0) {
                     onAdd(todo.id, todo.id);
@@ -215,9 +227,14 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                     <TextareaAutosize
                         ref={textareaRef}
                         spellCheck={spellCheck}
-                        value={todo.text}
-                        onChange={(e) => !isLocked && onUpdate(todo.id, { text: e.target.value }, true)}
-                        onBlur={(e) => !isLocked && onUpdate(todo.id, { text: e.target.value }, false)}
+                        value={localText}
+                        onChange={(e) => setLocalText(e.target.value)}
+                        onBlur={() => {
+                            if (isLocked) return;
+                            if (localText !== todo.text) {
+                                onUpdate(todo.id, { text: localText }, false);
+                            }
+                        }}
                         onKeyDown={handleKeyDown}
                         readOnly={isLocked}
                         minRows={1}

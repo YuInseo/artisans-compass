@@ -483,13 +483,19 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                     isGeneralOpen ? "left-6 right-6" : "left-6"
                 )}>
                     {/* Collapsed State: FAB Button */}
-                    {!isGeneralOpen && uniqueGeneralTodos.length > 0 && (
+                    {!isGeneralOpen && (
                         <div className="animate-in fade-in zoom-in duration-300">
                             <Button
                                 variant="outline"
                                 size="icon"
                                 className="h-14 w-14 rounded-full shadow-xl bg-card/80 backdrop-blur-md border border-border/50 hover:scale-105 transition-all group"
-                                onClick={() => setIsGeneralOpen(true)}
+                                onClick={() => {
+                                    if (uniqueGeneralTodos.length > 0) {
+                                        setIsGeneralOpen(true);
+                                    } else {
+                                        toast.info(t('dashboard.noGeneralWork') || "진행된 일반 작업이 없습니다.");
+                                    }
+                                }}
                             >
                                 <div className="relative">
                                     <ChevronsUp className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />

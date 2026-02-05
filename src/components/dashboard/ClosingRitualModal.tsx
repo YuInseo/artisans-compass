@@ -1,15 +1,15 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+// import {
+//     Select,
+//     SelectContent,
+//     SelectItem,
+//     SelectTrigger,
+//     SelectValue,
+// } from "@/components/ui/select";
 
-import { ArrowRight, Moon, ListTodo, Sparkles, LogOut } from "lucide-react";
+import { ArrowRight, Moon, ListTodo, Sparkles, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
 import { Todo, Project } from "@/types";
 import { DailyArchiveView } from "./DailyArchiveView";
 
@@ -82,7 +82,6 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
 
     const [movedIds, setMovedIds] = useState<Set<string>>(new Set());
 
-
     // Filter projects to only those with activity today (valid tasks)
     const activeProjects = useMemo(() => {
         return projects.filter(p => {
@@ -92,6 +91,24 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
             return todos.some(t => t.text && t.text.trim().length > 0 && t.text !== "Untitled");
         });
     }, [projects, projectTodos]);
+
+    // Scroll Logic for Tabs
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const [showLeftArrow, setShowLeftArrow] = useState(false);
+    const [showRightArrow, setShowRightArrow] = useState(false);
+
+    const checkScroll = () => {
+        if (!scrollContainerRef.current) return;
+        const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
+        setShowLeftArrow(scrollLeft > 0);
+        setShowRightArrow(scrollLeft < scrollWidth - clientWidth - 1); // -1 for sub-pixel safety
+    };
+
+    useEffect(() => {
+        checkScroll();
+        window.addEventListener('resize', checkScroll);
+        return () => window.removeEventListener('resize', checkScroll);
+    }, [activeProjects, isOpen]); // Re-check when projects change or modal opens
 
     const todayTodos = useMemo(() => {
         if (selectedProjectId === 'all') {
@@ -174,6 +191,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
 
     // Ensure selectedProjectId is valid
     useEffect(() => {
+        if (selectedProjectId === 'none') return; // General/None is always valid
         if (activeProjects.length > 0 && !activeProjects.find(p => p.id === selectedProjectId)) {
             setSelectedProjectId(activeProjects[0].id);
         }
@@ -356,28 +374,107 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                     {/* Step 2: Plan & Prepare (2-Column Layout) */}
                     {step === 2 && (
                         <div className="h-full flex flex-col animate-in fade-in slide-in-from-right-8 duration-500 bg-background">
-                            {/* Toolbar / Project Selector */}
-                            <div className="px-8 py-3 bg-card border-b border-border flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <span className="text-sm font-medium text-muted-foreground select-none">{t('ritual.planningContext')}:</span>
-                                    <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                                        <SelectTrigger className="w-[240px] h-9">
-                                            <SelectValue placeholder={t('dashboard.selectProject')} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {activeProjects.map(p => (
-                                                <SelectItem key={p.id} value={p.id}>
-                                                    <span className="flex items-center gap-2">
-                                                        <span className={`w-2 h-2 rounded-full ${p.type === 'Main' ? 'bg-blue-500' : 'bg-green-500'}`} />
-                                                        {p.name}
+                            {/* Toolbar / Project Selector (Pill Tabs) */}
+                            <div className="px-6 py-3 bg-card border-b border-border flex items-center justify-between gap-4 shrink-0 relative group/tabs">
+
+                                {/* Scroll Indicators */}
+                                {showLeftArrow && (
+                                    <button
+                                        onClick={() => scrollContainerRef.current?.scrollBy({ left: -200, behavior: 'smooth' })}
+                                        className="absolute left-0 top-0 bottom-0 w-12 bg-gradient-to-r from-card to-transparent z-10 flex items-center justify-start pl-2"
+                                    >
+                                        <div className="w-6 h-6 rounded-full bg-background border shadow-sm flex items-center justify-center hover:bg-accent transition-colors">
+                                            <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+                                        </div>
+                                    </button>
+                                )}
+                                <div
+                                    ref={scrollContainerRef}
+                                    onScroll={checkScroll}
+                                    className="flex items-center gap-2 overflow-x-auto [&::-webkit-scrollbar]:hidden flex-1 pb-1 -mb-1 mask-linear-fade scroll-smooth"
+                                >
+                                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mr-2 shrink-0 select-none">
+                                        {t('ritual.planningContext')}:
+                                    </span>
+
+                                    {/* General Work Pill */}
+                                    <button
+                                        onClick={() => setSelectedProjectId('none')}
+                                        className={`
+                                            flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all shrink-0
+                                            border select-none
+                                            ${selectedProjectId === 'none'
+                                                ? 'bg-indigo-500/15 text-indigo-600 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/30 shadow-sm'
+                                                : 'bg-muted/50 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground'}
+                                        `}
+                                    >
+                                        <div className={`w-2 h-2 rounded-full ${selectedProjectId === 'none' ? 'bg-indigo-500' : 'bg-slate-400'}`} />
+                                        {t('dashboard.generalWork') || "General"}
+
+                                        {/* Count Badge */}
+                                        {(projectTodos['none'] || []).filter(t => !t.completed).length > 0 && (
+                                            <span className={`
+                                                ml-1 px-1.5 py-0.5 rounded-md text-[10px] leading-none font-bold
+                                                ${selectedProjectId === 'none'
+                                                    ? 'bg-indigo-500 text-white'
+                                                    : 'bg-muted-foreground/30 text-muted-foreground'}
+                                            `}>
+                                                {(projectTodos['none'] || []).filter(t => !t.completed).length}
+                                            </span>
+                                        )}
+                                    </button>
+
+                                    <div className="w-px h-4 bg-border mx-1 shrink-0" />
+
+                                    {/* Active Projects Pills */}
+                                    {activeProjects.map(p => {
+                                        const count = (projectTodos[p.id] || []).filter(t => !t.completed).length;
+                                        const isActive = selectedProjectId === p.id;
+                                        const colorClass = p.type === 'Main' ? 'bg-blue-500' : 'bg-green-500';
+
+                                        return (
+                                            <button
+                                                key={p.id}
+                                                onClick={() => setSelectedProjectId(p.id)}
+                                                className={`
+                                                    flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all shrink-0
+                                                    border select-none
+                                                    ${isActive
+                                                        ? 'bg-background text-foreground border-border shadow-sm ring-1 ring-border/50'
+                                                        : 'bg-muted/50 text-muted-foreground border-transparent hover:bg-muted hover:text-foreground'}
+                                                `}
+                                            >
+                                                <div className={`w-2 h-2 rounded-full ${colorClass}`} />
+                                                {p.name}
+
+                                                {count > 0 && (
+                                                    <span className={`
+                                                        ml-1 px-1.5 py-0.5 rounded-md text-[10px] leading-none font-bold
+                                                        ${isActive
+                                                            ? 'bg-foreground text-background'
+                                                            : 'bg-muted-foreground/30 text-muted-foreground'}
+                                                    `}>
+                                                        {count}
                                                     </span>
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
-                                <span className="text-xs text-muted-foreground select-none">
-                                    {t('ritual.organizeTasksFor', { project: currentProjectName })}
+
+                                {showRightArrow && (
+                                    <button
+                                        onClick={() => scrollContainerRef.current?.scrollBy({ left: 200, behavior: 'smooth' })}
+                                        className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-card to-transparent z-10 flex items-center justify-end pr-2"
+                                    >
+                                        <div className="w-6 h-6 rounded-full bg-background border shadow-sm flex items-center justify-center hover:bg-accent transition-colors">
+                                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                                        </div>
+                                    </button>
+                                )}
+
+                                <span className="text-xs text-muted-foreground whitespace-nowrap hidden sm:block select-none">
+                                    {t('ritual.organizeTasksFor', { project: selectedProjectId === 'none' ? (t('dashboard.generalWork') || "General") : currentProjectName })}
                                 </span>
                             </div>
 
