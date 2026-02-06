@@ -423,22 +423,20 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                                 <div
                                                     className={cn(
                                                         "absolute rounded-sm transition-colors cursor-pointer z-10 flex flex-col justify-center px-2 overflow-hidden",
-                                                        !block.color && "bg-primary/80 text-primary-foreground" // Fallback class
+                                                        !block.color && !block.isNightTime && "bg-primary/80 text-primary-foreground", // Fallback class
+                                                        block.isNightTime && "bg-yellow-500/90 dark:bg-yellow-600/90 text-yellow-950 dark:text-yellow-100" // Night time style
                                                     )}
                                                     style={{
                                                         top: block.top,
                                                         height: block.height,
                                                         left: block.left,
                                                         width: block.width,
-                                                        backgroundColor: block.color || undefined
+                                                        backgroundColor: block.isNightTime ? undefined : (block.color || undefined)
                                                     }}
                                                 >
                                                     {block.isNightTime && (
-                                                        <div className="absolute inset-0 bg-indigo-950/30 dark:bg-indigo-950/50 pointer-events-none mix-blend-multiply dark:mix-blend-overlay" />
-                                                    )}
-                                                    {block.isNightTime && (
                                                         <div className="absolute top-1 right-1 z-20 opacity-100 drop-shadow-md">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-yellow-100/90"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-yellow-950 dark:text-yellow-100"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
                                                         </div>
                                                     )}
                                                 </div>

@@ -58,7 +58,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     }, [open, defaultTab]);
 
     // Custom Quotes State
-    const [newQuoteInput, setNewQuoteInput] = useState("");
+
 
     // General Tab State
     const [newAppInput, setNewAppInput] = useState("");
