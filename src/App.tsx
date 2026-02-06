@@ -285,6 +285,9 @@ function App() {
       logs[dateStr].closingNote = plan;
       logs[dateStr].todos = lastSessionTodos;
       logs[dateStr].quest_cleared = true;
+      if (settings?.nightTimeStart !== undefined) {
+        logs[dateStr].nightTimeStart = settings.nightTimeStart;
+      }
 
       await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
 

@@ -71,6 +71,7 @@ export interface DailyLogData {
     screenshots: string[];
     is_rest_day: boolean;
     quote?: string;
+    nightTimeStart?: number;
 }
 
 // --- Default Data ---
@@ -188,7 +189,8 @@ export function saveDailyLogInternal(dateStr: string, newData: any) {
         // Assuming newData contains the AUTHORITATIVE arrays if present.
         sessions: newData.sessions || dayData.sessions,
         todos: newData.todos || dayData.todos,
-        screenshots: newData.screenshots || dayData.screenshots
+        screenshots: newData.screenshots || dayData.screenshots,
+        nightTimeStart: newData.nightTimeStart !== undefined ? newData.nightTimeStart : dayData.nightTimeStart
     };
 
     currentData[dateStr] = mergedData;

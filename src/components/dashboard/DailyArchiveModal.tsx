@@ -123,6 +123,7 @@ export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: Daily
                                 totalSeconds: logData.stats?.totalWorkSeconds || 0,
                                 questAchieved: logData.stats?.questAchieved || false
                             }}
+                            nightTimeStart={logData.nightTimeStart}
                             timelapseDurationSeconds={settings?.timelapseDurationSeconds || 5}
                             showIndentationGuides={settings?.showIndentationGuides}
                             className="bg-card h-full"

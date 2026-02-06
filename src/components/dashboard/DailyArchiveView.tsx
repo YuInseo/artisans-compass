@@ -42,9 +42,10 @@ interface DailyArchiveViewProps {
     onClose?: () => void;
     hideCloseButton?: boolean;
     readOnly?: boolean;
+    nightTimeStart?: number;
 }
 
-export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false }: DailyArchiveViewProps) {
+export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false, nightTimeStart: savedNightTimeStart }: DailyArchiveViewProps) {
     const { t } = useTranslation();
     const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
     const { carryOverTodos } = useTodoStore();
@@ -156,7 +157,11 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                 if (settings && typeof settings.enableSpellCheck === 'boolean') {
                     setEnableSpellCheck(settings.enableSpellCheck);
                 }
-                if (settings && typeof settings.nightTimeStart === 'number') {
+
+                // Prioritize saved daily setting, fallback to global setting
+                if (savedNightTimeStart !== undefined) {
+                    setNightTimeStart(savedNightTimeStart);
+                } else if (settings && typeof settings.nightTimeStart === 'number') {
                     setNightTimeStart(settings.nightTimeStart);
                 }
             }

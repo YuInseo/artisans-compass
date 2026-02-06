@@ -1169,9 +1169,12 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                         <SelectValue placeholder="Select Theme" />
                                                     </SelectTrigger>
                                                     <SelectContent>
-                                                        <SelectItem value="default">Default (Slate)</SelectItem>
+                                                        <SelectItem value="default">Default</SelectItem>
                                                         <SelectItem value="discord">Discord (Gamer)</SelectItem>
                                                         <SelectItem value="midnight">Midnight (OLED)</SelectItem>
+                                                        <SelectItem value="sunset">Sunset (Warm)</SelectItem>
+                                                        <SelectItem value="ocean">Ocean (Cool)</SelectItem>
+                                                        <SelectItem value="forest">Forest (Natural)</SelectItem>
 
                                                         {settings.customThemes && settings.customThemes.length > 0 && (
                                                             <>

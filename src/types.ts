@@ -117,6 +117,7 @@ export interface DailyLog {
     projectTodos?: Record<string, Todo[]>;
     carriedOver?: boolean;
     quote?: string;
+    nightTimeStart?: number;
 }
 
 export interface MonitorInfo {
