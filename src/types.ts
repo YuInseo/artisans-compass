@@ -59,12 +59,15 @@ export interface AppSettings {
     developerMode?: boolean; // toggle for F12 devtools
     debuggerMode?: boolean; // toggle for visual debug overlay
     enableSpellCheck?: boolean; // default: false
-    themePreset?: 'default' | 'discord' | 'midnight' | 'custom'; // default: 'default'
+    themePreset?: 'default' | 'discord' | 'midnight' | 'sunset' | 'ocean' | 'forest' | 'custom'; // default: 'default'
     customCSS?: string; // User-defined CSS injection
     customThemes?: { id: string; name: string; css: string }[];
     workApps?: string[]; // List of app names to filter timeline by
     filterTimelineByWorkApps?: boolean; // default: false
     nightTimeStart?: number; // default: 22 (10 PM)
+    mainTheme?: 'dark' | 'light' | 'system';
+    widgetTheme?: 'dark' | 'light' | 'system';
+    customQuotes?: string[]; // User defined quotes
 }
 
 export interface Project {
@@ -113,6 +116,7 @@ export interface DailyLog {
     isRestDay: boolean; // if true, treated as rest
     projectTodos?: Record<string, Todo[]>;
     carriedOver?: boolean;
+    quote?: string;
 }
 
 export interface MonitorInfo {

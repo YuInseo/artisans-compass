@@ -70,6 +70,7 @@ export interface DailyLogData {
     quest_cleared: boolean;
     screenshots: string[];
     is_rest_day: boolean;
+    quote?: string;
 }
 
 // --- Default Data ---

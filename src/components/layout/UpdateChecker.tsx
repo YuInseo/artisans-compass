@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Button } from "@/components/ui/button";
 import { Download, RefreshCw, Loader2, PartyPopper } from "lucide-react";
 import { toast } from "sonner";
 
+import { useTranslation } from "react-i18next";
+
 export function UpdateChecker() {
+    const { t } = useTranslation();
     const [status, setStatus] = useState<'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'>('idle');
     const [progress, setProgress] = useState(0);
+    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         const ipc = (window as any).ipcRenderer;
@@ -13,37 +17,44 @@ export function UpdateChecker() {
 
         const cleanup = ipc.onUpdateState((state: any) => {
             console.log('Update State:', state);
+
+            // Clear timeout on any response
+            if (timeoutRef.current) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+            }
+
             setStatus(state.status);
             if (state.status === 'downloading' && state.progress) {
                 setProgress(state.progress.percent);
             }
             if (state.status === 'available') {
-                toast("Update Available", {
-                    description: "A new version is available. Click to download.",
+                toast(t('update.availableTitle'), {
+                    description: t('update.availableDesc'),
                     action: {
-                        label: "Download",
-                        onClick: () => ipc.send('download-update')
+                        label: t('update.download'),
+                        onClick: () => ipc.invoke('download-update')
                     }
                 });
             }
             if (state.status === 'ready') {
-                toast("Update Ready", {
-                    description: "Restart to apply the update.",
+                toast(t('update.readyTitle'), {
+                    description: t('update.readyDesc'),
                     action: {
-                        label: "Restart",
-                        onClick: () => ipc.send('quit-and-install')
+                        label: t('update.restart'),
+                        onClick: () => ipc.invoke('quit-and-install')
                     }
                 });
             }
             if (state.status === 'idle' && state.message === 'up-to-date') {
-                toast("Up to Date", {
-                    description: "You are using the latest version."
+                toast(t('update.upToDateTitle'), {
+                    description: t('update.upToDateDesc')
                 });
             }
             if (state.status === 'error') {
                 console.error("Update Error:", state.error);
-                toast.error("Update Failed", {
-                    description: state.error || "Failed to check for updates."
+                toast.error(t('update.failedTitle'), {
+                    description: state.error || t('update.failedDesc')
                 });
             }
         });
@@ -54,17 +65,30 @@ export function UpdateChecker() {
     const handleCheck = () => {
         setStatus('checking');
         const ipc = (window as any).ipcRenderer;
-        if (ipc) ipc.send('check-for-updates');
+
+        // Set timeout to reset if no response
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+
+        timeoutRef.current = setTimeout(() => {
+            console.warn("Update check timed out");
+            setStatus('idle'); // or 'error' if you want to be explicit, but 'idle' is less intrusive
+            toast(t('update.timeoutTitle'), {
+                description: t('update.timeoutDesc')
+            });
+            timeoutRef.current = null;
+        }, 15000); // 15s timeout
+
+        if (ipc) ipc.invoke('check-for-updates');
     };
 
     const handleDownload = () => {
         const ipc = (window as any).ipcRenderer;
-        if (ipc) ipc.send('download-update');
+        if (ipc) ipc.invoke('download-update');
     };
 
     const handleRestart = () => {
         const ipc = (window as any).ipcRenderer;
-        if (ipc) ipc.send('quit-and-install');
+        if (ipc) ipc.invoke('quit-and-install');
     };
 
     if (status === 'idle' || status === 'error') {
@@ -107,7 +131,7 @@ export function UpdateChecker() {
                 style={{ WebkitAppRegion: 'no-drag' } as any}
             >
                 <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Update</span>
+                <span className="hidden sm:inline">{t('update.download')}</span>
             </Button>
         );
     }
@@ -131,13 +155,16 @@ export function UpdateChecker() {
             <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs font-bold text-green-600 hover:text-green-700 hover:bg-green-500/10 no-drag gap-1.5 animate-pulse"
-                onClick={handleRestart}
-                title="Restart to Update"
+                className="h-7 px-2 text-xs font-bold text-green-600 hover:text-green-700 hover:bg-green-500/10 no-drag gap-1.5 animate-pulse relative z-50 cursor-pointer"
+                onClick={(e) => {
+                    e.stopPropagation(); // Prevent bubble up
+                    handleRestart();
+                }}
+                title={t('update.readyTitle')}
                 style={{ WebkitAppRegion: 'no-drag' } as any}
             >
                 <PartyPopper className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Restart</span>
+                <span className="hidden sm:inline">{t('update.restart')}</span>
             </Button>
         );
     }

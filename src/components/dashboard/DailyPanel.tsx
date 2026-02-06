@@ -40,6 +40,7 @@ interface DailyPanelProps {
 export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPanelProps) {
     const { t } = useTranslation();
     const [isWidgetLocked, setIsWidgetLocked] = useState(false);
+    const [isGeneralOpen, setIsGeneralOpen] = useState(false);
     const [isPinned, setIsPinned] = useState(false);
 
     // Timer Logic for Widget Mode
@@ -100,6 +101,15 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
     useEffect(() => {
         const todayStr = format(new Date(), 'yyyy-MM-dd');
         let nextId = activeProjectId;
+
+        // Fetch Manual Quote
+        if ((window as any).ipcRenderer) {
+            (window as any).ipcRenderer.invoke('get-daily-log', todayStr).then((log: any) => {
+                if (log && log.quote) {
+                    setManualQuote(log.quote);
+                }
+            });
+        }
 
         if (nextId) {
             const currentProject = projects.find(p => p.id === nextId);
@@ -166,6 +176,24 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
         };
     }, [isWidgetMode, todos, settings?.widgetMaxHeight, settings?.widgetAutoResize]);
 
+    // Theme Switching Logic for Widget Mode
+    useEffect(() => {
+        if (!settings) return;
+
+        if (isWidgetMode) {
+            // Enter Widget Mode: Use widget theme (default to dark)
+            // Save current main theme if not set (optional, but good for first run)
+            if (!settings.mainTheme) {
+                // We don't have a reliable way to know "prev" theme here without it being in settings
+                // So we assume the current theme is the main one if we are transitioning FROM main.
+            }
+            setTheme(settings.widgetTheme || 'dark');
+        } else {
+            // Exit Widget Mode: Restore main theme
+            setTheme(settings.mainTheme || 'dark');
+        }
+    }, [isWidgetMode, settings?.widgetTheme, settings?.mainTheme]);
+
     const togglePin = async () => {
         const newState = !isPinned;
         setIsPinned(newState);
@@ -187,6 +215,9 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
 
     const [sessions, setSessions] = useState<Session[]>([]);
     const [screenshots, setScreenshots] = useState<string[]>([]);
+    const [manualQuote, setManualQuote] = useState<string | null>(null);
+    const [isEditingQuote, setIsEditingQuote] = useState(false);
+    const [quoteInput, setQuoteInput] = useState("");
     const [liveSession, setLiveSession] = useState<Session | null>(null);
 
     useEffect(() => {
@@ -257,7 +288,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
         return isWork ? liveSession : null;
     }, [liveSession, settings?.filterTimelineByWorkApps, settings?.workApps]);
 
-    const [isGeneralOpen, setIsGeneralOpen] = useState(true);
+
 
 
 
@@ -325,16 +356,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
 
                                             {/* Right: Controls (Consolidated Menu) */}
                                             <div className="flex items-center gap-0.5 shrink-0">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive no-drag"
-                                                    onClick={togglePin}
-                                                    title={t('dashboard.unpin')}
-                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin-off"><line x1="2" x2="22" y1="2" y2="22" /><line x1="12" x2="12" y1="17" y2="22" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-.25-.95" /><path d="M15 9.34V6h1a2 2 0 0 0 0-4H7.89" /></svg>
-                                                </Button>
+
 
                                                 <Button
                                                     variant="ghost"
@@ -377,20 +399,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                                     />
                                                                 </div>
 
-                                                                {/* Max Height Slider */}
-                                                                <div className="space-y-2">
-                                                                    <div className="flex items-center justify-between text-xs">
-                                                                        <span className="text-muted-foreground">{t('settings.appearance.widgetMaxHeight')}</span>
-                                                                        <span>{settings?.widgetMaxHeight || 800}px</span>
-                                                                    </div>
-                                                                    <Slider
-                                                                        min={300}
-                                                                        max={1200}
-                                                                        step={50}
-                                                                        value={[settings?.widgetMaxHeight || 800]}
-                                                                        onValueChange={(val) => settings && saveSettings({ ...settings, widgetMaxHeight: val[0] })}
-                                                                    />
-                                                                </div>
+
 
                                                                 {/* Display Mode Select */}
                                                                 <div className="space-y-2">
@@ -422,7 +431,17 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                                             variant="outline"
                                                                             size="sm"
                                                                             className="h-7 text-xs px-2"
-                                                                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                                                                            onClick={() => {
+                                                                                const newTheme = theme === 'dark' ? 'light' : 'dark';
+                                                                                setTheme(newTheme);
+                                                                                if (settings) {
+                                                                                    if (isWidgetMode) {
+                                                                                        saveSettings({ ...settings, widgetTheme: newTheme });
+                                                                                    } else {
+                                                                                        saveSettings({ ...settings, mainTheme: newTheme });
+                                                                                    }
+                                                                                }
+                                                                            }}
                                                                         >
                                                                             {theme === 'dark' ? 'Dark' : 'Light'}
                                                                         </Button>
@@ -485,6 +504,17 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                         </div>
                                                     </PopoverContent>
                                                 </Popover>
+
+                                                <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive no-drag"
+                                                    onClick={togglePin}
+                                                    title={t('dashboard.unpin')}
+                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin-off"><line x1="2" x2="22" y1="2" y2="22" /><line x1="12" x2="12" y1="17" y2="22" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-.25-.95" /><path d="M15 9.34V6h1a2 2 0 0 0 0-4H7.89" /></svg>
+                                                </Button>
                                             </div>
                                         </div>
 
@@ -492,44 +522,128 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                         {/* Custom Widget Header Content */}
                                         {settings?.widgetDisplayMode === 'quote' && (
                                             <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
-                                                <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center relative">
-                                                    <p className="text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed">
-                                                        "{[
-                                                            "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
-                                                            "완벽함이 아니라 탁월함을 추구하라.",
-                                                            "시작이 반이다.",
-                                                            "몰입은 최고의 휴식이다.",
-                                                            "단순함은 궁극의 정교함이다.",
-                                                            "가장 좋은 방법은 시작하는 것이다.",
-                                                            "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
-                                                            "어제보다 나은 내일을 만들어라.",
-                                                            "작은 진전이 모여 큰 결과를 만든다.",
-                                                            "실패는 성공으로 가는 이정표다.",
-                                                            "코딩은 21세기의 마법이다.",
-                                                            "디테일이 퀄리티를 만든다.",
-                                                            "꾸준함이 재능을 이긴다.",
-                                                            "기록하지 않으면 기억되지 않는다.",
-                                                            "오늘의 노력이 내일의 실력이 된다.",
-                                                            "문제는 해결책을 찾기 위해 존재한다.",
-                                                            "배움에는 끝이 없다.",
-                                                            "나만의 속도로 가라.",
-                                                            "휴식도 훈련의 일부다.",
-                                                            "상상력은 지식보다 중요하다.",
-                                                            "도전하지 않으면 아무것도 얻을 수 없다.",
-                                                            "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
-                                                            "천리길도 한 걸음부터.",
-                                                            "성공은 포기하지 않는 자의 것이다.",
-                                                            "당신의 한계는 당신의 생각뿐이다.",
-                                                            "지금 흘린 땀은 내일의 눈물을 닦아준다.",
-                                                            "위대한 일은 작은 일들이 모여 이루어진다.",
-                                                            "늦었다고 생각할 때가 가장 빠르다.",
-                                                            "열정 없는 천재는 없다.",
-                                                            "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
-                                                            "당신의 작품이 당신을 말해준다."
-                                                        ][new Date().getDate() % 31] || "창의성은 실수를 허용하는 것이다."}"
-                                                    </p>
+                                                <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center relative hover:bg-muted/50 transition-colors">
+                                                    {isEditingQuote ? (
+                                                        <div className="flex flex-col gap-2">
+                                                            <textarea
+                                                                className="w-full bg-background border border-input rounded-md p-2 text-sm font-serif italic focus:ring-1 focus:ring-primary min-h-[80px]"
+                                                                value={quoteInput}
+                                                                onChange={(e) => setQuoteInput(e.target.value)}
+                                                                placeholder="Enter your daily quote..."
+                                                                onKeyDown={(e) => {
+                                                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                                                        e.preventDefault();
+                                                                        // Save
+                                                                        const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                                        if ((window as any).ipcRenderer) {
+                                                                            (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
+                                                                        }
+                                                                        setManualQuote(quoteInput);
+                                                                        setIsEditingQuote(false);
+                                                                    }
+                                                                    if (e.key === 'Escape') {
+                                                                        setIsEditingQuote(false);
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <div className="flex justify-end gap-2 text-xs">
+                                                                <button onClick={() => setIsEditingQuote(false)} className="text-muted-foreground hover:text-foreground">Cancel</button>
+                                                                <button onClick={() => {
+                                                                    const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                                    if ((window as any).ipcRenderer) {
+                                                                        (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
+                                                                    }
+                                                                    setManualQuote(quoteInput);
+                                                                    setIsEditingQuote(false);
+                                                                }} className="text-primary hover:underline font-bold">Save</button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <div onClick={() => {
+                                                            const defaultQuotes = [
+                                                                "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
+                                                                "완벽함이 아니라 탁월함을 추구하라.",
+                                                                "시작이 반이다.",
+                                                                "몰입은 최고의 휴식이다.",
+                                                                "단순함은 궁극의 정교함이다.",
+                                                                "가장 좋은 방법은 시작하는 것이다.",
+                                                                "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
+                                                                "어제보다 나은 내일을 만들어라.",
+                                                                "작은 진전이 모여 큰 결과를 만든다.",
+                                                                "실패는 성공으로 가는 이정표다.",
+                                                                "코딩은 21세기의 마법이다.",
+                                                                "디테일이 퀄리티를 만든다.",
+                                                                "꾸준함이 재능을 이긴다.",
+                                                                "기록하지 않으면 기억되지 않는다.",
+                                                                "오늘의 노력이 내일의 실력이 된다.",
+                                                                "문제는 해결책을 찾기 위해 존재한다.",
+                                                                "배움에는 끝이 없다.",
+                                                                "나만의 속도로 가라.",
+                                                                "휴식도 훈련의 일부다.",
+                                                                "상상력은 지식보다 중요하다.",
+                                                                "도전하지 않으면 아무것도 얻을 수 없다.",
+                                                                "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
+                                                                "천리길도 한 걸음부터.",
+                                                                "성공은 포기하지 않는 자의 것이다.",
+                                                                "당신의 한계는 당신의 생각뿐이다.",
+                                                                "지금 흘린 땀은 내일의 눈물을 닦아준다.",
+                                                                "위대한 일은 작은 일들이 모여 이루어진다.",
+                                                                "늦었다고 생각할 때가 가장 빠르다.",
+                                                                "열정 없는 천재는 없다.",
+                                                                "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
+                                                                "당신의 작품이 당신을 말해준다."
+                                                            ];
+                                                            const allQuotes = [...defaultQuotes, ...(settings?.customQuotes || [])];
+                                                            const quote = allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
+                                                            setQuoteInput(manualQuote || quote);
+                                                            setIsEditingQuote(true);
+                                                        }} className="cursor-pointer" title="Click to Edit Quote">
+                                                            <p className="text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed">
+                                                                "{manualQuote || (() => {
+                                                                    const defaultQuotes = [
+                                                                        "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
+                                                                        "완벽함이 아니라 탁월함을 추구하라.",
+                                                                        "시작이 반이다.",
+                                                                        "몰입은 최고의 휴식이다.",
+                                                                        "단순함은 궁극의 정교함이다.",
+                                                                        "가장 좋은 방법은 시작하는 것이다.",
+                                                                        "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
+                                                                        "어제보다 나은 내일을 만들어라.",
+                                                                        "작은 진전이 모여 큰 결과를 만든다.",
+                                                                        "실패는 성공으로 가는 이정표다.",
+                                                                        "코딩은 21세기의 마법이다.",
+                                                                        "디테일이 퀄리티를 만든다.",
+                                                                        "꾸준함이 재능을 이긴다.",
+                                                                        "기록하지 않으면 기억되지 않는다.",
+                                                                        "오늘의 노력이 내일의 실력이 된다.",
+                                                                        "문제는 해결책을 찾기 위해 존재한다.",
+                                                                        "배움에는 끝이 없다.",
+                                                                        "나만의 속도로 가라.",
+                                                                        "휴식도 훈련의 일부다.",
+                                                                        "상상력은 지식보다 중요하다.",
+                                                                        "도전하지 않으면 아무것도 얻을 수 없다.",
+                                                                        "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
+                                                                        "천리길도 한 걸음부터.",
+                                                                        "성공은 포기하지 않는 자의 것이다.",
+                                                                        "당신의 한계는 당신의 생각뿐이다.",
+                                                                        "지금 흘린 땀은 내일의 눈물을 닦아준다.",
+                                                                        "위대한 일은 작은 일들이 모여 이루어진다.",
+                                                                        "늦었다고 생각할 때가 가장 빠르다.",
+                                                                        "열정 없는 천재는 없다.",
+                                                                        "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
+                                                                        "당신의 작품이 당신을 말해준다."
+                                                                    ];
+                                                                    const allQuotes = [...defaultQuotes, ...(settings?.customQuotes || [])];
+                                                                    return allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
+                                                                })()}"
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                     <button
-                                                        onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            saveSettings({ ...settings, widgetDisplayMode: 'none' });
+                                                        }}
                                                         className="absolute top-1 right-1 p-1 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all no-drag"
                                                         title="Remove Quote"
                                                         style={{ WebkitAppRegion: 'no-drag' } as any}
@@ -741,8 +855,46 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                             key={isWidgetMode ? 'widget' : 'full'}
                                             todos={todos}
                                             isWidgetMode={isWidgetMode}
-                                            isWidgetLocked={isWidgetLocked}
+                                            isWidgetLocked={isWidgetMode && isWidgetLocked}
                                         />
+
+                                        {/* General Work Section (Collapsible) */}
+                                        <div className="mt-8 mb-8 border-t border-border/40 pt-2">
+                                            <button
+                                                onClick={() => setIsGeneralOpen(!isGeneralOpen)}
+                                                className="flex items-center gap-2 w-full text-left py-2 hover:bg-muted/30 rounded px-2 transition-colors group"
+                                            >
+                                                <div className={cn("p-1 rounded bg-muted text-muted-foreground group-hover:bg-muted-foreground/20 transition-all", isGeneralOpen && "rotate-90")}>
+                                                    <ChevronDown className="w-3 h-3" />
+                                                </div>
+                                                <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex-1">
+                                                    {t('dashboard.generalWork') || "General Work"}
+                                                </span>
+                                                {uniqueGeneralTodos.length > 0 && (
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                                                            {uniqueGeneralCompletion}%
+                                                        </div>
+                                                        <div className="text-[10px] text-muted-foreground opacity-50">
+                                                            {uniqueGeneralTodos.length}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </button>
+
+                                            {isGeneralOpen && (
+                                                <div className="mt-2 pl-2 animate-in slide-in-from-top-2 fade-in duration-200">
+                                                    <TodoEditor
+                                                        key="general-section"
+                                                        todos={uniqueGeneralTodos} // Use the unique list we calculated
+                                                        isWidgetMode={isWidgetMode}
+                                                        isWidgetLocked={isWidgetMode && isWidgetLocked}
+                                                        projectId="general" // IMPORTANT: Target 'general' project in store
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+
 
                                         {/* General Work Section REMOVED from here to float outside */}
                                     </div>

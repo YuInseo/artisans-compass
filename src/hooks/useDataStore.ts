@@ -14,6 +14,7 @@ interface DataStore {
     loadData: () => Promise<void>;
     saveProjects: (projects: Project[]) => Promise<void>;
     saveSettings: (settings: AppSettings) => Promise<void>;
+    previewSettings: (settings: Partial<AppSettings>) => void;
     loadDailyLog: (date: Date) => Promise<DailyLog | null>;
     getDailyLog: (dateStr: string) => Promise<any>;
     isWidgetMode: boolean;
@@ -146,6 +147,13 @@ const useStore = create<DataStore>((set, get) => ({
             if (ipc.invoke) {
                 await ipc.invoke('reload-settings');
             }
+        }
+    },
+
+    previewSettings: (partialSettings: Partial<AppSettings>) => {
+        const current = get().settings;
+        if (current) {
+            set({ settings: { ...current, ...partialSettings } });
         }
     },
 

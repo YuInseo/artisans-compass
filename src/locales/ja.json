@@ -25,7 +25,9 @@
         "timelineLabel": "タイムライン",
         "timelineConfig": "タイムライン設定",
         "tracking": {
-            "title": "価値観とプライバシー",
+            "title": "スクリーンショット",
+            "screenshotActivation": "スクリーンショット有効化",
+            "idleDetection": "アイドル検出",
             "enableScreenshots": "スクリーンショットを有効化",
             "enableScreenshotsDesc": "日々の振り返りのための視覚的記録をキャプチャします。",
             "screenshotInterval": "スクリーンショット間隔",

@@ -105,6 +105,9 @@ export function AppearanceTab({ settings, onSaveSettings, theme, setTheme }: App
                                         <SelectItem value="default">Default (Slate)</SelectItem>
                                         <SelectItem value="discord">Discord (Gamer)</SelectItem>
                                         <SelectItem value="midnight">Midnight (OLED)</SelectItem>
+                                        <SelectItem value="sunset">Sunset (Warm)</SelectItem>
+                                        <SelectItem value="ocean">Ocean (Blue)</SelectItem>
+                                        <SelectItem value="forest">Forest (Green)</SelectItem>
 
                                         {settings.customThemes && settings.customThemes.length > 0 && (
                                             <>
@@ -123,9 +126,12 @@ export function AppearanceTab({ settings, onSaveSettings, theme, setTheme }: App
                                     <span className="text-sm font-medium text-foreground">
                                         {settings.themePreset === 'discord' ? "Gamer Style" :
                                             settings.themePreset === 'midnight' ? "Pure Black" :
-                                                settings.customThemes?.some(t => t.id === settings.themePreset) ?
-                                                    (settings.customThemes?.find(t => t.id === settings.themePreset)?.name || "User Theme") :
-                                                    "Standard"}
+                                                settings.themePreset === 'sunset' ? "Warm & Cozy" :
+                                                    settings.themePreset === 'ocean' ? "Deep Blue" :
+                                                        settings.themePreset === 'forest' ? "Nature" :
+                                                            settings.customThemes?.some(t => t.id === settings.themePreset) ?
+                                                                (settings.customThemes?.find(t => t.id === settings.themePreset)?.name || "User Theme") :
+                                                                "Standard"}
                                     </span>
                                     <span className="text-xs text-muted-foreground opacity-70">
                                         {t('settings.appearance.colorTheme')}

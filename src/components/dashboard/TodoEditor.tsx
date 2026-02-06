@@ -28,6 +28,7 @@ interface TodoEditorProps {
     todos: Todo[];
     isWidgetMode: boolean;
     isWidgetLocked?: boolean;
+    projectId?: string; // Target specific project instead of activeProjectId
     actions?: {
         addTodo: (text: string, parentId?: string | null, afterId?: string | null) => string;
         updateTodo: (id: string, updates: Partial<Todo>, skipHistory?: boolean) => void;
@@ -95,20 +96,21 @@ const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll
     );
 };
 
-export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, actions }: TodoEditorProps) {
+// ... imports ...
+
+export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projectId, actions }: TodoEditorProps) {
     const store = useTodoStore();
     const { settings } = useDataStore();
 
-    // transform store actions to match interface if needed, or just pluck them
-    // easier to destructure based on priority
-    const addTodo = actions?.addTodo || store.addTodo;
-    const updateTodo = actions?.updateTodo || store.updateTodo;
-    const deleteTodo = actions?.deleteTodo || store.deleteTodo;
-    const deleteTodos = actions?.deleteTodos || store.deleteTodos;
-    const indentTodo = actions?.indentTodo || store.indentTodo;
-    const unindentTodo = actions?.unindentTodo || store.unindentTodo;
-    const moveTodo = actions?.moveTodo || store.moveTodo;
-    const moveTodos = actions?.moveTodos || store.moveTodos;
+    // Wrap store actions if projectId is provided
+    const addTodo = actions?.addTodo || (projectId ? (t: string, p: string | null = null, a: string | null = null) => store.addTodo(t, p, a, projectId) : store.addTodo);
+    const updateTodo = actions?.updateTodo || (projectId ? (id: string, u: Partial<Todo>, s = false) => store.updateTodo(id, u, s, projectId) : store.updateTodo);
+    const deleteTodo = actions?.deleteTodo || (projectId ? (id: string) => store.deleteTodo(id, projectId) : store.deleteTodo);
+    const deleteTodos = actions?.deleteTodos || (projectId ? (ids: string[]) => store.deleteTodos(ids, projectId) : store.deleteTodos);
+    const indentTodo = actions?.indentTodo || (projectId ? (id: string) => store.indentTodo(id, projectId) : store.indentTodo);
+    const unindentTodo = actions?.unindentTodo || (projectId ? (id: string) => store.unindentTodo(id, projectId) : store.unindentTodo);
+    const moveTodo = actions?.moveTodo || (projectId ? (id: string, p: string | null, i: number) => store.moveTodo(id, p, i, projectId) : store.moveTodo);
+    const moveTodos = actions?.moveTodos || (projectId ? (ids: string[], p: string | null, i: number) => store.moveTodos(ids, p, i, projectId) : store.moveTodos);
 
 
     // We strictly control focus via state

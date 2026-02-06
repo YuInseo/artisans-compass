@@ -2,7 +2,8 @@ import { ReactNode, useState, useCallback, useEffect } from 'react';
 import { FocusGoalsSection } from "../dashboard/FocusGoalsSection";
 import { Button } from "@/components/ui/button";
 import { UpdateChecker } from "./UpdateChecker";
-import { Settings, Minus, Square, X, Plus, Eye, Search, Lock } from "lucide-react";
+import { Settings, Minus, Square, X, Plus, Eye, Search, Lock, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/hooks/useDataStore";
@@ -40,6 +41,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
     const [isResizing, setIsResizing] = useState(false);
     const [isSearchFocused, setIsSearchFocused] = useState(false);
     const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
 
     const [sortConfig, setSortConfig] = useState<{ key: 'name' | 'date', direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
 
@@ -134,7 +136,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
 
             {/* Custom Title Bar - Hidden in Widget Mode */}
             {!isWidgetMode && (
-                <div className="h-10 bg-muted/50 border-b border-border flex items-center justify-between px-4 select-none fixed top-0 left-0 right-0 z-50 transition-all duration-300 ease-in-out" style={{ WebkitAppRegion: 'drag' } as any}>
+                <div className="h-10 bg-muted/50 border-b border-border flex items-center justify-between pl-4 select-none fixed top-0 left-0 right-0 z-50 transition-all duration-300 ease-in-out" style={{ WebkitAppRegion: 'drag' } as any}>
                     {/* Left: App Title / Drag Area */}
                     <div className="flex items-center gap-2">
                         <Button
@@ -317,21 +319,44 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                             variant="ghost"
                             size="sm"
                             className="h-7 px-2 text-xs font-medium text-muted-foreground hover:text-blue-600 hover:bg-blue-500/10 mr-2 no-drag"
+                            disabled={isCreating}
                             onClick={async () => {
-                                addToHistory();
-                                const newProject = {
-                                    id: uuidv4(),
-                                    name: `Project ${projects.length + 1}`,
-                                    type: (settings?.projectTags && settings.projectTags.length > 0 ? settings.projectTags[0] : "Main"),
-                                    startDate: format(new Date(), 'yyyy-MM-dd'),
-                                    endDate: format(addDays(new Date(), settings?.defaultProjectDurationDays || 14), 'yyyy-MM-dd'),
-                                    isCompleted: false
-                                };
-                                await saveProjects([...projects, newProject]);
+                                if (isCreating) return;
+                                setIsCreating(true);
+                                const toastId = toast.loading(t('sidebar.creatingProject') || "Creating project...");
+
+                                try {
+                                    // Small artificial delay to let the user see the feedback (optional, but good for "feeling")
+                                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                                    addToHistory();
+                                    const newProject = {
+                                        id: uuidv4(),
+                                        name: `Project ${projects.length + 1}`,
+                                        type: (settings?.projectTags && settings.projectTags.length > 0 ? settings.projectTags[0] : "Main"),
+                                        startDate: format(new Date(), 'yyyy-MM-dd'),
+                                        endDate: format(addDays(new Date(), settings?.defaultProjectDurationDays || 14), 'yyyy-MM-dd'),
+                                        isCompleted: false
+                                    };
+                                    await saveProjects([...projects, newProject]);
+                                    toast.success(t('sidebar.projectCreated') || "Project created!", { id: toastId });
+                                } catch (error) {
+                                    console.error("Failed to create project", error);
+                                    toast.error(t('sidebar.projectCreateFailed') || "Failed to create project", { id: toastId });
+                                } finally {
+                                    setIsCreating(false);
+                                }
                             }}
                             style={{ WebkitAppRegion: 'no-drag' } as any}
                         >
-                            <Plus className="w-3.5 h-3.5 lg:mr-1" /><span className="hidden lg:inline"> {t('sidebar.newProject')}</span>
+                            {isCreating ? (
+                                <Loader2 className="w-3.5 h-3.5 lg:mr-1 animate-spin" />
+                            ) : (
+                                <Plus className="w-3.5 h-3.5 lg:mr-1" />
+                            )}
+                            <span className="hidden lg:inline">
+                                {isCreating ? (t('dashboard.workingOn') || "Progressing...") : t('sidebar.newProject')}
+                            </span>
                         </Button>
 
                         {/* View Toggle Buttons & Settings */}
@@ -361,19 +386,19 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                         <div className="flex items-center h-full no-drag" style={{ WebkitAppRegion: 'no-drag' } as any}>
                             <button
                                 onClick={() => (window as any).ipcRenderer?.send('minimize-window')}
-                                className="h-full w-12 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                                className="h-full w-12 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors pb-1"
                             >
                                 <Minus className="w-4 h-4" />
                             </button>
                             <button
                                 onClick={() => (window as any).ipcRenderer?.send('toggle-maximize-window')}
-                                className="h-full w-12 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors"
+                                className="h-full w-12 flex items-center justify-center text-muted-foreground hover:bg-muted transition-colors pb-1"
                             >
                                 <Square className="w-3.5 h-3.5" />
                             </button>
                             <button
                                 onClick={() => (window as any).ipcRenderer?.send('close-window')}
-                                className="h-full w-12 flex items-center justify-center text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors"
+                                className="h-full w-12 flex items-center justify-center text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors pb-1"
                             >
                                 <X className="w-4 h-4" />
                             </button>

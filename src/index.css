@@ -114,6 +114,81 @@
     --input: 0 0% 12%;
     --ring: 210 100% 50%;
   }
+
+  /* Sunset Theme (Warm) */
+  .dark.theme-sunset {
+    --background: 20 14% 10%;
+    /* #1c1917 warm dark grey */
+    --foreground: 20 10% 90%;
+    --card: 20 14% 12%;
+    --card-foreground: 20 10% 90%;
+    --popover: 20 14% 12%;
+    --popover-foreground: 20 10% 90%;
+    --primary: 15 85% 65%;
+    /* Warm Coral/Orange */
+    --primary-foreground: 210 40% 98%;
+    --secondary: 20 14% 15%;
+    --secondary-foreground: 20 10% 90%;
+    --muted: 20 10% 18%;
+    --muted-foreground: 20 5% 65%;
+    --accent: 20 10% 25%;
+    --accent-foreground: 20 10% 90%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 9% 87%;
+    --border: 20 10% 18%;
+    --input: 20 10% 18%;
+    --ring: 15 85% 65%;
+  }
+
+  /* Ocean Theme (Deep Blue/Teal) */
+  .dark.theme-ocean {
+    --background: 220 30% 12%;
+    /* Deep Blue */
+    --foreground: 210 20% 90%;
+    --card: 220 30% 15%;
+    --card-foreground: 210 20% 90%;
+    --popover: 220 30% 15%;
+    --popover-foreground: 210 20% 90%;
+    --primary: 190 90% 50%;
+    /* Cyan/Teal */
+    --primary-foreground: 220 30% 10%;
+    --secondary: 220 30% 20%;
+    --secondary-foreground: 210 20% 90%;
+    --muted: 220 20% 25%;
+    --muted-foreground: 210 15% 70%;
+    --accent: 220 20% 30%;
+    --accent-foreground: 210 20% 90%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 9% 87%;
+    --border: 220 20% 25%;
+    --input: 220 20% 25%;
+    --ring: 190 90% 50%;
+  }
+
+  /* Forest Theme (Natural Green) */
+  .dark.theme-forest {
+    --background: 150 10% 10%;
+    /* Dark Green/Grey */
+    --foreground: 150 10% 90%;
+    --card: 150 10% 13%;
+    --card-foreground: 150 10% 90%;
+    --popover: 150 10% 13%;
+    --popover-foreground: 150 10% 90%;
+    --primary: 142 70% 50%;
+    /* Vibrant Green */
+    --primary-foreground: 150 10% 5%;
+    --secondary: 150 10% 18%;
+    --secondary-foreground: 150 10% 90%;
+    --muted: 150 8% 20%;
+    --muted-foreground: 150 5% 65%;
+    --accent: 150 8% 25%;
+    --accent-foreground: 150 10% 90%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 9% 87%;
+    --border: 150 8% 20%;
+    --input: 150 8% 20%;
+    --ring: 142 70% 50%;
+  }
 }
 
 @layer base {

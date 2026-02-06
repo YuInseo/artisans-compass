@@ -10,9 +10,6 @@
             "none": "None",
             "dailyQuote": "Daily Quote",
             "focusGoals": "Focus Goals",
-            "widgetMaxHeight": "Widget Max Height",
-            "short": "Short",
-            "tall": "Tall",
             "checkboxVisibility": "Checkbox Visibility",
             "checkboxVisibilityDesc": "Control when task checkboxes are displayed.",
             "spellCheck": "Spell Checker",
@@ -31,12 +28,19 @@
             "themeSaved": "Theme \"{{name}}\" saved!",
             "myThemes": "My Themes",
             "cssEditor": "CSS Editor",
-            "cssEditorDesc": "* Click \"Load Default List\" to see all editable color variables."
+            "cssEditorDesc": "* Click \"Load Default List\" to see all editable color variables.",
+            "customQuotes": "Custom Quotes",
+            "customQuotesDesc": "Add your own quotes to the daily rotation.",
+            "addQuote": "Add Quote",
+            "enterQuote": "Enter a quote...",
+            "noCustomQuotes": "No custom quotes added yet."
         },
         "timelineLabel": "Timeline",
         "timelineConfig": "Timeline Configurations",
         "tracking": {
             "title": "Screenshot",
+            "screenshotActivation": "Enable Screenshots",
+            "idleDetection": "Idle Detection",
             "enableScreenshots": "Enable Screenshots",
             "enableScreenshotsDesc": "Capture visuals for daily review.",
             "screenshotInterval": "Screenshot Interval",
@@ -92,7 +96,6 @@
         "trackedApps": "Tracked Applications",
         "autoTrackingDesc": "Artisan's Compass automatically tracks time when these apps are active.",
         "monitoredProcesses": "Monitored Processes",
-        "runningApps": "Detailed Running Apps",
         "startupBehavior": "Startup Behavior",
         "autoLaunch": "Auto Launch on Startup",
         "autoUpdate": "Auto Update",
@@ -124,7 +127,27 @@
             "workApps": "Work Programs",
             "filterWorkApps": "Show Only Work Programs",
             "filterWorkAppsDesc": "Only show configured work programs in the timeline visualization.",
-            "configuredApps": "Configured Apps"
+            "configuredApps": "Configured Apps",
+            "nextDay": "Next Day"
+        },
+        "softwareUpdate": {
+            "title": "Software Update",
+            "statusTitle": "Update Status",
+            "currentVersion": "Current Version",
+            "checking": "Checking for updates...",
+            "available": "Update available. Downloading...",
+            "upToDate": "You are up to date",
+            "downloading": "Downloading update",
+            "ready": "Update ready to install",
+            "failed": "Update failed",
+            "checkForUpdates": "Check for Updates",
+            "restartAndInstall": "Restart & Install"
+        },
+        "runningApps": {
+            "title": "Detailed Running Apps",
+            "add": "Add",
+            "added": "Added",
+            "scanning": "Scanning..."
         },
         "backup": {
             "title": "Backup & Data",

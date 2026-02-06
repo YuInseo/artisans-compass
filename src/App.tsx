@@ -107,7 +107,7 @@ function App() {
   useEffect(() => {
     const root = document.documentElement;
     // Remove all theme preset classes
-    root.classList.remove('theme-discord', 'theme-midnight', 'theme-custom');
+    root.classList.remove('theme-discord', 'theme-midnight', 'theme-sunset', 'theme-ocean', 'theme-forest', 'theme-custom');
 
     // Add current preset if set and not default
     if (settings?.themePreset && settings.themePreset !== 'default') {

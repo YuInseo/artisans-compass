@@ -14,7 +14,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { Slider } from "@/components/ui/slider"
+
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
@@ -22,13 +22,16 @@ import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
 import { X, Cloud, Check, Moon, Sun, Monitor, Info, FileText, RefreshCw, AlertCircle, History, Settings, Palette, LayoutTemplate, Shield, Database } from "lucide-react";
 import { AppSettings } from "@/types"
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { toast } from "sonner";
 import { cn } from "@/lib/utils"
 import { useTranslation, Trans } from 'react-i18next';
+import { TimelineTab } from "./settings/timeline-tab";
 // @ts-ignore
 import { NotionSetupDialog } from "./notion-setup-dialog"; // Import
 import { version } from "../../package.json";
+
+export type SettingsTab = 'general' | 'appearance' | 'timeline' | 'tracking' | 'integrations' | 'updatelog';
 
 interface SettingsModalProps {
     open?: boolean;
@@ -38,205 +41,7 @@ interface SettingsModalProps {
     defaultTab?: SettingsTab; // Optional default tab
 }
 
-import {
-    DndContext,
-    closestCenter,
-    KeyboardSensor,
-    PointerSensor,
-    useSensor,
-    useSensors,
-    DragEndEvent,
-    DragOverlay,
-} from '@dnd-kit/core';
-import { restrictToVerticalAxis } from '@dnd-kit/modifiers';
-import {
-    arrayMove,
-    SortableContext,
-    sortableKeyboardCoordinates,
-    useSortable,
-    verticalListSortingStrategy,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Pencil } from 'lucide-react';
 
-type SettingsTab = 'general' | 'appearance' | 'timeline' | 'tracking' | 'integrations' | 'updatelog' | 'developer';
-// Presentational Component for Project Type Item
-function ProjectTypeItem({
-    tag,
-    color,
-    isDefault,
-    isOverlay,
-    isDragging,
-    listeners,
-    attributes,
-    style,
-    setNodeRef,
-    onDelete,
-    onColorChange,
-    onRename,
-    id // Add id prop
-}: {
-    tag: string,
-    color: string,
-    isDefault: boolean,
-    isOverlay?: boolean,
-    isDragging?: boolean,
-    listeners?: any,
-    attributes?: any,
-    style?: any,
-    setNodeRef?: (node: HTMLElement | null) => void,
-    onDelete?: () => void,
-    onColorChange?: (color: string) => void,
-    onRename?: (newName: string) => void,
-    id?: string // Add id to type
-}) {
-    const [isEditing, setIsEditing] = useState(false);
-    const [editName, setEditName] = useState(tag);
-    const [localColor, setLocalColor] = useState(color);
-    const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-    useEffect(() => {
-        setLocalColor(color);
-    }, [color]);
-
-    const handleColorChange = (newColor: string) => {
-        setLocalColor(newColor);
-        if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        timeoutRef.current = setTimeout(() => {
-            onColorChange?.(newColor);
-        }, 100);
-    };
-
-    const handleSave = () => {
-        if (editName.trim() && editName !== tag) {
-            onRename?.(editName.trim());
-        }
-        setIsEditing(false);
-    };
-
-    return (
-        <div
-            id={id} // Apply id to div
-            ref={setNodeRef}
-            style={style}
-            className={cn(
-                "flex items-center gap-4 bg-background p-2 rounded border border-border/40 group",
-                isOverlay && "shadow-xl border-primary/50 cursor-grabbing bg-background/95",
-                isDragging && "opacity-30" // Lower opacity for the placeholder in the list
-            )}
-        >
-            <div {...attributes} {...listeners} className="cursor-grab text-muted-foreground hover:text-foreground">
-                <GripVertical className="w-4 h-4" />
-            </div>
-
-            <div className="relative group/picker w-8 h-8 flex-shrink-0">
-                <div
-                    className="absolute inset-0 rounded-full border-2 border-transparent ring-2 ring-offset-1 transition-transform group-hover/picker:scale-110 pointer-events-none"
-                    style={{ backgroundColor: localColor }}
-                />
-                {!isOverlay && (
-                    <input
-                        type="color"
-                        value={localColor}
-                        onChange={(e) => handleColorChange(e.target.value)}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                        title="Change Color"
-                    />
-                )}
-            </div>
-
-            <div className="flex-1 flex items-center gap-2">
-                {isEditing && !isOverlay ? (
-                    <div className="flex items-center gap-2 flex-1">
-                        <Input
-                            value={editName}
-                            onChange={(e) => setEditName(e.target.value)}
-                            className="h-7 text-sm"
-                            autoFocus
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSave();
-                                if (e.key === 'Escape') {
-                                    setEditName(tag);
-                                    setIsEditing(false);
-                                }
-                            }}
-                            onBlur={handleSave}
-                        />
-                    </div>
-                ) : (
-                    <>
-                        <span className="font-medium text-sm text-foreground">{tag}</span>
-                        {isDefault && (
-                            <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded uppercase tracking-wide">
-                                (Default)
-                            </span>
-                        )}
-                    </>
-                )}
-            </div>
-
-            <div className="flex items-center">
-                {!isEditing && !isOverlay && (
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-primary opacity-0 group-hover:opacity-100 transition-opacity"
-                        onClick={() => setIsEditing(true)}
-                    >
-                        <Pencil className="w-3.5 h-3.5" />
-                    </Button>
-                )}
-
-                {!isOverlay && (
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={onDelete}
-                    >
-                        <X className="w-4 h-4" />
-                    </Button>
-                )}
-            </div>
-        </div>
-    );
-}
-
-function SortableProjectType(props: {
-    id: string,
-    tag: string,
-    color: string,
-    isDefault: boolean,
-    onDelete: () => void,
-    onColorChange: (color: string) => void,
-    onRename: (newName: string) => void
-}) {
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-        isDragging
-    } = useSortable({ id: props.id });
-
-    const style = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-    };
-
-    return (
-        <ProjectTypeItem
-            {...props}
-            id={`sortable-item-${props.id}`} // Pass prefixed ID for DOM width capture
-            setNodeRef={setNodeRef}
-            style={style}
-            attributes={attributes}
-            listeners={listeners}
-            isDragging={isDragging}
-        />
-    );
-}
 
 export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, defaultTab = 'general' }: SettingsModalProps) {
     const { setTheme, theme } = useTheme()
@@ -252,56 +57,12 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         }
     }, [open, defaultTab]);
 
-    const sensors = useSensors(
-        useSensor(PointerSensor, {
-            activationConstraint: {
-                distance: 8,
-            },
-        }),
-        useSensor(KeyboardSensor, {
-            coordinateGetter: sortableKeyboardCoordinates,
-        })
-    );
-
-    const [activeDragId, setActiveDragId] = useState<string | null>(null);
-    const [dragWidth, setDragWidth] = useState<number | undefined>(undefined);
-
-    const handleDragStart = (event: any) => {
-        const { active } = event;
-        setActiveDragId(active.id);
-        // Use prefixed ID to avoid collisions and ensure we get the correct element from the list
-        const node = document.getElementById(`sortable-item-${active.id}`);
-        if (node) {
-            setDragWidth(node.offsetWidth);
-        }
-    };
-
-    const handleDragEnd = (event: DragEndEvent) => {
-        const { active, over } = event;
-
-        if (active.id !== over?.id && settings?.projectTags && over) {
-            const oldIndex = settings.projectTags.indexOf(active.id as string);
-            const newIndex = settings.projectTags.indexOf(over.id as string);
-
-            if (oldIndex !== undefined && newIndex !== undefined && oldIndex !== -1 && newIndex !== -1) {
-                const newTags = arrayMove(settings.projectTags, oldIndex, newIndex);
-                onSaveSettings({ ...settings, projectTags: newTags });
-            }
-        }
-
-        setDragWidth(undefined);
-    };
-
-    const handleDragCancel = () => {
-        setActiveDragId(null);
-        setDragWidth(undefined);
-    };
-
+    // Custom Quotes State
+    const [newQuoteInput, setNewQuoteInput] = useState("");
 
     // General Tab State
     const [newAppInput, setNewAppInput] = useState("");
     const [runningApps, setRunningApps] = useState<{ id?: string, name: string, process: string, appIcon?: string }[]>([]);
-    const [runningAppsSearch, setRunningAppsSearch] = useState("");
 
     useEffect(() => {
         if (open && activeTab === 'timeline') {
@@ -315,9 +76,6 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
     // Tracking Tab State
     const [screenSources, setScreenSources] = useState<{ id: string, name: string, thumbnail: string }[]>([]);
-
-    // Timeline Tab State
-    const [newTypeInput, setNewTypeInput] = useState("");
 
     // Notion Setup Dialog State
     const [showNotionSetup, setShowNotionSetup] = useState(false);
@@ -430,8 +188,8 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                     // Save to local
                     await (window as any).ipcRenderer.invoke('save-daily-log', importDate, result.data);
                     setInfoConfig({
-                        title: t('settings.backup.importComplete'),
-                        description: t('settings.backup.importSuccessMsg', { date: importDate }),
+                        title: t('settings.backup.importComplete') || "Import Complete",
+                        description: t('settings.backup.importSuccessMsg', { date: importDate }) || `Successfully imported records for ${importDate}`,
                     });
                     setShowImportDialog(false);
                     window.location.reload();
@@ -535,7 +293,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
             // Map backend 'idle' with 'up-to-date' message to 'not-available' for UI feedback
             if (state.status === 'idle' && state.message === 'up-to-date') {
                 setUpdateStatus('not-available');
-                toast.info(t('settings.update.upToDate') || "You are using the latest version.");
+                toast.info(t('update.upToDateTitle') || "You are using the latest version.");
                 return;
             }
 
@@ -552,7 +310,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                 if (state.status === 'available') {
                     // Only show toast if transitioning from checking or idle to avoid spamming
                     if (updateStatus === 'checking' || updateStatus === 'idle') {
-                        toast.success(t('settings.update.available') || "New update available. Downloading...", {
+                        toast.success(t('update.availableTitle') || "New update available. Downloading...", {
                             action: {
                                 label: t('settings.updateLog') || "View Log",
                                 onClick: () => setActiveTab('updatelog')
@@ -568,7 +326,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
             if (state.error) {
                 setUpdateError(state.error);
-                toast.error(t('settings.update.error') || "Update check failed.");
+                toast.error(t('update.failedTitle') || "Update check failed.");
             }
         };
 
@@ -586,13 +344,59 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     const checkForUpdates = async () => {
         setUpdateStatus('checking');
         setUpdateError(null);
+
+        // Timeout Safety
+        const timeoutId = setTimeout(() => {
+            setUpdateStatus((prev) => {
+                if (prev === 'checking') {
+                    const msg = t('update.timeout') || "Connection timed out.";
+                    toast.error(msg);
+                    setUpdateError(msg);
+                    return 'error';
+                }
+                return prev;
+            });
+        }, 15000); // 15 seconds timeout
+
         if ((window as any).ipcRenderer) {
             try {
-                await (window as any).ipcRenderer.invoke('check-for-updates');
+                const result = await (window as any).ipcRenderer.invoke('check-for-updates');
+
+                // If we get a result back immediately (e.g. null in dev mode or "skipped"), 
+                // and we are still in 'checking' phase, it means the event chain didn't happen.
+                // We should manually settle the state.
+                setUpdateStatus((prev) => {
+                    if (prev === 'checking') {
+                        clearTimeout(timeoutId);
+                        // If result is null/undefined, likely skipped or no update info found
+                        if (!result) {
+                            // Basic dev mode check heuristic or just informative toast
+                            toast.info("Update check complete. (Dev Mode: Update skipped)");
+                            return 'not-available';
+                        }
+                        // If result exists but we are still checking, maybe wait a bit? 
+                        // But usually events fire. Let's trust the events if result is present.
+                        // However, if result indicates NO update, we might want to set not-available.
+                        // For now, let's assume null result = dev/skip.
+                        return prev;
+                    }
+                    return prev;
+                });
+
             } catch (e: any) {
+                clearTimeout(timeoutId);
                 setUpdateStatus('error');
                 setUpdateError(e.message);
+
+                // User specifically mentioned this error string for dev mode
+                if (e.message && (e.message.includes('not packed') || e.message.includes('dev update config'))) {
+                    toast.info("Development Mode: Update check skipped.");
+                } else {
+                    toast.error(t('update.failedTitle') || "Update check failed.");
+                }
             }
+        } else {
+            clearTimeout(timeoutId);
         }
     };
 
@@ -715,15 +519,51 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     const scrollToSection = (sectionId: string) => {
         const element = document.getElementById(sectionId);
         if (element) {
+            // Check if element is inside the update log view (different scrolling container)
+            // But we only call this for main tabs.
             element.scrollIntoView({ behavior: 'smooth', block: 'start' });
             setActiveSection(sectionId);
+        }
+    };
+
+    const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        if (!activeTab || activeTab === 'updatelog') return;
+
+        const sectionMap: Record<string, string[]> = {
+            general: ['settings-language', 'settings-weekly', 'settings-tracked-apps', 'settings-running-apps', 'settings-startup'],
+            appearance: ['settings-theme', 'settings-color-theme', 'settings-widgets', 'settings-editor'],
+            timeline: ['settings-project-types', 'settings-timeline-preview', 'settings-work-apps'],
+            tracking: ['settings-screenshot-enable', 'settings-idle-time', 'settings-screenshot-interval', 'settings-timelapse', 'settings-screenshot-mode']
+        };
+
+        const currentSections = sectionMap[activeTab];
+        if (!currentSections) return;
+
+        const containerRect = e.currentTarget.getBoundingClientRect();
+        let currentActive = currentSections[0];
+
+        // Find the last section that has started (top is above a threshold)
+        for (const id of currentSections) {
+            const el = document.getElementById(id);
+            if (el) {
+                const rect = el.getBoundingClientRect();
+                const relativeTop = rect.top - containerRect.top;
+                // Threshold: 150px from top
+                if (relativeTop < 200) {
+                    currentActive = id;
+                }
+            }
+        }
+
+        if (currentActive !== activeSection) {
+            setActiveSection(currentActive);
         }
     };
 
     const renderSidebar = () => (
         <div className="w-[210px] shrink-0 bg-muted/30 flex flex-col p-2 gap-[2px] justify-end md:justify-start select-none">
             <div className="px-3 pt-6 pb-3 md:pt-4">
-                <h2 className="text-xs font-bold text-muted-foreground uppercase px-2 mb-1">User Settings</h2>
+                <h2 className="text-xs font-bold text-muted-foreground uppercase px-2 mb-1">{t('settings.userSettings')}</h2>
             </div>
 
             <SidebarButton
@@ -752,7 +592,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                     <SectionButton
                         active={activeSection === 'settings-running-apps'}
                         onClick={() => scrollToSection('settings-running-apps')}
-                        label={t('settings.runningApps')}
+                        label={t('settings.runningApps.title')}
                     />
                     <SectionButton
                         active={activeSection === 'settings-startup'}
@@ -783,12 +623,17 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                     <SectionButton
                         active={activeSection === 'settings-widgets'}
                         onClick={() => scrollToSection('settings-widgets')}
-                        label={t('settings.appearance.widgetDisplay')}
+                        label={t('settings.widgetSettings')}
                     />
                     <SectionButton
                         active={activeSection === 'settings-editor'}
                         onClick={() => scrollToSection('settings-editor')}
-                        label={t('settings.appearance.indentationGuides')}
+                        label={t('settings.appearance.indentationLines')}
+                    />
+                    <SectionButton
+                        active={activeSection === 'settings-quotes'}
+                        onClick={() => scrollToSection('settings-quotes')}
+                        label={t('settings.appearance.customQuotes')}
                     />
                 </div>
             )}
@@ -976,7 +821,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
                 {/* Detected Apps List (Mini) */}
                 <div id="settings-running-apps" className="mt-8 pt-4">
-                    <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">{t('settings.runningApps')}</h5>
+                    <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">{t('settings.runningApps.title')}</h5>
                     <div className="rounded-lg overflow-hidden border border-border/50 bg-muted/30">
                         {/* Search / Add Input Header */}
                         <div className="p-2 border-b border-border/10 bg-muted/50">
@@ -1002,7 +847,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
                         <div className="max-h-60 overflow-y-auto custom-scrollbar">
                             {runningApps.length === 0 ? (
-                                <div className="p-4 text-center text-sm text-muted-foreground">Scanning...</div>
+                                <div className="p-4 text-center text-sm text-muted-foreground">{t('settings.runningApps.scanning')}</div>
                             ) : (
                                 <>
                                     {runningApps
@@ -1030,7 +875,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                     onClick={() => addApp(app.process || app.name)}
                                                     className="h-7 text-xs bg-background hover:bg-muted text-muted-foreground hover:text-foreground border border-border/50"
                                                 >
-                                                    Add
+                                                    {t('settings.runningApps.add')}
                                                 </Button>
                                             </div>
                                         ))
@@ -1111,7 +956,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
                     {/* Update Section */}
                     <div className="mt-8 pt-4 border-t border-border/40">
-                        <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-4">Software Update</h5>
+                        <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-4">{t('settings.softwareUpdate.title')}</h5>
                         <div className="bg-muted/30 rounded-lg p-4 border border-border/50">
                             <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center gap-3">
@@ -1126,26 +971,26 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                     <Cloud className="w-5 h-5" />}
                                     </div>
                                     <div>
-                                        <h4 className="font-medium text-sm">Update Status</h4>
+                                        <h4 className="font-medium text-sm">{t('settings.softwareUpdate.statusTitle')}</h4>
                                         <p className="text-xs text-muted-foreground">
-                                            {updateStatus === 'idle' && `Current Version: v${version}`}
-                                            {updateStatus === 'checking' && "Checking for updates..."}
-                                            {updateStatus === 'available' && "Update available. Downloading..."}
-                                            {updateStatus === 'not-available' && `You are up to date (v${version})`}
-                                            {updateStatus === 'downloading' && `Downloading update: ${Math.round(updateProgress)}%`}
-                                            {updateStatus === 'ready' && "Update ready to install"}
-                                            {updateStatus === 'error' && "Update failed"}
+                                            {updateStatus === 'idle' && `${t('settings.softwareUpdate.currentVersion')}: v${version}`}
+                                            {updateStatus === 'checking' && t('settings.softwareUpdate.checking')}
+                                            {updateStatus === 'available' && t('settings.softwareUpdate.available')}
+                                            {updateStatus === 'not-available' && `${t('settings.softwareUpdate.upToDate')} (v${version})`}
+                                            {updateStatus === 'downloading' && `${t('settings.softwareUpdate.downloading')}: ${Math.round(updateProgress)}%`}
+                                            {updateStatus === 'ready' && t('settings.softwareUpdate.ready')}
+                                            {updateStatus === 'error' && t('settings.softwareUpdate.failed')}
                                         </p>
                                     </div>
                                 </div>
 
                                 {updateStatus === 'idle' || updateStatus === 'not-available' || updateStatus === 'error' ? (
                                     <Button variant="outline" size="sm" onClick={checkForUpdates}>
-                                        Check for Updates
+                                        {t('settings.softwareUpdate.checkForUpdates')}
                                     </Button>
                                 ) : updateStatus === 'ready' ? (
                                     <Button size="sm" onClick={quitAndInstall}>
-                                        Restart & Install
+                                        {t('settings.softwareUpdate.restartAndInstall')}
                                     </Button>
                                 ) : null}
                             </div>
@@ -1239,7 +1084,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
                 {/* Other Tabs - Normal ScrollArea */}
                 {activeTab !== 'updatelog' && (
-                    <ScrollArea className="h-full px-10 py-[60px]">
+                    <ScrollArea className="h-full px-10 py-[60px]" onScroll={handleScroll}>
                         <div className="max-w-[700px] pb-20">
                             {/* Tab Content */}
                             {activeTab === 'general' && renderGeneralTab()}
@@ -1251,24 +1096,45 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                         <Separator className="bg-border/60" />
                                     </div>
 
-                                    <div className="space-y-4">
+                                    <div id="settings-theme" className="space-y-4">
                                         <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">{t('settings.theme')}</h5>
                                         <div className="grid grid-cols-3 gap-4">
                                             <ThemeCard
                                                 active={theme === 'light'}
-                                                onClick={() => setTheme('light')}
+                                                onClick={() => {
+                                                    setTheme('light');
+                                                    if (settings.widgetDisplayMode !== 'none') {
+                                                        onSaveSettings({ ...settings, widgetTheme: 'light' });
+                                                    } else {
+                                                        onSaveSettings({ ...settings, mainTheme: 'light' });
+                                                    }
+                                                }}
                                                 icon={<Sun className="w-6 h-6" />}
                                                 label={t('settings.light')}
                                             />
                                             <ThemeCard
                                                 active={theme === 'dark'}
-                                                onClick={() => setTheme('dark')}
+                                                onClick={() => {
+                                                    setTheme('dark');
+                                                    if (settings.widgetDisplayMode !== 'none') {
+                                                        onSaveSettings({ ...settings, widgetTheme: 'dark' });
+                                                    } else {
+                                                        onSaveSettings({ ...settings, mainTheme: 'dark' });
+                                                    }
+                                                }}
                                                 icon={<Moon className="w-6 h-6" />}
                                                 label={t('settings.dark')}
                                             />
                                             <ThemeCard
                                                 active={theme === 'system'}
-                                                onClick={() => setTheme('system')}
+                                                onClick={() => {
+                                                    setTheme('system');
+                                                    if (settings.widgetDisplayMode !== 'none') {
+                                                        onSaveSettings({ ...settings, widgetTheme: 'system' });
+                                                    } else {
+                                                        onSaveSettings({ ...settings, mainTheme: 'system' });
+                                                    }
+                                                }}
                                                 icon={<Monitor className="w-6 h-6" />}
                                                 label={t('settings.system')}
                                             />
@@ -1277,7 +1143,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
                                     <Separator className="bg-border/30" />
 
-                                    <div className="space-y-4">
+                                    <div id="settings-color-theme" className="space-y-4">
                                         <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.appearance.colorTheme') || "Color Theme"}</h5>
                                         <div className="flex flex-col gap-4 bg-muted/30 p-4 rounded-lg">
                                             <div className="flex items-center gap-4">
@@ -1340,7 +1206,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                         </div>
                                     </div>
 
-                                    <div className="space-y-4">
+                                    <div id="settings-widgets" className="space-y-4">
                                         <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.widgetSettings')}</h5>
 
                                         <div className="flex flex-col gap-3">
@@ -1364,32 +1230,14 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-col gap-3">
-                                            <div className="flex items-center justify-between">
-                                                <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.appearance.widgetMaxHeight')}</Label>
-                                                <span className="text-xs text-muted-foreground">{settings.widgetMaxHeight || 800}px</span>
-                                            </div>
-                                            <div className="bg-muted/30 p-4 rounded-lg">
-                                                <Slider
-                                                    min={300}
-                                                    max={1200}
-                                                    step={50}
-                                                    value={[settings.widgetMaxHeight || 800]}
-                                                    onValueChange={(val) => onSaveSettings({ ...settings, widgetMaxHeight: val[0] })}
-                                                />
-                                                <div className="flex justify-between text-[10px] text-muted-foreground mt-2 px-1">
-                                                    <span>{t('settings.appearance.short')}</span>
-                                                    <span>{t('settings.appearance.tall')}</span>
-                                                </div>
-                                            </div>
-                                        </div>
+
 
 
                                     </div>
 
                                     <Separator className="bg-border/30" />
 
-                                    <div className="space-y-4">
+                                    <div id="settings-editor" className="space-y-4">
                                         <div className="flex flex-col gap-4">
                                             <div className="flex items-center justify-between">
                                                 <div className="space-y-0.5">
@@ -1419,353 +1267,11 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                             )}
 
                             {activeTab === 'timeline' && (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.timelineConfig')}</h3>
-                                        <Separator className="bg-border/60" />
-
-                                        {/* Project Types & Colors Section (Moved) */}
-                                        <div className="space-y-4">
-                                            <div className="flex flex-col gap-1">
-                                                <div className="flex items-center justify-between">
-                                                    <h5 className="text-base font-semibold text-foreground">{t('settings.projectTypes')}</h5>
-                                                    <div className="flex items-center gap-2">
-                                                        <input
-                                                            type="checkbox"
-                                                            id="custom-colors"
-                                                            checked={settings.enableCustomProjectColors || false}
-                                                            onChange={(e) => onSaveSettings({ ...settings, enableCustomProjectColors: e.target.checked })}
-                                                            className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                                                        />
-                                                        <Label htmlFor="custom-colors" className="text-sm font-normal text-muted-foreground cursor-pointer select-none">
-                                                            {t('settings.allowCustomColors')}
-                                                        </Label>
-                                                    </div>
-                                                </div>
-                                                <p className="text-sm text-muted-foreground pb-2">
-                                                    {t('settings.projectTagDesc')}
-                                                </p>
-                                            </div>
-
-                                            <div className="bg-muted/30 p-4 rounded-lg space-y-4">
-                                                <div className="space-y-2 max-h-[300px] overflow-y-auto px-1 custom-scrollbar">
-                                                    <DndContext
-                                                        sensors={sensors}
-                                                        collisionDetection={closestCenter}
-                                                        onDragEnd={handleDragEnd}
-                                                        onDragStart={handleDragStart}
-                                                        onDragCancel={handleDragCancel}
-                                                    >
-                                                        <SortableContext
-                                                            items={settings.projectTags || []}
-                                                            strategy={verticalListSortingStrategy}
-                                                        >
-                                                            {(settings.projectTags || ["Main", "Sub", "Practice"]).map((tag, index) => (
-                                                                <SortableProjectType
-                                                                    key={tag}
-                                                                    id={tag}
-                                                                    tag={tag}
-                                                                    color={settings.typeColors?.[tag] || "#3b82f6"}
-                                                                    isDefault={index === 0}
-                                                                    onColorChange={(newColor) => {
-                                                                        const newColors = { ...(settings.typeColors || {}), [tag]: newColor };
-                                                                        onSaveSettings({ ...settings, typeColors: newColors });
-                                                                    }}
-                                                                    onRename={(newName) => {
-                                                                        if (newName && !settings.projectTags.includes(newName)) {
-                                                                            const updatedTags = settings.projectTags.map(t => t === tag ? newName : t);
-                                                                            const updatedColors = { ...settings.typeColors };
-                                                                            if (updatedColors[tag]) {
-                                                                                updatedColors[newName] = updatedColors[tag];
-                                                                                delete updatedColors[tag];
-                                                                            }
-                                                                            onSaveSettings({ ...settings, projectTags: updatedTags, typeColors: updatedColors });
-                                                                        }
-                                                                    }}
-                                                                    onDelete={() => {
-                                                                        setConfirmConfig({
-                                                                            title: "Delete Project Type",
-                                                                            description: `Delete project type "${tag}"?`,
-                                                                            actionLabel: "Delete",
-                                                                            onConfirm: () => {
-                                                                                const updatedTags = settings.projectTags.filter(t => t !== tag);
-                                                                                const updatedColors = { ...settings.typeColors };
-                                                                                delete updatedColors[tag];
-                                                                                onSaveSettings({ ...settings, projectTags: updatedTags, typeColors: updatedColors });
-                                                                            }
-                                                                        });
-                                                                    }}
-                                                                />
-                                                            ))}
-                                                        </SortableContext>
-                                                        <DragOverlay modifiers={[restrictToVerticalAxis]} dropAnimation={null}>
-                                                            {activeDragId ? (
-                                                                <ProjectTypeItem
-                                                                    tag={activeDragId}
-                                                                    color={settings.typeColors?.[activeDragId] || "#3b82f6"}
-                                                                    isDefault={settings.projectTags.indexOf(activeDragId) === 0}
-                                                                    isOverlay={true}
-                                                                    // Apply captured width, fallback to auto if missed
-                                                                    style={{ width: dragWidth ?? 'auto' }}
-                                                                />
-                                                            ) : null}
-                                                        </DragOverlay>
-                                                    </DndContext>
-                                                </div>
-
-                                                {/* Add New Type */}
-                                                <div className="flex gap-2 pt-2">
-                                                    <Input
-                                                        placeholder="New Type Name..."
-                                                        value={newTypeInput}
-                                                        onChange={(e) => setNewTypeInput(e.target.value)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' && newTypeInput.trim()) {
-                                                                const tag = newTypeInput.trim();
-                                                                if (!settings.projectTags.includes(tag)) {
-                                                                    onSaveSettings({
-                                                                        ...settings,
-                                                                        projectTags: [...settings.projectTags, tag],
-                                                                        typeColors: { ...(settings.typeColors || {}), [tag]: "#808080" } // Default gray
-                                                                    });
-                                                                    setNewTypeInput("");
-                                                                }
-                                                            }
-                                                        }}
-                                                        className="h-9 bg-background"
-                                                    />
-                                                    <Button
-                                                        size="sm"
-                                                        disabled={!newTypeInput.trim()}
-                                                        onClick={() => {
-                                                            const tag = newTypeInput.trim();
-                                                            if (tag && !settings.projectTags.includes(tag)) {
-                                                                onSaveSettings({
-                                                                    ...settings,
-                                                                    projectTags: [...settings.projectTags, tag],
-                                                                    typeColors: { ...(settings.typeColors || {}), [tag]: "#808080" }
-                                                                });
-                                                                setNewTypeInput("");
-                                                            }
-                                                        }}
-                                                    >
-                                                        Add
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <Separator className="bg-border/60" />
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <h3 className="text-lg font-medium">{t('settings.timeline.title')}</h3>
-
-                                        <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                                            <div className="space-y-0.5">
-                                                <Label className="text-base">{t('settings.timeline.showPreview')}</Label>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {t('settings.timeline.showPreviewDesc')}
-                                                </p>
-                                            </div>
-                                            <Switch
-                                                checked={settings.showTimelinePreview}
-                                                onCheckedChange={(checked) => onSaveSettings({ ...settings, showTimelinePreview: checked })}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Work Apps Filter Section */}
-                                    <div className="space-y-4">
-                                        <h3 className="text-lg font-medium">{t('settings.timeline.workApps') || "Work Programs"}</h3>
-
-                                        <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                                            <div className="space-y-0.5">
-                                                <Label className="text-base">{t('settings.timeline.filterWorkApps') || "Show Only Work Programs"}</Label>
-                                                <p className="text-sm text-muted-foreground">
-                                                    {t('settings.timeline.filterWorkAppsDesc') || "Only show configured work programs in the timeline visualization."}
-                                                </p>
-                                            </div>
-                                            <Switch
-                                                checked={settings.filterTimelineByWorkApps || false}
-                                                onCheckedChange={(checked) => onSaveSettings({ ...settings, filterTimelineByWorkApps: checked })}
-                                            />
-                                        </div>
-
-                                        {settings.filterTimelineByWorkApps && (
-                                            <div className="bg-muted/30 p-4 rounded-lg space-y-4 animate-in fade-in slide-in-from-top-2">
-                                                <div className="flex flex-col gap-2">
-                                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
-                                                        {t('settings.timeline.configuredApps') || "Configured Apps"}
-                                                    </Label>
-                                                    <div className="flex flex-wrap gap-2 min-h-[40px] p-2 rounded-lg bg-background border border-border/50">
-                                                        {settings.workApps?.map(app => (
-                                                            <div key={app} className="flex items-center gap-1 bg-muted px-2 py-1 rounded text-xs font-medium border border-border">
-                                                                {app}
-                                                                <button
-                                                                    onClick={() => onSaveSettings({ ...settings, workApps: settings.workApps?.filter(a => a !== app) })}
-                                                                    className="hover:text-destructive transition-colors ml-1"
-                                                                >
-                                                                    <X className="w-3 h-3" />
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                        {(!settings.workApps || settings.workApps.length === 0) && (
-                                                            <div className="text-xs text-muted-foreground italic p-1">No apps configured</div>
-                                                        )}
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex gap-2">
-                                                    <Input
-                                                        placeholder="Add Process Name (e.g. Code.exe)..."
-                                                        className="h-8 text-sm"
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter') {
-                                                                const val = (e.currentTarget as HTMLInputElement).value?.trim();
-                                                                if (val && !settings.workApps?.includes(val)) {
-                                                                    onSaveSettings({
-                                                                        ...settings,
-                                                                        workApps: [...(settings.workApps || []), val]
-                                                                    });
-                                                                    (e.currentTarget as HTMLInputElement).value = '';
-                                                                }
-                                                            }
-                                                        }}
-                                                    />
-                                                    <Button
-                                                        size="sm"
-                                                        className="h-8"
-                                                        onClick={(e) => {
-                                                            const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                                                            const val = input.value?.trim();
-                                                            if (val && !settings.workApps?.includes(val)) {
-                                                                onSaveSettings({
-                                                                    ...settings,
-                                                                    workApps: [...(settings.workApps || []), val]
-                                                                });
-                                                                input.value = '';
-                                                            }
-                                                        }}
-                                                    >
-                                                        Add
-                                                    </Button>
-                                                </div>
-
-                                                <div className="pt-4 border-t border-border/50">
-                                                    <h4 className="text-sm font-semibold mb-2">{t('settings.runningApps') || "Running Apps Details"}</h4>
-                                                    <div className="bg-muted/40 rounded-lg p-2 border border-border/50">
-                                                        <Input
-                                                            className="h-8 mb-2 bg-background/50 border-border/50"
-                                                            placeholder={t("common.search")}
-                                                            onChange={(e) => setRunningAppsSearch(e.target.value)}
-                                                        />
-                                                        <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
-                                                            {runningApps
-                                                                .filter(app => !runningAppsSearch || app.name.toLowerCase().includes(runningAppsSearch.toLowerCase()) || app.process.toLowerCase().includes(runningAppsSearch.toLowerCase()))
-                                                                .map(app => {
-                                                                    const isAdded = settings.workApps?.some(wa => wa.toLowerCase() === app.process.toLowerCase());
-                                                                    return (
-                                                                        <div key={app.process} className="flex items-center justify-between p-2 rounded hover:bg-muted/50 group">
-                                                                            <div className="flex flex-col min-w-0">
-                                                                                <span className="text-sm font-medium truncate">{app.name}</span>
-                                                                                <span className="text-xs text-muted-foreground truncate">{app.process}</span>
-                                                                            </div>
-                                                                            <Button
-                                                                                size="sm"
-                                                                                variant={isAdded ? "secondary" : "ghost"}
-                                                                                className={cn("h-7 text-xs", isAdded ? "opacity-50" : "hover:bg-primary/10 hover:text-primary")}
-                                                                                disabled={isAdded}
-                                                                                onClick={() => {
-                                                                                    if (!isAdded) {
-                                                                                        onSaveSettings({
-                                                                                            ...settings,
-                                                                                            workApps: [...(settings.workApps || []), app.process]
-                                                                                        });
-                                                                                    }
-                                                                                }}
-                                                                            >
-                                                                                {isAdded ? "Added" : "Add"}
-                                                                            </Button>
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            {runningApps.length === 0 && (
-                                                                <div className="text-center py-4 text-xs text-muted-foreground">
-                                                                    Loading apps...
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        <div className="flex flex-col gap-3">
-                                            <div className="flex items-center justify-between">
-                                                <Label className="text-base font-semibold">Night Time Start</Label>
-                                                <span className="text-xs text-muted-foreground font-mono">
-                                                    {(settings.nightTimeStart || 22) >= 24
-                                                        ? `Next Day ${(settings.nightTimeStart || 22) - 24}:00`
-                                                        : `${settings.nightTimeStart || 22}:00`}
-                                                </span>
-                                            </div>
-                                            <div className="bg-muted/30 p-4 rounded-lg">
-                                                <Slider
-                                                    min={18}
-                                                    max={28}
-                                                    step={1}
-                                                    value={[settings.nightTimeStart || 22]}
-                                                    onValueChange={(val) => onSaveSettings({ ...settings, nightTimeStart: val[0] })}
-                                                />
-                                                <div className="flex justify-between text-[10px] text-muted-foreground mt-2 px-1">
-                                                    <span>18:00</span>
-                                                    <span>04:00 (+1)</span>
-                                                </div>
-                                                <p className="text-xs text-muted-foreground mt-3">
-                                                    Focus sessions after this time will be visually highlighted as late-night activity.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid gap-8">
-
-                                        {/* Project Types & Colors Section */}
-
-
-                                        <div className="flex flex-col gap-3">
-                                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.visibleRows')}</Label>
-                                            <div className="flex items-center gap-4 bg-muted/30 p-4 rounded-lg">
-                                                <Input
-                                                    type="number"
-                                                    min={1}
-                                                    max={20}
-                                                    value={settings.visibleProjectRows}
-                                                    onChange={(e) => onSaveSettings({ ...settings, visibleProjectRows: parseInt(e.target.value) || 3 })}
-                                                    className="w-24 bg-background border-none"
-                                                />
-                                                <span className="text-sm text-foreground">{t('settings.rowsShown')}</span>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex flex-col gap-3">
-                                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.defaultDuration')}</Label>
-                                            <div className="flex items-center gap-4 bg-muted/30 p-4 rounded-lg">
-                                                <Input
-                                                    type="number"
-                                                    min={1}
-                                                    max={365}
-                                                    value={settings.defaultProjectDurationDays}
-                                                    onChange={(e) => onSaveSettings({ ...settings, defaultProjectDurationDays: parseInt(e.target.value) || 14 })}
-                                                    className="w-24 bg-background border-none"
-                                                />
-                                                <span className="text-sm text-foreground">{t('settings.daysForNew')}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                                <TimelineTab
+                                    settings={settings}
+                                    onSaveSettings={onSaveSettings}
+                                    runningApps={runningApps}
+                                />
                             )}
 
                             {activeTab === 'tracking' && (
@@ -1776,7 +1282,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                     </div>
 
                                     <div className="space-y-6">
-                                        <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                                        <div id="settings-screenshot-enable" className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
                                             <div className="space-y-0.5">
                                                 <Label className="text-base font-semibold">{t('settings.tracking.enableScreenshots')}</Label>
                                                 <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.enableScreenshotsDesc')}</p>
@@ -1787,7 +1293,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             />
                                         </div>
 
-                                        <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                                        <div id="settings-idle-time" className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
                                             <div className="space-y-0.5">
                                                 <Label className="text-base font-semibold">{t('settings.tracking.detectIdleTime')}</Label>
                                                 <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.detectIdleTimeDesc')}</p>
@@ -1809,7 +1315,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             </Select>
                                         </div>
 
-                                        <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                                        <div id="settings-screenshot-interval" className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
                                             <div className="space-y-0.5">
                                                 <Label className="text-base font-semibold">{t('settings.tracking.screenshotInterval')}</Label>
                                                 <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.screenshotIntervalDesc')}</p>
@@ -1831,7 +1337,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             </Select>
                                         </div>
 
-                                        <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+                                        <div id="settings-timelapse" className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
                                             <div className="space-y-0.5">
                                                 <Label className="text-base font-semibold">{t('settings.tracking.timelapseSpeed')}</Label>
                                                 <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.timelapseSpeedDesc')}</p>
@@ -1852,7 +1358,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             </Select>
                                         </div>
 
-                                        <div className="space-y-6 p-4 bg-muted/30 rounded-lg">
+                                        <div id="settings-screenshot-mode" className="space-y-6 p-4 bg-muted/30 rounded-lg">
                                             <div className="flex items-center justify-between">
                                                 <div className="space-y-0.5">
                                                     <Label className="text-base font-semibold">{t('settings.tracking.screenshotMode')}</Label>

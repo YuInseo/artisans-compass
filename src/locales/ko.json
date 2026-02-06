@@ -1,6 +1,7 @@
 {
     "settings": {
         "title": "설정",
+        "userSettings": "사용자 설정",
         "general": "일반",
         "appearance": {
             "title": "모양",
@@ -10,9 +11,6 @@
             "none": "없음",
             "dailyQuote": "오늘의 명언",
             "focusGoals": "집중 목표",
-            "widgetMaxHeight": "위젯 최대 높이",
-            "short": "짧게",
-            "tall": "길게",
             "checkboxVisibility": "체크박스 표시",
             "checkboxVisibilityDesc": "작업 체크박스가 표시되는 시점을 제어합니다.",
             "spellCheck": "맞춤법 검사",
@@ -31,12 +29,19 @@
             "themeSaved": "\"{name}\" 테마가 저장되었습니다!",
             "myThemes": "내 테마",
             "cssEditor": "CSS 에디터",
-            "cssEditorDesc": "* \"기본값 불러오기\"를 클릭하면 편집 가능한 모든 색상 변수를 볼 수 있습니다."
+            "cssEditorDesc": "* \"기본값 불러오기\"를 클릭하면 편집 가능한 모든 색상 변수를 볼 수 있습니다.",
+            "customQuotes": "사용자 지정 명언",
+            "customQuotesDesc": "일일 로테이션에 나만의 명언을 추가합니다.",
+            "addQuote": "명언 추가",
+            "enterQuote": "명언을 입력하세요...",
+            "noCustomQuotes": "추가된 사용자 지정 명언이 없습니다."
         },
         "timelineLabel": "타임라인",
         "timelineConfig": "타임라인 설정",
         "tracking": {
             "title": "스크린샷",
+            "screenshotActivation": "스크린샷 활성화",
+            "idleDetection": "유휴 감지",
             "enableScreenshots": "스크린샷 활성화",
             "enableScreenshotsDesc": "일일 검토를 위해 시각적 기록을 캡처합니다.",
             "screenshotInterval": "스크린샷 간격",
@@ -92,7 +97,7 @@
         "trackedApps": "추적된 앱",
         "autoTrackingDesc": "이 앱들이 활성화되면 Artisan's Compass가 자동으로 시간을 추적합니다.",
         "monitoredProcesses": "모니터링된 프로세스",
-        "runningApps": "실행 중인 앱 상세",
+        "loadingApps": "앱 로딩 중...",
         "startupBehavior": "시작 동작",
         "autoLaunch": "시작 시 자동 실행",
         "autoLaunchDesc": "로그인할 때 Artisans Compass를 자동으로 시작합니다.",
@@ -126,7 +131,27 @@
             "workApps": "작업 프로그램",
             "filterWorkApps": "작업 프로그램만 보기",
             "filterWorkAppsDesc": "타임라인 시각화에서 설정된 작업 프로그램만 표시합니다.",
-            "configuredApps": "설정된 앱"
+            "configuredApps": "설정된 앱",
+            "nextDay": "익일"
+        },
+        "softwareUpdate": {
+            "title": "소프트웨어 업데이트",
+            "statusTitle": "업데이트 상태",
+            "currentVersion": "현재 버전",
+            "checking": "업데이트 확인 중...",
+            "available": "업데이트 가능. 다운로드 중...",
+            "upToDate": "최신 버전을 사용 중입니다",
+            "downloading": "업데이트 다운로드 중",
+            "ready": "설치 준비 완료",
+            "failed": "업데이트 실패",
+            "checkForUpdates": "업데이트 확인",
+            "restartAndInstall": "재시작 및 설치"
+        },
+        "runningApps": {
+            "title": "실행 중인 앱 상세",
+            "add": "추가",
+            "added": "추가됨",
+            "scanning": "스캔 중..."
         },
         "backup": {
             "title": "백업 및 데이터",
@@ -199,7 +224,27 @@
         "jump": "이동",
         "noProjects": "프로젝트를 찾을 수 없습니다",
         "newProject": "새 프로젝트",
+        "creatingProject": "프로젝트 생성 중...",
+        "projectCreated": "프로젝트가 생성되었습니다!",
+        "projectCreateFailed": "프로젝트 생성 실패",
         "today": "오늘"
+    },
+    "update": {
+        "availableTitle": "업데이트 가능",
+        "availableDesc": "새 버전이 있습니다. 다운로드하려면 클릭하세요.",
+        "download": "다운로드",
+        "readyTitle": "업데이트 준비 완료",
+        "readyDesc": "업데이트를 적용하려면 재시작하세요.",
+        "restart": "재시작",
+        "upToDateTitle": "최신 상태",
+        "upToDateDesc": "최신 버전을 사용 중입니다.",
+        "failedTitle": "업데이트 실패",
+        "failedDesc": "업데이트 확인에 실패했습니다.",
+        "timeoutTitle": "업데이트 확인 시간 초과",
+        "timeoutDesc": "서버 응답이 늦습니다. 나중에 다시 시도하세요.",
+        "checking": "확인 중...",
+        "downloading": "다운로드 중...",
+        "error": "오류 발생"
     },
     "dashboard": {
         "todayFocus": "오늘 할일",

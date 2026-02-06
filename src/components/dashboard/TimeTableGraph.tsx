@@ -212,7 +212,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                 color: event.color
             };
         });
-    }, [sessions, date, liveSession, now, projects, activeProjectId]);
+    }, [sessions, date, liveSession, now, projects, activeProjectId, nightTimeStart]);
 
     // Calculate Summary Stats
     // 1. TIMELINE STATS (Filtered) - Calculate totalFocusTime from filtered 'sessions'
@@ -437,8 +437,8 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                                         <div className="absolute inset-0 bg-indigo-950/30 dark:bg-indigo-950/50 pointer-events-none mix-blend-multiply dark:mix-blend-overlay" />
                                                     )}
                                                     {block.isNightTime && (
-                                                        <div className="absolute top-0.5 right-0.5 z-20 opacity-50">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="8" height="8" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-indigo-200"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
+                                                        <div className="absolute top-1 right-1 z-20 opacity-100 drop-shadow-md">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-yellow-100/90"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
                                                         </div>
                                                     )}
                                                 </div>

@@ -4,12 +4,14 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
-import { Slider } from "@/components/ui/slider"
+import * as SliderPrimitive from "@radix-ui/react-slider"
+
 import { X, Pencil, GripVertical } from "lucide-react";
 import { AppSettings } from "@/types"
 import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useTranslation } from 'react-i18next';
+import { useDataStore } from "@/hooks/useDataStore";
 import {
     DndContext,
     closestCenter,
@@ -229,29 +231,48 @@ function SortableProjectType(props: {
     );
 }
 
-function NightTimeSlider({ value, onChange }: { value: number, onChange: (val: number) => void }) {
-    const [localValue, setLocalValue] = useState(value);
+function NightTimeSlider({ value, onChange, onCommit }: { value: number, onChange: (val: number) => void, onCommit: (val: number) => void }) {
+    const { t } = useTranslation();
+    const min = 18;
+    const max = 28;
 
-    useEffect(() => {
-        setLocalValue(value);
-    }, [value]);
+    const displayValue = value >= 24 ? value - 24 : value;
 
     return (
-        <Slider
-            min={18}
-            max={28}
-            step={1}
-            value={[localValue]}
-            onValueChange={(val) => {
-                setLocalValue(val[0]);
-                onChange(val[0]);
-            }}
-        />
+        <div className="bg-muted/30 p-4 rounded-lg">
+            <SliderPrimitive.Root
+                className="relative flex w-full touch-none select-none items-center cursor-pointer group pt-6 pb-2"
+                min={min}
+                max={max}
+                step={1}
+                value={[value]}
+                onValueChange={(val) => onChange(val[0])}
+                onValueCommit={(val) => onCommit(val[0])}
+            >
+                <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-secondary">
+                    <SliderPrimitive.Range className="absolute h-full bg-primary" />
+                </SliderPrimitive.Track>
+                <SliderPrimitive.Thumb className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
+                    <span className="absolute -top-7 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary bg-background border border-primary/20 px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">
+                        {displayValue}:00
+                    </span>
+                </SliderPrimitive.Thumb>
+            </SliderPrimitive.Root>
+
+            <div className="flex justify-between text-[10px] text-muted-foreground mt-2 px-1">
+                <span>18:00</span>
+                <span>{t('settings.timeline.nextDay')} 04:00</span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-3">
+                {t('settings.timeline.nightTimeStartDesc')}
+            </p>
+        </div>
     )
 }
 
 export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineTabProps) {
     const { t } = useTranslation();
+    const { previewSettings } = useDataStore();
     const [newTypeInput, setNewTypeInput] = useState("");
     const [activeDragId, setActiveDragId] = useState<string | null>(null);
     const [dragWidth, setDragWidth] = useState<number | undefined>(undefined);
@@ -264,6 +285,13 @@ export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineT
         actionLabel: string;
         onConfirm: () => void;
     } | null>(null);
+
+    // Local state for Night Time Start preview
+    const [previewTime, setPreviewTime] = useState(settings.nightTimeStart || 22);
+
+    useEffect(() => {
+        setPreviewTime(settings.nightTimeStart || 22);
+    }, [settings.nightTimeStart]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, {
@@ -583,7 +611,7 @@ export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineT
                                         })}
                                     {runningApps.length === 0 && (
                                         <div className="text-center py-4 text-xs text-muted-foreground">
-                                            Loading apps...
+                                            {t('settings.loadingApps')}
                                         </div>
                                     )}
                                 </div>
@@ -596,26 +624,19 @@ export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineT
             <div className="space-y-4">
                 <div className="flex flex-col gap-3">
                     <div className="flex items-center justify-between">
-                        <Label className="text-base font-semibold">{t('settings.appearance.nightTimeStart') || "Night Time Start"}</Label>
-                        <span className="text-xs text-muted-foreground font-mono">
-                            {(settings.nightTimeStart || 22) >= 24
-                                ? `${t('settings.appearance.nextDay') || "Next Day"} ${(settings.nightTimeStart || 22) - 24}:00`
-                                : `${settings.nightTimeStart || 22}:00`}
-                        </span>
+                        <Label className="text-base font-semibold">{t('settings.timeline.nightTimeStart')}</Label>
                     </div>
                     <div className="px-1">
                         <NightTimeSlider
-                            value={settings.nightTimeStart || 22}
-                            onChange={(val) => onSaveSettings({ ...settings, nightTimeStart: val })}
+                            value={previewTime}
+                            onChange={(val) => {
+                                setPreviewTime(val);
+                                previewSettings({ nightTimeStart: val });
+                            }}
+                            onCommit={(val) => onSaveSettings({ ...settings, nightTimeStart: val })}
                         />
-                        <div className="flex justify-between text-[10px] text-muted-foreground mt-2 px-1">
-                            <span>18:00</span>
-                            <span>04:00 (+1)</span>
-                        </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                        {t('settings.appearance.nightTimeStartDesc') || "Determines when the timeline visual style switches to night mode."}
-                    </p>
+
                 </div>
             </div>
 
