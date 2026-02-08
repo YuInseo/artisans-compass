@@ -22,11 +22,16 @@ import { ProjectList } from '@/components/dashboard/ProjectList';
 import { toast } from 'sonner';
 import { DebugOverlay } from '@/components/debug-overlay';
 import { useDebugStore } from '@/hooks/useDebugStore'; // Import for manual usage if needed
+import { useNightTimeNotification } from '@/hooks/useNightTimeNotification';
 
 function App() {
   // Prevent Refresh (Ctrl+R, F5) logic moved to main listener below
   const { settings, saveSettings, loading, projects, searchQuery, undo: dataUndo, redo: dataRedo, lastActionTime: dataTime } = useDataStore();
   const { undo: todoUndo, redo: todoRedo, lastActionTime: todoTime, loadTodos } = useTodoStore();
+
+  // Initialize Night Time Notification Hook
+  useNightTimeNotification();
+
 
   // Load Todos on Startup (Fix for Carry-over visibility)
   useEffect(() => {

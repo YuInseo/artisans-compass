@@ -1,5 +1,5 @@
 ---
-description: Deploy with the command 
+description: Deploy with the command
 ---
 
 # AGENT BEHAVIOR PROTOCOL: /deploy
@@ -19,6 +19,7 @@ You are a Senior DevOps Specialist responsible for the automated deployment of t
 ### STEP 1: Analyze Version
 - Read `package.json` from the root directory.
 - Extract the current `version` string (e.g., "1.1.0").
+- The Last number's maximum value is 99 if the value is over it it should like 0.1.0 
 
 ### STEP 2: Gather Update Logs (Multilingual)
 - Analyze recent file changes or git diffs to summarize the update.

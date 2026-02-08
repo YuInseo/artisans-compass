@@ -27,7 +27,7 @@ interface TodoItemProps {
     spellCheck?: boolean;
 }
 
-export const TodoItem: React.FC<TodoItemProps> = ({
+export const TodoItem = React.memo<TodoItemProps>(({
     todo,
     depth = 0,
     onUpdate,
@@ -48,15 +48,30 @@ export const TodoItem: React.FC<TodoItemProps> = ({
     onSelectAll,
     spellCheck = false,
     isWidgetMode = false,
-    'data-todo-id': dataTodoId
-}: TodoItemProps & { 'data-todo-id'?: string, isWidgetMode?: boolean }) => {
+    'data-todo-id': dataTodoId,
+    editorAlignment = 'left'
+}: TodoItemProps & { 'data-todo-id'?: string, isWidgetMode?: boolean, editorAlignment?: 'left' | 'center' }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [localText, setLocalText] = React.useState(todo.text);
-    const BASE_PADDING = isWidgetMode ? 24 : 76; // Reduced padding for widget mode
+    // Adjusted padding: Large (76px) only for center mode, standard (24px) for left/widget
+    const BASE_PADDING = (isWidgetMode || editorAlignment === 'left') ? 24 : 76;
 
-    // Sync local state with prop
+    // Sync local state with prop, but ONLY if not focused (to prevent overwriting user input)
+    const isFocused = focusedId === todo.id;
+    const isFocusedRef = useRef(isFocused);
+
     useEffect(() => {
-        setLocalText(todo.text);
+        isFocusedRef.current = isFocused;
+    }, [isFocused]);
+
+    useEffect(() => {
+        // If we are currently editing, ignore external updates to text to avoid flickering/reverting
+        // unless the text is completely different (optional, but for now stick to simple guard)
+        if (isFocusedRef.current) return;
+
+        if (todo.text !== localText) {
+            setLocalText(todo.text);
+        }
     }, [todo.text]);
 
     // Auto-focus logic
@@ -118,11 +133,17 @@ export const TodoItem: React.FC<TodoItemProps> = ({
             // Check if composing to avoid breaking IME selection
             if (!e.nativeEvent.isComposing) {
                 e.preventDefault(); // Prevent cursor moving to start of line repeatedly
+                if (localText !== todo.text) {
+                    onUpdate(todo.id, { text: localText }, false);
+                }
                 onNavigate?.('up', todo.id, e.shiftKey);
             }
         } else if (e.key === 'ArrowDown') {
             if (!e.nativeEvent.isComposing) {
                 e.preventDefault();
+                if (localText !== todo.text) {
+                    onUpdate(todo.id, { text: localText }, false);
+                }
                 onNavigate?.('down', todo.id, e.shiftKey);
             }
         } else if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
@@ -222,16 +243,30 @@ export const TodoItem: React.FC<TodoItemProps> = ({
             </div>
 
             {/* Content */}
-            <div className="flex-1 min-w-0 flex">
+            <div
+                className="flex-1 min-w-0 flex cursor-text"
+                onClick={(e) => {
+                    if (!isLocked && e.target === e.currentTarget) {
+                        onFocus(todo.id);
+                    }
+                }}
+            >
                 {focusedId === todo.id ? (
                     <TextareaAutosize
                         ref={textareaRef}
                         spellCheck={spellCheck}
                         value={localText}
-                        onChange={(e) => setLocalText(e.target.value)}
+                        onChange={(e) => {
+                            let val = e.target.value;
+                            // Notion-style arrow replacement
+                            val = val.replace(/->/g, '→').replace(/<-/g, '←');
+                            setLocalText(val);
+                        }}
                         onBlur={() => {
                             if (isLocked) return;
-                            if (localText !== todo.text) {
+                            if (localText.trim() === "") {
+                                onDelete(todo.id);
+                            } else if (localText !== todo.text) {
                                 onUpdate(todo.id, { text: localText }, false);
                             }
                         }}
@@ -250,7 +285,7 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                     <div
                         className={cn(
                             "bg-transparent leading-normal min-h-[1.5rem] pt-0 font-medium block h-auto whitespace-pre-wrap break-words break-all",
-                            "w-full max-w-full cursor-text",
+                            "w-fit max-w-full cursor-text", // Changed w-full to w-fit
                             todo.completed ? "line-through text-muted-foreground/60" : "text-foreground",
                             isLocked && "cursor-default"
                         )}
@@ -262,10 +297,10 @@ export const TodoItem: React.FC<TodoItemProps> = ({
                             }
                         }}
                     >
-                        {todo.text || <span className="text-muted-foreground/30 italic">New task...</span>}
+                        {localText || <span className="text-muted-foreground/30 italic">New task...</span>}
                     </div>
                 )}
             </div>
         </div>
     );
-};
+});

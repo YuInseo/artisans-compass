@@ -6,7 +6,7 @@ import { TimeTableGraph } from "./TimeTableGraph";
 import { format } from "date-fns";
 import { ScreenshotSlider } from "./ScreenshotSlider";
 import { useTodoStore } from "@/hooks/useTodoStore";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 import { TodoEditor } from "./TodoEditor";
 import { Button } from "@/components/ui/button";
 import { useTranslation } from "react-i18next";
@@ -43,9 +43,12 @@ interface DailyArchiveViewProps {
     hideCloseButton?: boolean;
     readOnly?: boolean;
     nightTimeStart?: number;
+    onDeleteTodo?: (id: string) => void;
+    onToggleTodo?: (id: string) => void;
+    onUpdateTodoText?: (id: string, text: string) => void;
 }
 
-export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false, nightTimeStart: savedNightTimeStart }: DailyArchiveViewProps) {
+export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false, nightTimeStart: savedNightTimeStart, onDeleteTodo, onToggleTodo, onUpdateTodoText }: DailyArchiveViewProps) {
     const { t } = useTranslation();
     const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
     const { carryOverTodos } = useTodoStore();
@@ -174,6 +177,10 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
     }, [filteredTodos]);
 
     const updateTodoText = (id: string, text: string) => {
+        if (onUpdateTodoText) {
+            onUpdateTodoText(id, text);
+            return;
+        }
         const newTodos = JSON.parse(JSON.stringify(todos));
         const updateRecursive = (list: Todo[]) => {
             for (const item of list) {
@@ -191,6 +198,10 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
     };
 
     const toggleTodo = (id: string) => {
+        if (onToggleTodo) {
+            onToggleTodo(id);
+            return;
+        }
         const newTodos = JSON.parse(JSON.stringify(todos));
         const toggleRecursive = (list: Todo[]) => {
             for (const item of list) {
@@ -249,7 +260,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
         return root;
     };
 
-    const handleKeyDown = (e: React.KeyboardEvent, id: string) => {
+    const handleKeyDown = (e: React.KeyboardEvent, id: string, text: string) => {
         if (e.key === 'Tab') {
             e.preventDefault();
             const action = e.shiftKey ? 'unindent' : 'indent';
@@ -260,11 +271,51 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                 const el = document.getElementById(`todo-input-${id}`);
                 el?.focus();
             }, 0);
+        } else if (e.key === 'Backspace' && text === '') {
+            e.preventDefault();
+            if (onDeleteTodo) {
+                onDeleteTodo(id);
+            }
+        } else if (e.key === 'Delete') {
+            // Only delete if explicitly pressed Delete, content doesn't matter or could strictly be if empty?
+            // Standard behavior: Delete key anywhere deletes line if empty? Or just deletes char?
+            // Let's stick to: if Shift+Delete or just Delete on empty?
+            // For safety, let's strictly follow "Backspace on empty" for now as it is standard.
+            // But user asked for "Delete". Let's allow Delete key to delete the item if it is empty OR maybe Ctrl+Delete?
+            // Let's stick to simple: Delete key deletes item if text is selected or simply if focused?
+            // Safest: Delete key behaves like Backspace if empty.
+            if (text === '') {
+                e.preventDefault();
+                if (onDeleteTodo) onDeleteTodo(id);
+            }
         }
     };
 
     const handleFetchUnchecked = async () => {
+        // Case 1: Fetch for a specific selected project
+        if (selectedProjectId !== "all") {
+            const todos = projectTodos[selectedProjectId] || [];
+            const filterIncomplete = (list: Todo[]): Todo[] => {
+                return list.filter(t => !t.completed && t.text.trim() !== "").map(t => ({
+                    ...t,
+                    carriedOver: true,
+                    children: t.children ? filterIncomplete(t.children) : []
+                }));
+            };
+            const incomplete = filterIncomplete(todos);
+
+            if (incomplete.length > 0) {
+                await carryOverTodos(incomplete, selectedProjectId);
+                toast.success(t('calendar.fetchedUnchecked'));
+            } else {
+                toast.info(t('calendar.noUnchecked'));
+            }
+            return;
+        }
+
+        // Case 2: Fetch for ALL projects (Smart Match)
         if (!projectTodos || Object.keys(projectTodos).length === 0) {
+            // Fallback for legacy data structure where todos might be flat
             const filterIncomplete = (list: Todo[]): Todo[] => {
                 return list.filter(t => !t.completed && t.text.trim() !== "").map(t => ({
                     ...t,
@@ -274,6 +325,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
             };
             const incomplete = filterIncomplete(initialTodos);
             if (incomplete.length > 0) {
+                // If it's legacy data without project ID, we might put it in general or 'none'
                 await carryOverTodos(incomplete, "none");
                 toast.success(t('calendar.fetchedUnchecked'));
             } else {
@@ -282,8 +334,19 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
             return;
         }
 
-        let hasFetched = false;
+        let fetchedCount = 0;
+        let orphanedCount = 0;
+        const currentProjectIds = new Set(projects.map(p => p.id));
+
         for (const projectId of Object.keys(projectTodos)) {
+            // Skip 'general' for now if we want to treat it separately, 
+            // but usually we want to fetch general too.
+            // However, 'general' is a valid key if we support it.
+            // If projectId is 'general', we treat it as valid.
+
+            const isGeneral = projectId === 'general';
+            const isValidProject = isGeneral || currentProjectIds.has(projectId);
+
             const todos = projectTodos[projectId];
             const filterIncomplete = (list: Todo[]): Todo[] => {
                 return list.filter(t => !t.completed && t.text.trim() !== "").map(t => ({
@@ -293,15 +356,28 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                 }));
             };
             const incomplete = filterIncomplete(todos);
+
             if (incomplete.length > 0) {
-                await carryOverTodos(incomplete, projectId);
-                hasFetched = true;
+                if (isValidProject) {
+                    await carryOverTodos(incomplete, projectId);
+                    fetchedCount += incomplete.length;
+                } else {
+                    orphanedCount += incomplete.length;
+                }
             }
         }
 
-        if (hasFetched) {
+        if (fetchedCount > 0) {
             toast.success(t('calendar.fetchedUnchecked'));
-        } else {
+        }
+
+        if (orphanedCount > 0) {
+            toast.warning(t('notifications.skippedTodos', { count: orphanedCount }), {
+                description: t('notifications.deletedProjectsDesc')
+            });
+        }
+
+        if (fetchedCount === 0 && orphanedCount === 0) {
             toast.info(t('calendar.noUnchecked'));
         }
     };
@@ -354,7 +430,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                         id={`todo-input-${todo.id}`}
                         value={todo.text}
                         onChange={(e) => updateTodoText(todo.id, e.target.value)}
-                        onKeyDown={(e) => handleKeyDown(e, todo.id)}
+                        onKeyDown={(e) => handleKeyDown(e, todo.id, todo.text)}
                         className={cn(
                             "bg-transparent border-none outline-none w-full p-0 text-sm leading-relaxed rounded px-1 transition-colors focus:bg-accent/50 focus:text-foreground",
                             todo.completed ? "text-muted-foreground line-through" : "text-foreground placeholder:text-muted-foreground/50"
@@ -382,232 +458,238 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
     const hasScreenshots = dynamicScreenshots.length > 0;
 
     return (
-        <div className={`h-full flex divide-x divide-border select-none ${className}`}>
-            {hasScreenshots && (
-                <div className="flex-[5] min-w-0 p-6 flex flex-col bg-muted/30 relative group/visual justify-center">
-                    <div className="absolute top-6 left-6 flex items-center gap-2 z-10">
-                        <h3 className="text-sm font-bold text-white/50 flex items-center gap-2 uppercase tracking-wider backdrop-blur-md bg-white/5 px-3 py-1 rounded-full border border-white/10">
-                            <Play className="w-3.5 h-3.5 text-primary" />
-                            {t('calendar.visualRecap')}
-                        </h3>
+        <div className={`h-full select-none ${className}`}>
+            <div className="h-full w-full rounded-lg border flex overflow-hidden">
+                {hasScreenshots && (
+                    <div className="flex-[4] h-full relative min-w-[200px] border-r border-border/20">
+                        <div className="h-full min-w-0 p-6 flex flex-col bg-muted/30 relative group/visual justify-center">
+                            <div className="absolute top-6 left-6 flex items-center gap-2 z-10">
+                                <h3 className="text-sm font-bold text-white/50 flex items-center gap-2 uppercase tracking-wider backdrop-blur-md bg-white/5 px-3 py-1 rounded-full border border-white/10">
+                                    <Play className="w-3.5 h-3.5 text-primary" />
+                                    {t('calendar.visualRecap')}
+                                </h3>
+                            </div>
+
+                            <div className="w-full aspect-video max-h-[80%] relative rounded-xl overflow-hidden border border-border bg-card/50 shadow-2xl">
+                                <ScreenshotSlider
+                                    images={dynamicScreenshots}
+                                    durationSeconds={timelapseDurationSeconds}
+                                    className="w-full h-full object-contain"
+                                />
+                            </div>
+                        </div>
                     </div>
+                )}
 
-                    <div className="w-full aspect-video max-h-[80%] relative rounded-xl overflow-hidden border border-white/10 bg-zinc-900/50 shadow-2xl">
-                        <ScreenshotSlider
-                            images={dynamicScreenshots}
-                            durationSeconds={timelapseDurationSeconds}
-                            className="w-full h-full object-contain"
-                        />
-                    </div>
-                </div>
-            )}
+                <div className={`${hasScreenshots ? 'flex-[4]' : 'flex-[6]'} h-full relative min-w-[300px]`}>
+                    <div className={cn(
+                        "h-full min-w-0 p-8 flex flex-col bg-muted/30 text-foreground"
+                    )}>
+                        <div className="flex items-center justify-between mb-1">
+                            <h3 className="text-xs font-bold text-zinc-500 flex items-center gap-2 uppercase tracking-widest">
+                                {t('calendar.journeyLog')}
+                            </h3>
 
-            <div className={cn(
-                "min-w-0 p-8 flex flex-col bg-muted/30 text-foreground border-l border-border/50",
-                hasScreenshots ? "flex-[4]" : "flex-[6]"
-            )}>
-                <div className="flex items-center justify-between mb-1">
-                    <h3 className="text-xs font-bold text-zinc-500 flex items-center gap-2 uppercase tracking-widest">
-                        {t('calendar.journeyLog')}
-                    </h3>
+                            <div className="flex items-center gap-2">
+                                <div className="relative">
+                                    <ContextMenu>
+                                        <ContextMenuTrigger>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-7 w-7 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary border border-primary/20 rounded-full transition-all hover:scale-105 active:scale-95"
+                                                onClick={handleFetchClick}
+                                            >
+                                                <Import size={14} strokeWidth={2.5} />
+                                            </Button>
+                                        </ContextMenuTrigger>
+                                        <ContextMenuContent>
+                                            <ContextMenuCheckboxItem
+                                                checked={autoCloseOnFetch}
+                                                onCheckedChange={toggleAutoClose}
+                                            >
+                                                {t('calendar.autoCloseOnFetch') || "Auto-close"}
+                                            </ContextMenuCheckboxItem>
+                                        </ContextMenuContent>
+                                    </ContextMenu>
 
-                    <div className="flex items-center gap-2">
-                        <div className="relative">
-                            <ContextMenu>
-                                <ContextMenuTrigger>
+                                    {showHint && (
+                                        <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 z-50 animate-in fade-in slide-in-from-right-2 duration-500 pointer-events-none">
+                                            <div className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap relative">
+                                                {t('calendar.fetchUncheckedDesc')}
+                                                <div className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-0 h-0 border-y-[6px] border-y-transparent border-l-[8px] border-l-primary" />
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {projects.length > 0 && (
+                                    <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                                        <SelectTrigger className="w-[160px] h-7 text-xs bg-muted border-border text-foreground">
+                                            <SelectValue placeholder={t('sidebar.allProjects')} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">{t('sidebar.allProjects')}</SelectItem>
+                                            {projects.map(p => (
+                                                <SelectItem key={p.id} value={p.id}>
+                                                    <span className="flex items-center gap-2">
+                                                        <span className={`w-2 h-2 rounded-full`} style={{ backgroundColor: p.color || '#3b82f6' }} />
+                                                        {p.name}
+                                                    </span>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
+                            </div>
+                        </div>
+                        <div className="text-3xl font-bold text-foreground mb-8 tracking-tight">
+                            {format(date, 'MMM dd, yyyy')}
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1 relative">
+                            {todos.length > 0 ? (
+                                <div className="bn-container">
+                                    <div className="flex flex-col gap-1">
+                                        {todos.map(t => renderTodo(t))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="text-zinc-600 text-sm italic mt-10 text-center">
+                                    {t('calendar.noActivity')}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* General Work Floating Panel */}
+                        <div className={cn(
+                            "absolute bottom-6 z-30 pointer-events-auto transition-all duration-300 ease-in-out",
+                            isGeneralOpen ? "left-6 right-6" : "left-6"
+                        )}>
+                            {/* Collapsed State: FAB Button */}
+                            {!isGeneralOpen && (
+                                <div className="animate-in fade-in zoom-in duration-300">
                                     <Button
-                                        variant="ghost"
+                                        variant="outline"
                                         size="icon"
-                                        className="h-7 w-7 bg-primary/10 text-primary hover:bg-primary/20 hover:text-primary border border-primary/20 rounded-full transition-all hover:scale-105 active:scale-95"
-                                        onClick={handleFetchClick}
+                                        className="h-14 w-14 rounded-full shadow-xl bg-card/80 backdrop-blur-md border border-border/50 hover:scale-105 transition-all group"
+                                        onClick={() => {
+                                            if (uniqueGeneralTodos.length > 0) {
+                                                setIsGeneralOpen(true);
+                                            } else {
+                                                toast.info(t('dashboard.noGeneralWork') || "진행된 일반 작업이 없습니다.");
+                                            }
+                                        }}
                                     >
-                                        <Import size={14} strokeWidth={2.5} />
+                                        <div className="relative">
+                                            <ChevronsUp className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                                            {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                                <span className="sr-only">
+                                                    {uniqueGeneralTodos.filter(t => !t.completed).length} uncompleted items
+                                                </span>
+                                            )}
+                                        </div>
                                     </Button>
-                                </ContextMenuTrigger>
-                                <ContextMenuContent>
-                                    <ContextMenuCheckboxItem
-                                        checked={autoCloseOnFetch}
-                                        onCheckedChange={toggleAutoClose}
-                                    >
-                                        {t('calendar.autoCloseOnFetch') || "Auto-close"}
-                                    </ContextMenuCheckboxItem>
-                                </ContextMenuContent>
-                            </ContextMenu>
+                                </div>
+                            )}
 
-                            {showHint && (
-                                <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 z-50 animate-in fade-in slide-in-from-right-2 duration-500 pointer-events-none">
-                                    <div className="bg-primary text-primary-foreground text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap relative">
-                                        {t('calendar.fetchUncheckedDesc')}
-                                        <div className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-0 h-0 border-y-[6px] border-y-transparent border-l-[8px] border-l-primary" />
+                            {/* Expanded State: Full Panel */}
+                            {isGeneralOpen && (
+                                <div className="bg-card/95 backdrop-blur-md shadow-2xl border border-border/50 rounded-xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col max-h-[500px]">
+                                    {/* Header */}
+                                    <div
+                                        className="flex items-center gap-2 p-3 cursor-pointer select-none transition-colors hover:bg-muted/30 border-b border-border/40"
+                                        onClick={() => setIsGeneralOpen(false)}
+                                    >
+                                        <div className={cn(
+                                            "p-1.5 rounded-full transition-colors flex items-center justify-center text-primary bg-primary/10"
+                                        )}>
+                                            <ChevronDown className="w-4 h-4" />
+                                        </div>
+
+                                        <div className="flex items-center gap-2 flex-1">
+                                            <Briefcase className="w-4 h-4 text-primary" />
+                                            <span className="text-sm font-semibold text-foreground">
+                                                {t('dashboard.generalWork') || "일반 작업"}
+                                            </span>
+                                            {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
+                                                    {uniqueGeneralTodos.filter(t => !t.completed).length}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {/* Mini Progress Bar */}
+                                        <div className="w-24 h-1.5 bg-muted/50 rounded-full overflow-hidden mr-1">
+                                            <div className="h-full bg-primary/60 transition-all duration-500" style={{ width: `${uniqueGeneralCompletion}%` }} />
+                                        </div>
+                                    </div>
+
+                                    {/* Content */}
+                                    <div className="overflow-y-auto custom-scrollbar bg-background/50 flex-1 min-h-0">
+                                        <div className="p-2 pl-1">
+                                            <TodoEditor
+                                                key="general-archive-section"
+                                                todos={uniqueGeneralTodos}
+                                                isWidgetMode={false}
+                                                isWidgetLocked={readOnly}
+                                                actions={{
+                                                    addTodo: (text, parentId, afterId) => {
+                                                        if (!readOnly && (window as any).ipcRenderer) return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
+                                                        return "";
+                                                    },
+                                                    updateTodo: (id, updates) => { if (!readOnly) useTodoStore.getState().updateTodo(id, updates, false, 'general'); },
+                                                    deleteTodo: (id) => { if (!readOnly) useTodoStore.getState().deleteTodo(id, 'general'); },
+                                                    deleteTodos: (ids) => { if (!readOnly) useTodoStore.getState().deleteTodos(ids, 'general'); },
+
+                                                    indentTodo: (id) => { if (!readOnly) useTodoStore.getState().indentTodo(id, 'general'); },
+                                                    unindentTodo: (id) => { if (!readOnly) useTodoStore.getState().unindentTodo(id, 'general'); },
+                                                    moveTodo: (id, pid, idx) => { if (!readOnly) useTodoStore.getState().moveTodo(id, pid, idx, 'general'); },
+                                                    moveTodos: (ids, pid, idx) => { if (!readOnly) useTodoStore.getState().moveTodos(ids, pid, idx, 'general'); },
+                                                }}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             )}
                         </div>
 
-                        {projects.length > 0 && (
-                            <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-                                <SelectTrigger className="w-[160px] h-7 text-xs bg-zinc-800 border-zinc-700 text-zinc-300">
-                                    <SelectValue placeholder={t('sidebar.allProjects')} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">{t('sidebar.allProjects')}</SelectItem>
-                                    {projects.map(p => (
-                                        <SelectItem key={p.id} value={p.id}>
-                                            <span className="flex items-center gap-2">
-                                                <span className={`w-2 h-2 rounded-full`} style={{ backgroundColor: p.color || '#3b82f6' }} />
-                                                {p.name}
-                                            </span>
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        )}
                     </div>
                 </div>
-                <div className="text-3xl font-bold text-foreground mb-8 tracking-tight">
-                    {format(date, 'MMM dd, yyyy')}
-                </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-1 relative">
-                    {todos.length > 0 ? (
-                        <div className="bn-container">
-                            <div className="flex flex-col gap-1">
-                                {todos.map(t => renderTodo(t))}
-                            </div>
+                <div className={`${hasScreenshots ? 'flex-[3]' : 'flex-[4]'} h-full relative min-w-[200px]`}>
+                    <div className={cn(
+                        "h-full min-w-0 p-0 flex flex-col bg-card overflow-hidden"
+                    )}>
+                        <div className="p-4 bg-card border-b border-border flex justify-between items-center shrink-0">
+                            <h3 className="text-sm font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
+                                <Clock className="w-4 h-4 text-blue-500" />
+                                {t('dashboard.timeTable')}
+                            </h3>
                         </div>
-                    ) : (
-                        <div className="text-zinc-600 text-sm italic mt-10 text-center">
-                            {t('calendar.noActivity')}
+
+                        <div className="flex-1 overflow-hidden relative">
+                            <TimeTableGraph sessions={sessions} date={date} projects={projects} nightTimeStart={nightTimeStart} />
                         </div>
-                    )}
-                </div>
 
-                {/* General Work Floating Panel */}
-                <div className={cn(
-                    "absolute bottom-6 z-30 pointer-events-auto transition-all duration-300 ease-in-out",
-                    isGeneralOpen ? "left-6 right-6" : "left-6"
-                )}>
-                    {/* Collapsed State: FAB Button */}
-                    {!isGeneralOpen && (
-                        <div className="animate-in fade-in zoom-in duration-300">
-                            <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-14 w-14 rounded-full shadow-xl bg-card/80 backdrop-blur-md border border-border/50 hover:scale-105 transition-all group"
-                                onClick={() => {
-                                    if (uniqueGeneralTodos.length > 0) {
-                                        setIsGeneralOpen(true);
-                                    } else {
-                                        toast.info(t('dashboard.noGeneralWork') || "진행된 일반 작업이 없습니다.");
-                                    }
-                                }}
-                            >
-                                <div className="relative">
-                                    <ChevronsUp className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                                    {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
-                                        <span className="sr-only">
-                                            {uniqueGeneralTodos.filter(t => !t.completed).length} uncompleted items
-                                        </span>
-                                    )}
+                        <div className="p-4 pt-2 flex flex-col gap-3 bg-card shrink-0 pb-6 border-t border-border mt-auto">
+                            {!hideCloseButton && onClose && (
+                                <button
+                                    onClick={onClose}
+                                    className="w-full py-3 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-bold text-sm transition-colors uppercase tracking-wider border border-primary/20"
+                                >
+                                    {t('calendar.closeArchive')}
+                                </button>
+                            )}
+
+                            {stats.questAchieved && (
+                                <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3 flex items-center justify-start gap-2 shadow-sm">
+                                    <CheckCircle2 className="w-5 h-5 text-green-600 fill-green-100 dark:text-green-400 dark:fill-green-900" />
+                                    <span className="text-sm font-extrabold text-green-700 dark:text-green-400 tracking-wide">{t('calendar.questClear')}</span>
                                 </div>
-                            </Button>
+                            )}
                         </div>
-                    )}
-
-                    {/* Expanded State: Full Panel */}
-                    {isGeneralOpen && (
-                        <div className="bg-card/95 backdrop-blur-md shadow-2xl border border-border/50 rounded-xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col max-h-[500px]">
-                            {/* Header */}
-                            <div
-                                className="flex items-center gap-2 p-3 cursor-pointer select-none transition-colors hover:bg-muted/30 border-b border-border/40"
-                                onClick={() => setIsGeneralOpen(false)}
-                            >
-                                <div className={cn(
-                                    "p-1.5 rounded-full transition-colors flex items-center justify-center text-primary bg-primary/10"
-                                )}>
-                                    <ChevronDown className="w-4 h-4" />
-                                </div>
-
-                                <div className="flex items-center gap-2 flex-1">
-                                    <Briefcase className="w-4 h-4 text-primary" />
-                                    <span className="text-sm font-semibold text-foreground">
-                                        {t('dashboard.generalWork') || "일반 작업"}
-                                    </span>
-                                    {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
-                                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
-                                            {uniqueGeneralTodos.filter(t => !t.completed).length}
-                                        </span>
-                                    )}
-                                </div>
-
-                                {/* Mini Progress Bar */}
-                                <div className="w-24 h-1.5 bg-muted/50 rounded-full overflow-hidden mr-1">
-                                    <div className="h-full bg-primary/60 transition-all duration-500" style={{ width: `${uniqueGeneralCompletion}%` }} />
-                                </div>
-                            </div>
-
-                            {/* Content */}
-                            <div className="overflow-y-auto custom-scrollbar bg-background/50 flex-1 min-h-0">
-                                <div className="p-2 pl-1">
-                                    <TodoEditor
-                                        key="general-archive-section"
-                                        todos={uniqueGeneralTodos}
-                                        isWidgetMode={false}
-                                        isWidgetLocked={readOnly}
-                                        actions={{
-                                            addTodo: (text, parentId, afterId) => {
-                                                if (!readOnly && (window as any).ipcRenderer) return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
-                                                return "";
-                                            },
-                                            updateTodo: (id, updates) => { if (!readOnly) useTodoStore.getState().updateTodo(id, updates, false, 'general'); },
-                                            deleteTodo: (id) => { if (!readOnly) useTodoStore.getState().deleteTodo(id, 'general'); },
-                                            deleteTodos: (ids) => { if (!readOnly) useTodoStore.getState().deleteTodos(ids, 'general'); },
-
-                                            indentTodo: (id) => { if (!readOnly) useTodoStore.getState().indentTodo(id, 'general'); },
-                                            unindentTodo: (id) => { if (!readOnly) useTodoStore.getState().unindentTodo(id, 'general'); },
-                                            moveTodo: (id, pid, idx) => { if (!readOnly) useTodoStore.getState().moveTodo(id, pid, idx, 'general'); },
-                                            moveTodos: (ids, pid, idx) => { if (!readOnly) useTodoStore.getState().moveTodos(ids, pid, idx, 'general'); },
-                                        }}
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-            </div>
-
-            <div className={cn(
-                "min-w-0 p-0 flex flex-col bg-card overflow-hidden border-l border-border",
-                hasScreenshots ? "flex-[3]" : "flex-[4]"
-            )}>
-                <div className="p-4 bg-card border-b border-border flex justify-between items-center shrink-0">
-                    <h3 className="text-sm font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
-                        <Clock className="w-4 h-4 text-blue-500" />
-                        {t('dashboard.timeTable')}
-                    </h3>
-                </div>
-
-                <div className="flex-1 overflow-hidden relative">
-                    <TimeTableGraph sessions={sessions} date={date} projects={projects} nightTimeStart={nightTimeStart} />
-                </div>
-
-                <div className="p-4 pt-2 flex flex-col gap-3 bg-card shrink-0 pb-6 border-t border-border mt-auto">
-                    {!hideCloseButton && onClose && (
-                        <button
-                            onClick={onClose}
-                            className="w-full py-3 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary font-bold text-sm transition-colors uppercase tracking-wider border border-primary/20"
-                        >
-                            {t('calendar.closeArchive')}
-                        </button>
-                    )}
-
-                    {stats.questAchieved && (
-                        <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-3 flex items-center justify-start gap-2 shadow-sm">
-                            <CheckCircle2 className="w-5 h-5 text-green-600 fill-green-100 dark:text-green-400 dark:fill-green-900" />
-                            <span className="text-sm font-extrabold text-green-700 dark:text-green-400 tracking-wide">{t('calendar.questClear')}</span>
-                        </div>
-                    )}
+                    </div>
                 </div>
             </div>
         </div>

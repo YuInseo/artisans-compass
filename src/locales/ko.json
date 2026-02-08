@@ -132,7 +132,18 @@
             "filterWorkApps": "작업 프로그램만 보기",
             "filterWorkAppsDesc": "타임라인 시각화에서 설정된 작업 프로그램만 표시합니다.",
             "configuredApps": "설정된 앱",
-            "nextDay": "익일"
+            "ignoredApps": "작업 외 프로그램",
+            "ignoredAppsDesc": "이 프로그램들은 작업 시간 계산에서 제외되거나 특정 보기에서 숨겨집니다.",
+            "ignoredAppsColor": "표시 색상",
+            "nextDay": "익일",
+            "enableUnresolvedNotification": "미완료 할 일 알림",
+            "enableUnresolvedNotificationDesc": "야간 시간이 시작될 때 완료되지 않은 작업이 있으면 푸시 알림을 받습니다.",
+            "testNotificationTitle": "테스트 알림",
+            "testNotificationBody": "시스템 알림이 정상적으로 작동 중입니다.",
+            "testNotificationSent": "알림 발송 완료! 안 보인다면 '방해 금지 모드'를 확인하세요.",
+            "testNotificationCheckTaskbar": "작업 표시줄의 알림 센터(종 모양)를 확인해보세요.",
+            "testNotificationFailed": "알림 발송 실패",
+            "testNotificationFallback": "웹 알림으로 발송됨 (시스템 알림 실패)"
         },
         "softwareUpdate": {
             "title": "소프트웨어 업데이트",
@@ -151,7 +162,9 @@
             "title": "실행 중인 앱 상세",
             "add": "추가",
             "added": "추가됨",
-            "scanning": "스캔 중..."
+            "scanning": "스캔 중...",
+            "noAppsConfigured": "구성된 앱이 없습니다",
+            "placeholder": "프로세스 이름 추가 (예: Code.exe)..."
         },
         "backup": {
             "title": "백업 및 데이터",
@@ -282,7 +295,10 @@
         "no": "아니오",
         "timeTable": "타임테이블",
         "workingOn": "진행 중...",
-        "timer": "집중 타이머"
+        "timer": "집중 타이머",
+        "lockPosition": "위치 잠금",
+        "autoHideHeader": "헤더 자동 숨김",
+        "autoHeight": "자동 높이 조절"
     },
     "calendar": {
         "today": "오늘",
@@ -404,5 +420,17 @@
         "noData": "기록된 활동이 없습니다.",
         "analyze": "활동 분석",
         "buttonLabel": "활동 분석"
+    },
+    "notifications": {
+        "title": "알림",
+        "empty": "알림이 없습니다",
+        "markAllRead": "모두 읽음으로 표시",
+        "clearAll": "모두 지우기",
+        "noNew": "새로운 알림이 없습니다",
+        "caughtUp": "모든 알림을 확인했습니다!",
+        "skippedTodos": "삭제된 프로젝트에서 {{count}}개의 할 일을 건너뛰었습니다.",
+        "deletedProjectsDesc": "이 프로젝트들은 더 이상 워크스페이스에 존재하지 않습니다.",
+        "unresolvedTodosTitle": "야간 시간 시작 🌙",
+        "unresolvedTodosBody": "{{count}}개의 할 일이 남아있습니다!"
     }
 }

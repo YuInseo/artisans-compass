@@ -26,7 +26,7 @@ interface TodoStore {
     unindentTodo: (id: string, targetProjectId?: string) => void;
     moveTodo: (activeId: string, parentId: string | null, index: number, targetProjectId?: string) => void;
     moveTodos: (activeIds: string[], parentId: string | null, index: number, targetProjectId?: string) => void;
-    clearUntitledTodos: () => void;
+    clearUntitledTodos: (targetProjectId?: string) => void;
 
     // Persistence
     loadTodos: () => Promise<void>;
@@ -89,45 +89,108 @@ export const insertNode = (list: Todo[], parentId: string | null, afterId: strin
             copy.splice(idx + 1, 0, newNode);
             return copy;
         }
-        return list.map(item => item.children ? { ...item, children: insertNode(item.children, null, afterId, newNode) } : item);
+        // If not found, append? Or fallback to children check? 
+        // Original logic: "return list.map..." implying recursive check if not found at top level?
+        // Wait, "parentId === null" means insert at top level. 
+        // If "afterId" is not found in top level, should we look deeper?
+        // The original logic did: "return list.map..." 
+        // This implies "parentId === null" really means "Parent is ROOT, but afterId might be anywhere?"
+        // No, typically parentId=null means Root.
+        // Let's keep original logic structure but optimize.
+
+        let hasChanges = false;
+        const mapped = list.map(item => {
+            if (item.children) {
+                const newChildren = insertNode(item.children, null, afterId, newNode);
+                if (newChildren !== item.children) {
+                    hasChanges = true;
+                    return { ...item, children: newChildren };
+                }
+            }
+            return item;
+        });
+        return hasChanges ? mapped : list;
     }
-    return list.map(item => {
+
+    // parentId is set
+    let hasChanges = false;
+    const mapped = list.map(item => {
         if (item.id === parentId) {
+            hasChanges = true;
             let newChildren = item.children || [];
-            if (afterId === parentId) newChildren = [newNode, ...newChildren];
-            else if (afterId) {
+            if (afterId === parentId) {
+                newChildren = [newNode, ...newChildren];
+            } else if (afterId) {
                 const idx = newChildren.findIndex(c => c.id === afterId);
                 if (idx !== -1) {
                     const copy = [...newChildren];
                     copy.splice(idx + 1, 0, newNode);
                     newChildren = copy;
-                } else newChildren = [...newChildren, newNode];
-            } else newChildren = [...newChildren, newNode];
+                } else {
+                    newChildren = [...newChildren, newNode];
+                }
+            } else {
+                newChildren = [...newChildren, newNode];
+            }
             return { ...item, children: newChildren, isCollapsed: false };
         }
-        if (item.children) return { ...item, children: insertNode(item.children, parentId, afterId, newNode) };
+
+        if (item.children) {
+            const newChildren = insertNode(item.children, parentId, afterId, newNode);
+            if (newChildren !== item.children) {
+                hasChanges = true;
+                return { ...item, children: newChildren };
+            }
+        }
         return item;
     });
+    return hasChanges ? mapped : list;
 };
 
 export const updateNode = (list: Todo[], id: string, updates: Partial<Todo>): Todo[] => {
-    return list.map(item => {
+    let hasChanges = false;
+    const newList = list.map(item => {
         if (item.id === id) {
+            hasChanges = true;
             return { ...item, ...updates };
         }
         if (item.children) {
-            return { ...item, children: updateNode(item.children, id, updates) };
+            const newChildren = updateNode(item.children, id, updates);
+            if (newChildren !== item.children) {
+                hasChanges = true;
+                return { ...item, children: newChildren };
+            }
         }
         return item;
     });
+    return hasChanges ? newList : list;
+};
+
+// Helper for deleteNode
+const deleteNodeRecursive = (list: Todo[], id: string): { nodes: Todo[], changed: boolean } => {
+    let changed = false;
+    const newNodes = list.reduce((acc: Todo[], item) => {
+        if (item.id === id) {
+            changed = true;
+            return acc;
+        }
+        if (item.children) {
+            const result = deleteNodeRecursive(item.children, id);
+            if (result.changed) {
+                changed = true;
+                acc.push({ ...item, children: result.nodes });
+                return acc;
+            }
+        }
+        acc.push(item);
+        return acc;
+    }, [] as Todo[]);
+    return { nodes: newNodes, changed };
 };
 
 export const deleteNode = (list: Todo[], id: string): Todo[] => {
-    return list.filter(item => {
-        if (item.id === id) return false;
-        if (item.children) item.children = deleteNode(item.children, id);
-        return true;
-    });
+    const { nodes, changed } = deleteNodeRecursive(list, id);
+    return changed ? nodes : list;
 };
 
 export const indentNode = (list: Todo[], id: string): Todo[] => {
@@ -145,7 +208,19 @@ export const indentNode = (list: Todo[], id: string): Todo[] => {
         newList[idx - 1] = updatedPrev;
         return newList;
     }
-    return list.map(item => item.children ? { ...item, children: indentNode(item.children, id) } : item);
+
+    let hasChanges = false;
+    const mapped = list.map(item => {
+        if (item.children) {
+            const newChildren = indentNode(item.children, id);
+            if (newChildren !== item.children) {
+                hasChanges = true;
+                return { ...item, children: newChildren };
+            }
+        }
+        return item;
+    });
+    return hasChanges ? mapped : list;
 };
 
 export const unindentNode = (list: Todo[], id: string): Todo[] => {
@@ -177,8 +252,6 @@ export const unindentNode = (list: Todo[], id: string): Todo[] => {
     const res = findParentAndMove(list);
     return res.success ? res.nodes : list;
 };
-
-// --- Move Helper ---
 export const moveNodes = (list: Todo[], activeIds: string[], parentId: string | null, index: number): Todo[] => {
     const movedNodes: Todo[] = [];
     // 1. Collect and Remove (Preserving tree order)
@@ -486,10 +559,11 @@ export const useTodoStore = create<TodoStore>()(
                 saveToIPC({ ...projectTodos, [projectIdToUse]: nextTodos });
             },
 
-            clearUntitledTodos: () => {
+            clearUntitledTodos: (targetProjectId) => {
                 get().addToHistory();
                 const { activeProjectId, projectTodos } = get();
-                const currentTodos = projectTodos[activeProjectId] || [];
+                const projectIdToUse = targetProjectId || activeProjectId;
+                const currentTodos = projectTodos[projectIdToUse] || [];
 
                 const filterEmpty = (list: Todo[]): Todo[] => {
                     return list.filter(t => {
@@ -500,8 +574,8 @@ export const useTodoStore = create<TodoStore>()(
                 };
 
                 const newTodos = filterEmpty(currentTodos);
-                set({ projectTodos: { ...projectTodos, [activeProjectId]: newTodos } });
-                saveToIPC({ ...projectTodos, [activeProjectId]: newTodos });
+                set({ projectTodos: { ...projectTodos, [projectIdToUse]: newTodos } });
+                saveToIPC({ ...projectTodos, [projectIdToUse]: newTodos });
             },
 
             moveTodo: (activeId: string, parentId: string | null, index: number, targetProjectId?: string) => {
@@ -596,11 +670,16 @@ export const useTodoStore = create<TodoStore>()(
                 const { projectTodos, addToHistory, saveTodos } = get();
                 addToHistory();
 
-                const currentTodos = projectTodos[projectId] || [];
+                let currentTodos = projectTodos[projectId] || [];
+
+                // Filter out empty placeholder tasks (text is empty and no children)
+                // This prevents the "New task" created by TodoEditor auto-init from staying at the top
+                currentTodos = currentTodos.filter(t => t.text.trim() !== '' || (t.children && t.children.length > 0));
+
                 const existingIds = new Set(currentTodos.map(t => t.id));
                 const toAdd = todos.filter(t => !existingIds.has(t.id));
 
-                if (toAdd.length === 0) return;
+                if (toAdd.length === 0 && currentTodos.length === (projectTodos[projectId] || []).length) return;
 
                 const newTodos = [...currentTodos, ...toAdd];
 

@@ -359,4 +359,41 @@ export function setupStorageHandlers(getTrackerState?: () => any) {
 
     // Also expose a helper to get data path for debugging
     ipcMain.handle('get-user-data-path', () => getUserDataPath());
+
+    // App History
+    ipcMain.handle('get-app-history', () => {
+        return getAppHistory();
+    });
+}
+
+export function getAppHistory() {
+    const userDataPath = getUserDataPath();
+    const uniqueApps = new Set<string>();
+
+    try {
+        const files = fs.readdirSync(userDataPath).filter(f => f.startsWith('daily_log_') && f.endsWith('.json'));
+
+        files.forEach(file => {
+            const filePath = path.join(userDataPath, file);
+            try {
+                // Read file manually to avoid type issues with generic readJson if not needed
+                const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+                Object.values(data).forEach((dayData: any) => {
+                    if (dayData.sessions && Array.isArray(dayData.sessions)) {
+                        dayData.sessions.forEach((session: any) => {
+                            if (session.process) {
+                                uniqueApps.add(session.process);
+                            }
+                        });
+                    }
+                });
+            } catch (e) {
+                // Ignore read errors for individual files
+            }
+        });
+    } catch (e) {
+        console.error("Failed to read app history:", e);
+    }
+
+    return Array.from(uniqueApps).sort();
 }

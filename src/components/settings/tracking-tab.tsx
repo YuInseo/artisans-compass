@@ -190,7 +190,7 @@ export function TrackingTab({ settings, onSaveSettings, screenSources }: Trackin
 
                                             <div className="flex gap-2">
                                                 <Input
-                                                    placeholder="Add Process Name (e.g. Photoshop.exe)"
+                                                    placeholder={t('settings.runningApps.placeholder')}
                                                     className="flex-1 h-8 text-xs bg-background"
                                                     onKeyDown={(e) => {
                                                         if (e.key === 'Enter') {

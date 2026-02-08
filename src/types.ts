@@ -23,6 +23,7 @@ export interface AppSettings {
     };
     widgetOpacity?: number; // 0.1 to 1.0
     widgetDisplayMode?: 'none' | 'quote' | 'goals' | 'timer'; // default: 'none'
+    widgetBounds?: { x: number; y: number; width: number; height: number };
     widgetPositionLocked?: boolean; // default: false
     widgetHeaderAutoHide?: boolean; // default: false
     widgetMaxHeight?: number; // default: 800
@@ -63,10 +64,15 @@ export interface AppSettings {
     customCSS?: string; // User-defined CSS injection
     customThemes?: { id: string; name: string; css: string }[];
     workApps?: string[]; // List of app names to filter timeline by
+    knownApps?: AppInfo[]; // History of detected apps
+    ignoredApps?: string[]; // List of app names to exclude or mark as non-work
+    ignoredAppsColor?: string; // Color override for ignored apps in visualization
     filterTimelineByWorkApps?: boolean; // default: false
     nightTimeStart?: number; // default: 22 (10 PM)
+    enableUnresolvedTodoNotifications?: boolean; // default: false
     mainTheme?: 'dark' | 'light' | 'system';
     widgetTheme?: 'dark' | 'light' | 'system';
+    editorAlignment?: 'left' | 'center'; // default: 'left'
     customQuotes?: string[]; // User defined quotes
 }
 
@@ -124,4 +130,11 @@ export interface MonitorInfo {
     id: string; // InstanceName
     name: string; // UserFriendlyName
     manufacturer: string; // ManufacturerName
+}
+
+export interface AppInfo {
+    id?: string;
+    name: string;
+    process: string;
+    appIcon?: string;
 }

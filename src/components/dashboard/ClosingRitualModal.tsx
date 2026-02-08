@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { format } from "date-fns";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 // import {
@@ -33,37 +34,45 @@ interface ClosingRitualModalProps {
 
 
 // --- Leftover Render Helper ---
-const LeftoverList = ({ todos, depth = 0, movedIds, onMove }: { todos: Todo[], depth?: number, movedIds: Set<string>, onMove: (t: Todo) => void }) => {
+const LeftoverList = React.memo(({ todos, depth = 0, movedIds, selectedIds, onMove }: { todos: Todo[], depth?: number, movedIds: Set<string>, selectedIds: Set<string>, onMove: (t: Todo) => void }) => {
     return (
         <div className="flex flex-col gap-1">
             {todos.map(t => {
                 if (movedIds.has(t.id)) return null;
+                const isSelected = selectedIds.has(t.id);
                 return (
                     <div key={t.id} className="flex flex-col">
                         <div
-                            onClick={() => onMove(t)}
+                            data-todo-id={t.id}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onMove(t);
+                            }}
                             className={`
                                 group flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer 
-                                hover:bg-accent/50 transition-colors select-none
-                                border border-transparent hover:border-border/50
+                                transition-colors select-none
+                                border border-transparent 
+                                ${isSelected
+                                    ? 'bg-primary/20 hover:bg-primary/30'
+                                    : 'hover:bg-accent/50 hover:border-border/50'}
                             `}
                             style={{ marginLeft: depth * 16 }}
                         >
-                            <div className="w-1.5 h-1.5 rounded-full bg-muted-foreground/40 group-hover:bg-primary transition-colors" />
-                            <span className="text-sm text-foreground/80 group-hover:text-foreground truncate flex-1">
+                            <div className={`w-1.5 h-1.5 rounded-full transition-colors ${isSelected ? 'bg-primary' : 'bg-muted-foreground/40 group-hover:bg-primary'}`} />
+                            <span className={`text-sm truncate flex-1 ${isSelected ? 'text-primary font-medium' : 'text-foreground/80 group-hover:text-foreground'}`}>
                                 {t.text || "Untitled"}
                             </span>
-                            <ArrowRight className="w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity -ml-2 group-hover:ml-0" />
+                            <ArrowRight className={`w-3 h-3 text-muted-foreground transition-opacity -ml-2 group-hover:ml-0 ${isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`} />
                         </div>
                         {t.children && t.children.length > 0 && (
-                            <LeftoverList todos={t.children} depth={depth + 1} movedIds={movedIds} onMove={onMove} />
+                            <LeftoverList todos={t.children} depth={depth + 1} movedIds={movedIds} selectedIds={selectedIds} onMove={onMove} />
                         )}
                     </div>
                 );
             })}
         </div>
     );
-};
+});
 
 
 import { useTranslation } from "react-i18next";
@@ -141,9 +150,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                 const now = new Date();
                 const tomorrow = new Date(now);
                 tomorrow.setDate(tomorrow.getDate() + 1);
-                // Adjust for timezone offset to match the simple YYYY-MM-DD format used elsewhere
-                const offset = tomorrow.getTimezoneOffset();
-                const localTomorrow = new Date(tomorrow.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
+                const localTomorrow = format(tomorrow, 'yyyy-MM-dd');
 
                 // We need to access the store's loadTodosForDate function. 
                 // Since it's not destructured above, we need to add it or use the store directly if possible.
@@ -162,10 +169,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                     try {
                         // Use local date for today
                         const today = new Date();
-                        const offset = today.getTimezoneOffset();
-                        const localToday = new Date(today.getTime() - (offset * 60 * 1000)).toISOString().split('T')[0];
-
-                        const dateStr = localToday; // Simple local calculation
+                        const dateStr = format(today, 'yyyy-MM-dd');
 
                         const latestLog = await (window as any).ipcRenderer.invoke('get-daily-log', dateStr);
                         if (latestLog) {
@@ -295,27 +299,158 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
     // Sync Handler for Blueprint
 
 
-    // --- Move Handler ---
-    const handleMoveLeftover = (todo: Todo) => {
-        // Add to Right Panel (Tomorrow Plans)
-        setTomorrowPlans(prev => {
-            const currentList = prev[selectedProjectId] || [];
-            // Clone the todo
-            const clone = JSON.parse(JSON.stringify(todo));
-            return {
-                ...prev,
-                [selectedProjectId]: [...currentList, clone]
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+    // --- Actions for Right Panel ---
+    const actions = useMemo(() => ({
+        addTodo: (text: string, parentId?: string | null, afterId?: string | null) => {
+            const newTodo: Todo = {
+                id: uuidv4(),
+                text,
+                completed: false,
+                children: [],
+                isCollapsed: false
             };
+            setTomorrowPlans(prev => {
+                const list = prev[selectedProjectId] || [];
+                return { ...prev, [selectedProjectId]: insertNode(list, parentId || null, afterId || null, newTodo) };
+            });
+            return newTodo.id;
+        },
+        updateTodo: (id: string, updates: Partial<Todo>) => {
+            setTomorrowPlans(prev => {
+                const list = prev[selectedProjectId] || [];
+                return { ...prev, [selectedProjectId]: updateNode(list, id, updates) };
+            });
+        },
+        deleteTodo: (id: string) => {
+            setTomorrowPlans(prev => {
+                const list = prev[selectedProjectId] || [];
+                return { ...prev, [selectedProjectId]: deleteNode(list, id) };
+            });
+        },
+        deleteTodos: (ids: string[]) => {
+            setTomorrowPlans(prev => {
+                const list = prev[selectedProjectId] || [];
+                let newList = list;
+                ids.forEach(id => {
+                    newList = deleteNode(newList, id);
+                });
+                return { ...prev, [selectedProjectId]: newList };
+            });
+        },
+        indentTodo: (id: string) => {
+            setTomorrowPlans(prev => {
+                const list = prev[selectedProjectId] || [];
+                return { ...prev, [selectedProjectId]: indentNode(list, id) };
+            });
+        },
+        unindentTodo: (id: string) => {
+            setTomorrowPlans(prev => {
+                const list = prev[selectedProjectId] || [];
+                return { ...prev, [selectedProjectId]: unindentNode(list, id) };
+            });
+        },
+        moveTodo: (activeId: string, parentId: string | null, index: number) => {
+            setTomorrowPlans(prev => {
+                const list = prev[selectedProjectId] || [];
+                return { ...prev, [selectedProjectId]: moveNodes(list, [activeId], parentId, index) };
+            });
+        },
+        moveTodos: (activeIds: string[], parentId: string | null, index: number) => {
+            setTomorrowPlans(prev => {
+                const list = prev[selectedProjectId] || [];
+                return { ...prev, [selectedProjectId]: moveNodes(list, activeIds, parentId, index) };
+            });
+        }
+    }), [selectedProjectId]);
+
+
+    const [selectionBox, setSelectionBox] = useState<{ startX: number, startY: number, currentX: number, currentY: number } | null>(null);
+    const leftoverContainerRef = useRef<HTMLDivElement>(null);
+
+    // --- Selection Handlers ---
+    useEffect(() => {
+        if (!selectionBox) return;
+
+        const handleSelectionMove = (e: PointerEvent) => {
+            if (!leftoverContainerRef.current) return;
+
+            const containerRect = leftoverContainerRef.current.getBoundingClientRect();
+            // Calculate coordinates relative to the container
+            const currentX = e.clientX - containerRect.left;
+            const currentY = e.clientY - containerRect.top + leftoverContainerRef.current.scrollTop;
+
+            setSelectionBox(prev => prev ? { ...prev, currentX, currentY } : null);
+
+            const rect = {
+                left: Math.min(selectionBox.startX, currentX),
+                top: Math.min(selectionBox.startY, currentY),
+                width: Math.abs(currentX - selectionBox.startX),
+                height: Math.abs(currentY - selectionBox.startY)
+            };
+
+            const elements = leftoverContainerRef.current.querySelectorAll('[data-todo-id]');
+            const newSelected = new Set<string>();
+
+            elements.forEach((el) => {
+                const htmlEl = el as HTMLElement;
+                // Get element position relative to container, accounting for scroll
+                const elTop = htmlEl.offsetTop;
+                const elHeight = htmlEl.offsetHeight;
+
+                // Vertical-only intersection check
+                // We check if the element's vertical range overlaps with the selection box's vertical range
+                const isIntersecting = !(
+                    rect.top >= elTop + elHeight ||
+                    rect.top + rect.height <= elTop
+                );
+
+                if (isIntersecting) {
+                    const id = el.getAttribute('data-todo-id');
+                    if (id) newSelected.add(id);
+                }
+            });
+
+            setSelectedIds(newSelected);
+        };
+
+        const handleSelectionEnd = () => {
+            setSelectionBox(null);
+        };
+
+        window.addEventListener('pointermove', handleSelectionMove);
+        window.addEventListener('pointerup', handleSelectionEnd);
+
+        return () => {
+            window.removeEventListener('pointermove', handleSelectionMove);
+            window.removeEventListener('pointerup', handleSelectionEnd);
+        };
+    }, [selectionBox]);
+
+    const handleSelectionStart = (e: React.PointerEvent) => {
+        const target = e.target as HTMLElement;
+        // If clicking directly on a todo item (or its children), ignore drag start 
+        // (unless it's the margin/padding, but our click handler is on the main div)
+        // Actually, we want to allow drag start from empty space.
+        if (target.closest('[data-todo-id]')) return;
+
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+
+        if (!leftoverContainerRef.current) return;
+        const containerRect = leftoverContainerRef.current.getBoundingClientRect();
+
+        const startX = e.clientX - containerRect.left;
+        const startY = e.clientY - containerRect.top + leftoverContainerRef.current.scrollTop;
+
+        setSelectionBox({
+            startX,
+            startY,
+            currentX: startX,
+            currentY: startY
         });
-
-        // Mark as moved (Hide from Left)
-        setMovedIds(prev => {
-            const next = new Set(prev);
-            next.add(todo.id);
-            return next;
-        });
-
-
+        setSelectedIds(new Set());
     };
 
     // Derived Logic
@@ -334,6 +469,57 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
         };
         return clean(todayTodos);
     }, [todayTodos]);
+
+    // --- Move Handler ---
+    const handleMoveLeftover = useCallback((todo: Todo) => {
+        // Determine items to move: if the clicked todo is selected, move ALL selected.
+        // Otherwise, move just this todo.
+        const itemsToMove: Todo[] = [];
+
+        if (selectedIds.has(todo.id)) {
+            // Find all selected todos from the filteredLeftovers list (recursive search)
+            const findSelected = (list: Todo[]) => {
+                list.forEach(t => {
+                    if (selectedIds.has(t.id) && !movedIds.has(t.id)) {
+                        itemsToMove.push(t);
+                    }
+                    if (t.children) findSelected(t.children);
+                });
+            };
+            findSelected(filteredLeftovers);
+        } else {
+            itemsToMove.push(todo);
+        }
+
+        if (itemsToMove.length === 0) return;
+
+        // Add to Right Panel (Tomorrow Plans)
+        setTomorrowPlans(prev => {
+            const currentList = prev[selectedProjectId] || [];
+            // Clone todos
+            const clones = itemsToMove.map(t => JSON.parse(JSON.stringify(t)));
+            return {
+                ...prev,
+                [selectedProjectId]: [...currentList, ...clones]
+            };
+        });
+
+        // Mark as moved (Hide from Left)
+        setMovedIds(prev => {
+            const next = new Set(prev);
+            itemsToMove.forEach(t => next.add(t.id));
+            // Also add children of moved items to hidden? 
+            // Logic in LeftoverList hides children if parent is rendered, but 
+            // if we move a parent, we probably want to consider its children handled.
+            // But strictly, we just hide the ID we moved.
+            return next;
+        });
+
+        // Clear selection after move
+        setSelectedIds(new Set());
+    }, [selectedProjectId, selectedIds, movedIds, filteredLeftovers]);
+
+
 
     // --- Render ---
 
@@ -367,6 +553,59 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                 sessions={freshSessions}
                                 stats={currentStats}
                                 hideCloseButton={true}
+                                onDeleteTodo={(id) => {
+                                    // Find which project this todo belongs to
+                                    // We need to search in projectTodos
+                                    let foundPid = 'none';
+                                    for (const [pid, list] of Object.entries(projectTodos)) {
+                                        const find = (tList: Todo[]): boolean => {
+                                            for (const t of tList) {
+                                                if (t.id === id) return true;
+                                                if (t.children && find(t.children)) return true;
+                                            }
+                                            return false;
+                                        };
+                                        if (find(list)) {
+                                            foundPid = pid;
+                                            break;
+                                        }
+                                    }
+                                    useTodoStore.getState().deleteTodo(id, foundPid);
+                                }}
+                                onToggleTodo={(id) => {
+                                    let foundPid = 'none';
+                                    for (const [pid, list] of Object.entries(projectTodos)) {
+                                        const find = (tList: Todo[]): boolean => {
+                                            for (const t of tList) {
+                                                if (t.id === id) return true;
+                                                if (t.children && find(t.children)) return true;
+                                            }
+                                            return false;
+                                        };
+                                        if (find(list)) {
+                                            foundPid = pid;
+                                            break;
+                                        }
+                                    }
+                                    useTodoStore.getState().toggleTodo(id, foundPid);
+                                }}
+                                onUpdateTodoText={(id, text) => {
+                                    let foundPid = 'none';
+                                    for (const [pid, list] of Object.entries(projectTodos)) {
+                                        const find = (tList: Todo[]): boolean => {
+                                            for (const t of tList) {
+                                                if (t.id === id) return true;
+                                                if (t.children && find(t.children)) return true;
+                                            }
+                                            return false;
+                                        };
+                                        if (find(list)) {
+                                            foundPid = pid;
+                                            break;
+                                        }
+                                    }
+                                    useTodoStore.getState().updateTodoText(id, text, false, foundPid);
+                                }}
                             />
                         </div>
                     )}
@@ -489,7 +728,11 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                             {t('ritual.todaysLeftovers')}
                                         </h3>
                                     </div>
-                                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                                    <div
+                                        ref={leftoverContainerRef}
+                                        onPointerDown={handleSelectionStart}
+                                        className="flex-1 overflow-y-auto p-4 custom-scrollbar relative"
+                                    >
                                         {filteredLeftovers.length === 0 ? (
                                             <div className="text-center py-10 text-muted-foreground text-sm">
                                                 <Sparkles className="w-8 h-8 mx-auto mb-2 opacity-50" />
@@ -497,8 +740,21 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                             </div>
                                         ) : (
                                             <div className="opacity-100">
-                                                <LeftoverList todos={filteredLeftovers} movedIds={movedIds} onMove={handleMoveLeftover} />
+                                                <LeftoverList todos={filteredLeftovers} movedIds={movedIds} selectedIds={selectedIds} onMove={handleMoveLeftover} />
                                             </div>
+                                        )}
+
+                                        {/* Selection Box Overlay */}
+                                        {selectionBox && (
+                                            <div
+                                                className="absolute bg-blue-500/20 border border-blue-500/50 z-50 pointer-events-none"
+                                                style={{
+                                                    left: Math.min(selectionBox.startX, selectionBox.currentX),
+                                                    top: Math.min(selectionBox.startY, selectionBox.currentY),
+                                                    width: Math.abs(selectionBox.currentX - selectionBox.startX),
+                                                    height: Math.abs(selectionBox.currentY - selectionBox.startY)
+                                                }}
+                                            />
                                         )}
                                     </div>
                                 </div>
@@ -516,68 +772,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                         <TodoEditor
                                             todos={tomorrowPlans[selectedProjectId] || []}
                                             isWidgetMode={false}
-                                            actions={{
-                                                addTodo: (text, parentId, afterId) => {
-                                                    const newTodo: Todo = {
-                                                        id: uuidv4(),
-                                                        text,
-                                                        completed: false,
-                                                        children: [],
-                                                        isCollapsed: false
-                                                    };
-                                                    setTomorrowPlans(prev => {
-                                                        const list = prev[selectedProjectId] || [];
-                                                        return { ...prev, [selectedProjectId]: insertNode(list, parentId || null, afterId || null, newTodo) };
-                                                    });
-                                                    return newTodo.id;
-                                                },
-                                                updateTodo: (id, updates) => {
-                                                    setTomorrowPlans(prev => {
-                                                        const list = prev[selectedProjectId] || [];
-                                                        return { ...prev, [selectedProjectId]: updateNode(list, id, updates) };
-                                                    });
-                                                },
-                                                deleteTodo: (id) => {
-                                                    setTomorrowPlans(prev => {
-                                                        const list = prev[selectedProjectId] || [];
-                                                        return { ...prev, [selectedProjectId]: deleteNode(list, id) };
-                                                    });
-                                                },
-                                                deleteTodos: (ids) => {
-                                                    setTomorrowPlans(prev => {
-                                                        const list = prev[selectedProjectId] || [];
-                                                        let newList = list;
-                                                        ids.forEach(id => {
-                                                            newList = deleteNode(newList, id);
-                                                        });
-                                                        return { ...prev, [selectedProjectId]: newList };
-                                                    });
-                                                },
-                                                indentTodo: (id) => {
-                                                    setTomorrowPlans(prev => {
-                                                        const list = prev[selectedProjectId] || [];
-                                                        return { ...prev, [selectedProjectId]: indentNode(list, id) };
-                                                    });
-                                                },
-                                                unindentTodo: (id) => {
-                                                    setTomorrowPlans(prev => {
-                                                        const list = prev[selectedProjectId] || [];
-                                                        return { ...prev, [selectedProjectId]: unindentNode(list, id) };
-                                                    });
-                                                },
-                                                moveTodo: (activeId, parentId, index) => {
-                                                    setTomorrowPlans(prev => {
-                                                        const list = prev[selectedProjectId] || [];
-                                                        return { ...prev, [selectedProjectId]: moveNodes(list, [activeId], parentId, index) };
-                                                    });
-                                                },
-                                                moveTodos: (activeIds, parentId, index) => {
-                                                    setTomorrowPlans(prev => {
-                                                        const list = prev[selectedProjectId] || [];
-                                                        return { ...prev, [selectedProjectId]: moveNodes(list, activeIds, parentId, index) };
-                                                    });
-                                                }
-                                            }}
+                                            actions={actions}
                                         />
                                     </div>
 

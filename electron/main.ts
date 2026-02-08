@@ -61,6 +61,32 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
 ]);
 
+// Set App User Model ID for Windows Notifications
+app.setAppUserModelId(process.execPath);
+
+// ... (existing code)
+
+import { Notification } from 'electron';
+
+// ... (existing code)
+
+ipcMain.handle('show-notification', (_, { title, body }) => {
+  console.log('[Main] Received show-notification request:', title, body);
+  const iconPath = path.join(process.env.VITE_PUBLIC, 'appLOGO.png');
+  console.log('[Main] Notification Icon Path:', iconPath);
+
+  try {
+    new Notification({
+      title,
+      body,
+      icon: fs.existsSync(iconPath) ? iconPath : undefined
+    }).show();
+    console.log('[Main] Notification shown successfully');
+  } catch (err) {
+    console.error('[Main] Failed to show notification:', err);
+  }
+});
+
 // The built directory structure
 process.env.APP_ROOT = path.join(__dirname, '..')
 
@@ -238,24 +264,60 @@ ipcMain.on('toggle-always-on-top', (_event, flag?: boolean) => {
 });
 
 // Added set-widget-mode handler
+ipcMain.handle('get-window-bounds', () => {
+  const win = BrowserWindow.getFocusedWindow();
+  return win ? win.getBounds() : null;
+});
+
+
 // Added set-widget-mode handler
-ipcMain.on('set-widget-mode', (_event, { mode, height }: { mode: boolean, height?: number }) => {
+ipcMain.on('set-widget-mode', (_event, { mode, height, locked, bounds }: { mode: boolean, height?: number, locked?: boolean, bounds?: Electron.Rectangle }) => {
   const win = BrowserWindow.getFocusedWindow();
   if (win) {
     if (mode) {
-      // Store original size if needed? For now just hardcode standard/widget sizes.
-      // Widget Size: 435xHeight (Vertical Strip)
+      // Widget Mode
       const targetHeight = height || 800;
-      win.setSize(435, targetHeight);
+
+      // Temporarily unlock to allow resize
+      win.setResizable(true);
+
+      if (bounds) {
+        // Restore saved position/size
+        win.setBounds(bounds);
+      } else {
+        // Default start
+        win.setSize(435, targetHeight);
+      }
+
       win.setAlwaysOnTop(true, 'screen-saver');
+
+      // Enforce lock if requested
+      if (locked) {
+        win.setResizable(false);
+      }
+
       // Opacity will be set by the frontend via `set-window-opacity` immediately or stored setting
     } else {
-      // Restore Standard Size: 1500x900 (as defined in createWindow)
+      // Restore Standard Mode
+      // Temporarily unlock to allow resize
+      win.setResizable(true);
+
       win.setSize(1500, 900);
-      win.setAlwaysOnTop(false);
+      win.setAlwaysOnTop(false, 'normal');
       win.setOpacity(1.0); // Always restore full opacity
       win.center(); // Optional: Center it back
+
+      if (locked) {
+        win.setResizable(false);
+      }
     }
+  }
+});
+
+ipcMain.on('set-window-locked', (_event, locked: boolean) => {
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) {
+    win.setResizable(!locked);
   }
 });
 

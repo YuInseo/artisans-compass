@@ -128,7 +128,18 @@
             "filterWorkApps": "Show Only Work Programs",
             "filterWorkAppsDesc": "Only show configured work programs in the timeline visualization.",
             "configuredApps": "Configured Apps",
-            "nextDay": "Next Day"
+            "ignoredApps": "Non-Work Programs",
+            "ignoredAppsDesc": "These programs will be treated as non-work time or excluded from specific views.",
+            "ignoredAppsColor": "Display Color",
+            "nextDay": "Next Day",
+            "enableUnresolvedNotification": "Unresolved Todo Notification",
+            "enableUnresolvedNotificationDesc": "Receive a push notification when Night Time starts if you have unfinished tasks.",
+            "testNotificationTitle": "Test Notification",
+            "testNotificationBody": "System notification is working correctly.",
+            "testNotificationSent": "Notification sent! If hidden, check 'Do Not Disturb'.",
+            "testNotificationCheckTaskbar": "Check the notification center in your taskbar.",
+            "testNotificationFailed": "Failed to send notification.",
+            "testNotificationFallback": "Sent via Web API (Fallback)"
         },
         "softwareUpdate": {
             "title": "Software Update",
@@ -147,7 +158,9 @@
             "title": "Detailed Running Apps",
             "add": "Add",
             "added": "Added",
-            "scanning": "Scanning..."
+            "scanning": "Scanning...",
+            "noAppsConfigured": "No apps configured",
+            "placeholder": "Add Process Name (e.g. Code.exe)..."
         },
         "backup": {
             "title": "Backup & Data",
@@ -248,7 +261,11 @@
         "yes": "Yes",
         "no": "No",
         "timeTable": "Time Table",
-        "workingOn": "Working on..."
+        "workingOn": "Working on...",
+        "lockPosition": "Lock Position",
+        "autoHideHeader": "Auto-Hide Header",
+        "autoHeight": "Auto-Height",
+        "timer": "Focus Timer"
     },
     "calendar": {
         "today": "Today",
@@ -370,5 +387,17 @@
         "noData": "No activity recorded yet.",
         "analyze": "Analyze",
         "buttonLabel": "Analyze"
+    },
+    "notifications": {
+        "title": "Notifications",
+        "empty": "No notifications",
+        "markAllRead": "Mark all as read",
+        "clearAll": "Clear all",
+        "noNew": "No new notifications",
+        "caughtUp": "You're all caught up!",
+        "skippedTodos": "Skipped {{count}} todos from deleted projects.",
+        "deletedProjectsDesc": "These projects no longer exist in your current workspace.",
+        "unresolvedTodosTitle": "Unfinished Business!",
+        "unresolvedTodosBody": "Night Time has started. You have {{count}} unresolved tasks. Time to wrap up!"
     }
 }

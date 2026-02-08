@@ -198,7 +198,11 @@
         "yes": "はい",
         "no": "いいえ",
         "timeTable": "タイムテーブル",
-        "workingOn": "進行中..."
+        "workingOn": "進行中...",
+        "timer": "集中タイマー",
+        "lockPosition": "位置をロック",
+        "autoHideHeader": "ヘッダーの自動非表示",
+        "autoHeight": "高さの自動調整"
     },
     "calendar": {
         "today": "今日",

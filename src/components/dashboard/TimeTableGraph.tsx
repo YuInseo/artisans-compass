@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
-import { differenceInMinutes, differenceInSeconds, getHours, getMinutes, format } from 'date-fns';
-import { Session, Project } from '@/types';
+import { differenceInMinutes, differenceInSeconds, getHours, getMinutes, format, isSameDay } from 'date-fns';
+import { AppSettings, Session, Project } from '@/types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 
 
 import { cn } from "@/lib/utils";
+// import { useDataStore } from "@/hooks/useDataStore"; // Removed
 
 interface TimeTableGraphProps {
     sessions: Session[];
@@ -19,10 +20,12 @@ interface TimeTableGraphProps {
     hideAppUsage?: boolean;
     projects?: Project[];
     nightTimeStart?: number; // 0-24 or >24 for next day
+    settings?: AppSettings | null; // Added
 }
 
-export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLiveSession, hideAppUsage, projects = [], activeProjectId, nightTimeStart = 22 }: TimeTableGraphProps) {
+export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLiveSession, hideAppUsage, projects = [], activeProjectId, nightTimeStart = 22, settings }: TimeTableGraphProps) {
     const { t } = useTranslation();
+    // const { settings } = useDataStore(); // Removed
     const [now, setNow] = useState(new Date());
 
     // Update 'now' every second to keep live session growing and enable seconds display
@@ -56,6 +59,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
         type?: string;
         startHour: number;
         color?: string;
+        isIgnored?: boolean;
     }
 
     const sessionBlocks = useMemo(() => {
@@ -84,7 +88,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
         const mergedEvents: (typeof rawEvents[number] & { appDistribution: Record<string, number> })[] = [];
 
         rawEvents.forEach(evt => {
-            const currentDuration = differenceInMinutes(evt.end, evt.start);
+            const currentDuration = differenceInSeconds(evt.end, evt.start);
 
             if (mergedEvents.length === 0) {
                 mergedEvents.push({
@@ -95,10 +99,10 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             }
 
             const last = mergedEvents[mergedEvents.length - 1];
-            const timeDiff = differenceInMinutes(evt.start, last.end);
+            const timeDiff = differenceInSeconds(evt.start, last.end);
 
-            // Merge if gap is small (<= 5 mins)
-            if (timeDiff <= 5) {
+            // Merge if gap is small (<= 5 mins = 300 seconds)
+            if (timeDiff <= 300) {
                 // Extend the last block's end time
                 last.end = new Date(Math.max(last.end.getTime(), evt.end.getTime()));
                 // Track app usage for naming the merged block later
@@ -136,6 +140,15 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             const matchedProject = projects.find(p => p.name === dominantTitle);
             const projectType = matchedProject?.type;
 
+            // Check if it's an ignored app (Robust Matching)
+            const isIgnored = settings?.ignoredApps?.some(ignored =>
+                ignored === dominantTitle ||
+                ignored.toLowerCase() === dominantTitle.toLowerCase() ||
+                ignored.replace(/\s/g, "").toLowerCase() === dominantTitle.replace(/\s/g, "").toLowerCase() ||
+                dominantTitle.toLowerCase().includes(ignored.toLowerCase())
+            );
+            const ignoredColor = settings?.ignoredAppsColor || '#808080';
+
             return {
                 id: Math.random().toString(36),
                 title: dominantTitle,
@@ -147,7 +160,8 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                 appDistribution: session.appDistribution,
                 type: projectType,
                 startHour: getHours(session.start),
-                color: matchedProject?.color
+                color: isIgnored ? ignoredColor : matchedProject?.color,
+                isIgnored
             };
         });
 
@@ -197,12 +211,13 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                 fullApps: Object.keys(event.appDistribution).join(", "), // For tooltip
                 type: event.type,
                 isNightTime: (() => {
+                    if (event.isIgnored) return false; // Ignored apps should use their own color, not night time yellow
                     const h = event.startHour;
                     const limit = 5; // 5 AM morning start
                     if (h < limit) {
                         // Early morning (0-5)
                         if (nightTimeStart >= 24) return h >= (nightTimeStart - 24);
-                        return true;
+                        return false; // User requested: strictly strictly apply 'Start' logic linearly (02:00 is before 22:00)
                     } else {
                         // Day/Evening
                         if (nightTimeStart >= 24) return false;
@@ -212,7 +227,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                 color: event.color
             };
         });
-    }, [sessions, date, liveSession, now, projects, activeProjectId, nightTimeStart]);
+    }, [sessions, date, liveSession, now, projects, activeProjectId, nightTimeStart, settings]);
 
     // Calculate Summary Stats
     // 1. TIMELINE STATS (Filtered) - Calculate totalFocusTime from filtered 'sessions'
@@ -297,7 +312,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             .sort((a, b) => b.duration - a.duration);
 
         return { sortedApps: apps, totalAppUsageTime: total };
-    }, [sessions, allSessions, liveSession, allLiveSession, now, t]);
+    }, [sessions, allSessions, liveSession, allLiveSession, now, t, settings]);
 
     // 1. Total Focus Time Footer (For TIMELINE Tab - Filtered)
     const TimelineFooter = (
@@ -411,8 +426,22 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                 </div>
                             ))}
 
+
                             {/* Vertical Divider Line */}
                             <div className="absolute top-0 bottom-0 left-8 border-l border-border/20 h-full pointer-events-none"></div>
+
+                            {/* Current Time Indicator */}
+                            {(!date || isSameDay(date, now)) && (
+                                <div
+                                    className="absolute left-8 right-0 border-t-2 border-red-500/50 border-dashed z-20 pointer-events-none flex items-center"
+                                    style={{
+                                        top: `${((getHours(now) * 60 + getMinutes(now)) / (24 * 60)) * 100}%`,
+                                        transform: 'translateY(-50%)' // Center the line on the exact time
+                                    }}
+                                >
+                                    <div className="absolute -left-1 w-2 h-2 bg-red-500 rounded-full -translate-x-1/2" />
+                                </div>
+                            )}
 
                             {/* Events Layer */}
                             <div className="absolute top-0 bottom-0 left-8 right-0">
@@ -470,10 +499,24 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                     const hours = Math.floor(totalMinutes / 60);
                                     const minutes = totalMinutes % 60;
 
+                                    const isIgnored = settings?.ignoredApps?.some(ignored =>
+                                        ignored === app.name ||
+                                        ignored.toLowerCase() === app.name.toLowerCase() ||
+                                        ignored.replace(/\s/g, "").toLowerCase() === app.name.replace(/\s/g, "").toLowerCase() ||
+                                        app.name.toLowerCase().includes(ignored.toLowerCase())
+                                    );
+                                    const ignoredColor = settings?.ignoredAppsColor || '#808080';
+
                                     return (
                                         <div key={i} className="flex items-center justify-between text-sm group">
                                             <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="w-2 h-2 rounded-full bg-blue-500/50 group-hover:bg-blue-500 transition-colors shrink-0" />
+                                                <div
+                                                    className={cn(
+                                                        "w-2 h-2 rounded-full transition-colors shrink-0",
+                                                        !isIgnored && "bg-blue-500/50 group-hover:bg-blue-500"
+                                                    )}
+                                                    style={isIgnored ? { backgroundColor: ignoredColor } : undefined}
+                                                />
                                                 <span className="truncate text-muted-foreground group-hover:text-foreground transition-colors font-medium" title={app.name}>
                                                     {app.name}
                                                 </span>

@@ -101,6 +101,8 @@ const useStore = create<DataStore>((set, get) => ({
                     showIndentationGuides: true,
                     customThemes: [],
                     workApps: [],
+                    ignoredApps: [],
+                    ignoredAppsColor: '#808080', // Default gray
                     filterTimelineByWorkApps: false,
                     nightTimeStart: 22
                 };

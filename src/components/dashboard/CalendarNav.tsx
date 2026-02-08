@@ -284,7 +284,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    className="h-8 px-3 text-xs gap-2 border-blue-500/30 hover:bg-blue-100/50 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 transition-colors"
+                                    className="h-8 px-3 text-xs gap-2 border-primary/30 hover:bg-primary/10 text-primary transition-colors"
                                     onClick={handleGoToProject}
                                     title={activeProject.name}
                                 >
@@ -314,34 +314,34 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 sEnd: selectedRangeEndMatcher
                             }}
                             modifiersClassNames={{
-                                projectRange: "bg-blue-500/10 text-blue-600 font-bold border-y border-blue-500/20 first:rounded-l-md last:rounded-r-md first:border-l last:border-r",
-                                selectedRange: "bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 font-bold first:rounded-l-lg last:rounded-r-lg !rounded-none mx-0 w-full relative z-0",
-                                sStart: "!rounded-l-lg",
-                                sEnd: "!rounded-r-lg"
+                                projectRange: "bg-primary/30 !text-foreground font-bold border border-primary/40 rounded-lg",
+                                selectedRange: "bg-accent/30 !text-foreground font-bold border border-accent/40 rounded-lg z-0",
+                                sStart: "bg-accent text-accent-foreground shadow-sm rounded-lg z-10 font-bold",
+                                sEnd: "bg-accent text-accent-foreground shadow-sm rounded-lg z-10 font-bold"
                             }}
                             classNames={{
                                 months: "flex flex-col w-full h-full space-y-0",
                                 month: "w-full h-full flex flex-col space-y-0",
-                                caption: "flex justify-start items-center mb-4 px-2 shrink-0 relative h-8",
-                                caption_label: "text-base font-serif font-bold text-foreground tracking-tight pl-1",
-                                nav: "flex items-center gap-1 absolute right-1 top-0 bottom-0",
-                                nav_button: "h-7 w-7 bg-transparent p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-all flex items-center justify-center border border-transparent hover:border-border",
+                                caption: "flex justify-start items-center mb-6 px-4 shrink-0 relative h-10",
+                                caption_label: "text-2xl font-serif font-bold text-foreground tracking-tight pl-0",
+                                nav: "flex items-center gap-1.5 absolute right-2 top-0 bottom-0",
+                                nav_button: "h-8 w-8 bg-transparent p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-all flex items-center justify-center border border-transparent hover:border-border/50",
                                 nav_button_previous: "static",
                                 nav_button_next: "static",
-                                table: "w-full h-full border-collapse flex flex-col space-y-0",
-                                head_row: "grid grid-cols-7 w-full mb-2 shrink-0 gap-0",
-                                head_cell: "text-muted-foreground w-full text-center font-mono text-[10px] uppercase tracking-widest opacity-60",
-                                tbody: "flex-1 flex flex-col w-full gap-0 space-y-0",
-                                row: "grid grid-cols-7 w-full flex-1 gap-0 mt-0",
+                                table: "w-full h-full border-collapse flex flex-col space-y-0.5",
+                                head_row: "grid grid-cols-7 w-full mb-2 shrink-0 px-2",
+                                head_cell: "text-muted-foreground w-full text-center font-medium text-[11px] uppercase tracking-wider opacity-50",
+                                tbody: "flex-1 flex flex-col w-full gap-0.5 px-2 pb-2",
+                                row: "grid grid-cols-7 w-full flex-1 gap-0.5 mt-0",
                                 cell: "relative p-0 text-center w-full h-full flex items-center justify-center focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-transparent",
                                 day: cn(
-                                    "h-full w-full p-0 font-normal aria-selected:opacity-100 hover:bg-muted/50 transition-all duration-200 rounded-lg group relative flex flex-col items-center justify-start pt-2 text-sm text-foreground"
+                                    "h-full w-full p-0 font-normal aria-selected:opacity-100 hover:bg-muted/30 transition-all duration-300 rounded-lg group relative flex flex-col items-center justify-start pt-3 text-sm text-muted-foreground hover:text-foreground"
                                 ),
-                                day_selected: "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground shadow-sm z-10",
-                                day_today: "text-blue-600 dark:text-blue-400 font-bold bg-blue-500/5 border border-blue-500/20",
-                                day_outside: "text-muted-foreground/30 opacity-50",
-                                day_disabled: "text-muted-foreground opacity-30",
-                                day_range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
+                                day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground shadow-md scale-[0.98] transition-transform rounded-lg",
+                                day_today: "bg-accent/5 text-accent font-bold rounded-lg",
+                                day_outside: "text-muted-foreground/20 opacity-30",
+                                day_disabled: "text-muted-foreground opacity-20",
+                                day_range_middle: "aria-selected:bg-accent/10 aria-selected:text-accent-foreground rounded-lg my-0",
                                 day_hidden: "invisible",
                             }}
                             components={{
@@ -357,20 +357,22 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                     );
 
                                     return (
-                                        <div className="w-full h-full flex flex-col items-center relative">
-                                            <span className={cn("z-10 font-medium", isQuestAchieved ? "text-orange-500 font-bold" : "")}>{d.getDate()}</span>
+                                        <div className="w-full h-full flex flex-col items-center relative gap-0.5">
+                                            <span className={cn("z-10 text-[13px] transition-all", isQuestAchieved ? "font-bold" : "font-medium")}>{d.getDate()}</span>
+
+                                            {/* Work day indicator (Top Right Dot) */}
                                             {isWorkDay(d) && !isQuestAchieved && (
-                                                <div className="absolute top-2 right-2 w-1.5 h-1.5 bg-primary/20 rounded-full"></div>
+                                                <div className="absolute top-3 right-3 w-1 h-1 bg-primary/20 rounded-full"></div>
                                             )}
 
-                                            {/* Data Indicator (Bar) */}
+                                            {/* Data Indicator (Bottom Dot) */}
                                             {hasData && !isQuestAchieved && (
-                                                <div className="mt-1 w-3 h-1 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500 opacity-90 shadow-[0_2px_4px_rgba(99,102,241,0.2)]"></div>
+                                                <div className="mt-1 w-1 h-1 rounded-full bg-primary/30 group-hover:bg-primary/50 transition-colors"></div>
                                             )}
 
                                             {/* Quest Achieved Checkmark */}
                                             {isQuestAchieved && (
-                                                <div className="mt-0.5 z-20 text-orange-500 dark:text-orange-400 animate-in zoom-in spin-in-90 duration-300 text-[20px] drop-shadow-sm">
+                                                <div className="mt-0 z-20 text-primary animate-in zoom-in spin-in-90 duration-300 text-lg drop-shadow-sm leading-none">
                                                     🔥
                                                 </div>
                                             )}
@@ -385,8 +387,8 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                         {/* Header: Back & Title */}
                         <div className="flex items-center justify-between shrink-0 mb-2">
                             {/* Back button technically not needed if we have the toggle at bottom, but good for context */}
-                            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
-                                <div className="text-amber-600 font-bold text-xs uppercase tracking-wider flex items-center gap-1">
+                            <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 border border-primary/20">
+                                <div className="text-primary font-bold text-xs uppercase tracking-wider flex items-center gap-1">
                                     <span role="img" aria-label="fire">🔥</span> {streak} {t('calendar.streak')}
                                 </div>
                             </div>
@@ -402,10 +404,10 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                     value={newQuestText}
                                     onChange={(e) => setNewQuestText(e.target.value)}
                                     onKeyDown={handleKeyDown}
-                                    className="text-center text-lg h-12 mb-6 shadow-xl border-violet-500/30 focus-visible:ring-violet-500 bg-card w-full max-w-[90%]"
+                                    className="text-center text-lg h-12 mb-6 shadow-xl border-primary/30 focus-visible:ring-primary bg-card w-full max-w-[90%]"
                                 />
                                 <div className="flex flex-col gap-3 w-full max-w-[90%]">
-                                    <Button size="lg" className="w-full bg-violet-600 hover:bg-violet-700 font-bold shadow-lg shadow-violet-500/20" onClick={handleSetQuest}>{t('calendar.acceptQuest')}</Button>
+                                    <Button size="lg" className="w-full bg-primary hover:bg-primary/90 font-bold shadow-lg shadow-primary/20" onClick={handleSetQuest}>{t('calendar.acceptQuest')}</Button>
                                     <Button variant="ghost" size="sm" className="w-full text-muted-foreground hover:bg-transparent hover:text-foreground" onClick={() => setIsAdding(false)}>{t('calendar.cancel')}</Button>
                                 </div>
                             </div>
@@ -414,27 +416,26 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                         {/* Quest Content */}
                         {activeQuestText ? (
                             <div className="flex-1 flex flex-col w-full h-full relative">
-                                <div className="flex-1 bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 rounded-3xl border border-white/10 shadow-xl flex flex-col items-center justify-center p-6 text-center relative overflow-hidden group">
+                                <div className="flex-1 bg-gradient-to-br from-card via-muted/50 to-card rounded-3xl border border-border shadow-xl flex flex-col items-center justify-center p-6 text-center relative overflow-hidden group">
 
-                                    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,rgba(139,92,246,0.15),transparent_70%)]" />
-                                    <div className="absolute bottom-0 right-0 w-32 h-32 bg-indigo-500/10 blur-[40px] rounded-full" />
+                                    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,hsl(var(--primary)/0.15),transparent_70%)]" />
+                                    <div className="absolute bottom-0 right-0 w-32 h-32 bg-primary/10 blur-[40px] rounded-full" />
 
                                     {activeQuestCreatedAt && (
-                                        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[11px] font-mono text-zinc-500 uppercase tracking-widest border border-zinc-700/50 rounded-full px-2 py-1 bg-zinc-900/50 whitespace-nowrap">
+                                        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[11px] font-mono text-muted-foreground uppercase tracking-widest border border-border rounded-full px-2 py-1 bg-background/50 whitespace-nowrap">
                                             {t('calendar.created')} {format(activeQuestCreatedAt, 'MMM d, h:mm a')}
                                         </div>
                                     )}
 
                                     <div className="relative mb-4 mt-6 transform group-hover:scale-110 transition-transform duration-700">
-                                        <div className="absolute inset-0 bg-violet-500 blur-[30px] opacity-30 rounded-full animate-pulse" />
-                                        <Swords className="w-12 h-12 text-white relative z-10 drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)]" strokeWidth={1.5} />
+                                        <div className="absolute inset-0 bg-primary blur-[30px] opacity-30 rounded-full animate-pulse" />
+                                        <Swords className="w-12 h-12 text-primary relative z-10 drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)]" strokeWidth={1.5} />
                                     </div>
 
-                                    <h2 className="text-xl md:text-2xl font-black font-serif tracking-tight leading-tight text-white drop-shadow-lg mb-3 max-w-xs break-words">
+                                    <h2 className="text-xl md:text-2xl font-black font-serif tracking-tight leading-tight text-foreground drop-shadow-lg mb-3 max-w-xs break-words">
                                         {activeQuestText}
                                     </h2>
-
-                                    <div className="w-8 h-1 bg-violet-500/50 rounded-full mb-6" />
+                                    <div className="w-8 h-1 bg-primary/50 rounded-full mb-6" />
 
                                     {/* Completion Button */}
                                     <Button
@@ -443,8 +444,8 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                         className={cn(
                                             "h-12 w-full max-w-[200px] rounded-xl text-sm font-bold tracking-wide shadow-xl transition-all duration-300 z-20",
                                             isTodayAchieved
-                                                ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 border border-emerald-500/50"
-                                                : "bg-white text-black hover:bg-zinc-200 hover:scale-105 group-hover:shadow-violet-500/20"
+                                                ? "bg-primary/20 text-primary hover:bg-primary/30 border border-primary/50"
+                                                : "bg-card text-card-foreground hover:bg-muted hover:scale-105 group-hover:shadow-primary/20"
                                         )}
                                         onClick={handleCompleteForToday}
                                     >
@@ -463,9 +464,9 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 </div>
                             </div>
                         ) : (
-                            <div className="flex-1 bg-zinc-50 border border-dashed border-zinc-200 dark:border-zinc-800 dark:bg-zinc-900/50 rounded-3xl flex flex-col items-center justify-center p-8 text-center">
+                            <div className="flex-1 bg-card/50 border border-dashed border-border dark:bg-card/30 rounded-3xl flex flex-col items-center justify-center p-8 text-center">
                                 <div className="w-20 h-20 bg-zinc-100 dark:bg-zinc-800 rounded-full flex items-center justify-center mb-6">
-                                    <Target className="w-10 h-10 text-zinc-400" />
+                                    <Target className="w-10 h-10 text-muted-foreground/50" />
                                 </div>
                                 <h3 className="text-xl font-bold text-foreground mb-2">{t('calendar.noActiveQuest')}</h3>
                                 <p className="text-sm text-muted-foreground max-w-xs mx-auto mb-8">
@@ -486,8 +487,8 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                     className={cn(
                         "w-full border-none shadow-sm hover:shadow-md font-bold tracking-wide transition-all duration-300",
                         viewMode === 'quest'
-                            ? "bg-violet-600 hover:bg-violet-700 text-white"
-                            : "bg-zinc-800 dark:bg-zinc-700 hover:bg-gradient-to-r hover:from-violet-600 hover:to-indigo-600 text-white"
+                            ? "bg-primary hover:bg-primary/90 text-primary-foreground"
+                            : "bg-muted hover:bg-primary hover:text-primary-foreground text-foreground"
                     )}
                     size="lg"
                     onClick={() => setViewMode(viewMode === 'calendar' ? 'quest' : 'calendar')}
@@ -531,7 +532,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
             <Dialog open={showDifficultyAlert} onOpenChange={setShowDifficultyAlert}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-amber-500">
+                        <DialogTitle className="flex items-center gap-2 text-destructive">
                             <AlertTriangle className="w-5 h-5" />
                             {t('calendar.pathSteep')}
                         </DialogTitle>
@@ -546,7 +547,7 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                         <Button onClick={() => {
                             setShowGoalModal(true);
                             setShowDifficultyAlert(false);
-                        }} className="bg-violet-600 hover:bg-violet-700">
+                        }} className="bg-primary hover:bg-primary/90">
                             {t('calendar.adjustGoals')}
                         </Button>
                     </DialogFooter>

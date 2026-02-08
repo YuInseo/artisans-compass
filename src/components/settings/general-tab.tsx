@@ -174,7 +174,7 @@ export function GeneralTab({
 
             {/* Detected Apps List (Mini) */}
             <div className="mt-8 pt-4" id="settings-running-apps">
-                <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">{t('settings.runningApps')}</h5>
+                <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">{t('settings.runningApps.title')}</h5>
                 <div className="rounded-lg overflow-hidden border border-border/50 bg-muted/30">
                     {/* Search / Add Input Header */}
                     <div className="p-2 border-b border-border/10 bg-muted/50">

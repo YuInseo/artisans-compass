@@ -21,11 +21,12 @@ import { Switch } from "@/components/ui/switch"
 import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
 import { X, Cloud, Check, Moon, Sun, Monitor, Info, FileText, RefreshCw, AlertCircle, History, Settings, Palette, LayoutTemplate, Shield, Database } from "lucide-react";
-import { AppSettings } from "@/types"
-import { useState, useEffect } from "react"
+import { AppSettings, AppInfo } from "@/types"
+import { useState, useEffect, useMemo } from "react"
 import { toast } from "sonner";
 import { cn } from "@/lib/utils"
 import { useTranslation, Trans } from 'react-i18next';
+import { useDataStore } from "@/hooks/useDataStore";
 import { TimelineTab } from "./settings/timeline-tab";
 // @ts-ignore
 import { NotionSetupDialog } from "./notion-setup-dialog"; // Import
@@ -48,6 +49,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     const { t, i18n } = useTranslation();
     const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab);
     const [activeSection, setActiveSection] = useState<string | null>(null);
+    const { dailyLog } = useDataStore();
 
     // Sync activeTab with defaultTab when open changes
     useEffect(() => {
@@ -62,17 +64,72 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
     // General Tab State
     const [newAppInput, setNewAppInput] = useState("");
-    const [runningApps, setRunningApps] = useState<{ id?: string, name: string, process: string, appIcon?: string }[]>([]);
+    const [runningApps, setRunningApps] = useState<AppInfo[]>([]);
 
     useEffect(() => {
         if (open && activeTab === 'timeline') {
             if ((window as any).ipcRenderer) {
-                (window as any).ipcRenderer.invoke('get-running-apps').then((apps: any[]) => {
+                (window as any).ipcRenderer.invoke('get-running-apps').then(async (apps: AppInfo[]) => {
                     setRunningApps(apps || []);
+
+                    // Merge into history if settings available
+                    if (settings && apps && apps.length > 0) {
+                        const existingKnown = settings.knownApps || [];
+                        const knownProcessMap = new Set(existingKnown.map(a => a.process.toLowerCase()));
+
+                        const newApps = apps.filter(a => !knownProcessMap.has(a.process.toLowerCase()));
+
+                        if (newApps.length > 0) {
+                            const updatedKnown = [...existingKnown, ...newApps];
+                            // Sort by name for neatness? Optional.
+                            updatedKnown.sort((a, b) => a.name.localeCompare(b.name));
+
+                            // We need to save this, but be careful not to trigger infinite loops if onSaveSettings changes modal state
+                            // The parent handles persistence.
+                            await onSaveSettings({
+                                ...settings,
+                                knownApps: updatedKnown
+                            });
+                        }
+                    }
                 });
             }
         }
     }, [open, activeTab]);
+
+    // Combined list of running apps and known apps (history)
+    const allApps = useMemo(() => {
+        const unique = new Map<string, AppInfo>();
+
+        // Add known apps first (history)
+        if (settings?.knownApps) {
+            settings.knownApps.forEach(app => {
+                if (app.process) unique.set(app.process.toLowerCase(), app);
+            });
+        }
+
+        // Add apps from daily log history
+        if (dailyLog?.sessions) {
+            dailyLog.sessions.forEach((session: any) => {
+                const procName = session.process || session.name;
+                if (procName && !unique.has(procName.toLowerCase())) {
+                    unique.set(procName.toLowerCase(), {
+                        name: procName,
+                        process: procName,
+                        appIcon: undefined
+                    });
+                }
+            });
+        }
+
+        // Add running apps (current, might have newer info)
+        runningApps.forEach(app => {
+            if (app.process) unique.set(app.process.toLowerCase(), app);
+        });
+
+        return Array.from(unique.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }, [settings?.knownApps, runningApps, dailyLog]);
+
 
     // Tracking Tab State
     const [screenSources, setScreenSources] = useState<{ id: string, name: string, thumbnail: string }[]>([]);
@@ -530,10 +587,10 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         if (!activeTab || activeTab === 'updatelog') return;
 
         const sectionMap: Record<string, string[]> = {
-            general: ['settings-language', 'settings-weekly', 'settings-tracked-apps', 'settings-running-apps', 'settings-startup'],
+            general: ['settings-language', 'settings-weekly', 'settings-tracked-apps', 'settings-running-apps', 'settings-startup', 'settings-idle-time'],
             appearance: ['settings-theme', 'settings-color-theme', 'settings-widgets', 'settings-editor'],
             timeline: ['settings-project-types', 'settings-timeline-preview', 'settings-work-apps'],
-            tracking: ['settings-screenshot-enable', 'settings-idle-time', 'settings-screenshot-interval', 'settings-timelapse', 'settings-screenshot-mode']
+            tracking: ['settings-screenshot-enable', 'settings-screenshot-interval', 'settings-timelapse', 'settings-screenshot-mode']
         };
 
         const currentSections = sectionMap[activeTab];
@@ -599,6 +656,11 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                         onClick={() => scrollToSection('settings-startup')}
                         label={t('settings.startupBehavior')}
                     />
+                    <SectionButton
+                        active={activeSection === 'settings-idle-time'}
+                        onClick={() => scrollToSection('settings-idle-time')}
+                        label={t('settings.tracking.detectIdleTime')}
+                    />
                 </div>
             )}
 
@@ -642,7 +704,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                 active={activeTab === 'timeline'}
                 onClick={() => { setActiveTab('timeline'); setActiveSection(null); }}
                 label={t('sidebar.timeline')}
-                icon={<LayoutTemplate className="w-4 h-4" />}
+                icon={<LayoutTemplate className="w-4 h-4 mr-2" />}
             />
             {activeTab === 'timeline' && (
                 <div className="flex flex-col gap-[2px]">
@@ -677,11 +739,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                         onClick={() => scrollToSection('settings-screenshot-enable')}
                         label={t('settings.tracking.screenshotActivation')}
                     />
-                    <SectionButton
-                        active={activeSection === 'settings-idle-time'}
-                        onClick={() => scrollToSection('settings-idle-time')}
-                        label={t('settings.tracking.idleDetection')}
-                    />
+
                     <SectionButton
                         active={activeSection === 'settings-screenshot-interval'}
                         onClick={() => scrollToSection('settings-screenshot-interval')}
@@ -920,6 +978,32 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                         </div>
                     </div>
 
+                    {/* Idle Detection (Moved from Tracking) */}
+                    <div id="settings-idle-time" className="mt-8 pt-4 border-t border-border/40">
+                        <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-4">{t('settings.tracking.detectIdleTime')}</h5>
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                                <Label className="text-sm font-medium">{t('settings.tracking.detectIdleTime')}</Label>
+                                <p className="text-xs text-muted-foreground">{t('settings.tracking.detectIdleTimeDesc')}</p>
+                            </div>
+                            <Select
+                                value={String(settings.idleThresholdSeconds || 10)}
+                                onValueChange={(val) => onSaveSettings({ ...settings, idleThresholdSeconds: parseInt(val) })}
+                            >
+                                <SelectTrigger className="w-[180px] bg-background border-none">
+                                    <SelectValue placeholder={t('settings.tracking.selectDuration')} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="5">{t('settings.tracking.seconds5')}</SelectItem>
+                                    <SelectItem value="10">{t('settings.tracking.seconds10')} (Default)</SelectItem>
+                                    <SelectItem value="30">{t('settings.tracking.seconds30')}</SelectItem>
+                                    <SelectItem value="60">{t('settings.tracking.hour1').replace('1 Hour', '1 Minute').replace('1시간', '1분')}</SelectItem>
+                                    <SelectItem value="300">5 {t('settings.tracking.minutes5').replace('5 Minutes', 'Minutes').replace('5분', '분')}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
                     {/* Developer Options (Added to General Tab) */}
                     <div className="mt-8 pt-4 border-t border-border/40">
                         <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-4">{t('settings.developerOptions')}</h5>
@@ -1103,11 +1187,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                 active={theme === 'light'}
                                                 onClick={() => {
                                                     setTheme('light');
-                                                    if (settings.widgetDisplayMode !== 'none') {
-                                                        onSaveSettings({ ...settings, widgetTheme: 'light' });
-                                                    } else {
-                                                        onSaveSettings({ ...settings, mainTheme: 'light' });
-                                                    }
+                                                    onSaveSettings({ ...settings, mainTheme: 'light' });
                                                 }}
                                                 icon={<Sun className="w-6 h-6" />}
                                                 label={t('settings.light')}
@@ -1116,11 +1196,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                 active={theme === 'dark'}
                                                 onClick={() => {
                                                     setTheme('dark');
-                                                    if (settings.widgetDisplayMode !== 'none') {
-                                                        onSaveSettings({ ...settings, widgetTheme: 'dark' });
-                                                    } else {
-                                                        onSaveSettings({ ...settings, mainTheme: 'dark' });
-                                                    }
+                                                    onSaveSettings({ ...settings, mainTheme: 'dark' });
                                                 }}
                                                 icon={<Moon className="w-6 h-6" />}
                                                 label={t('settings.dark')}
@@ -1129,11 +1205,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                 active={theme === 'system'}
                                                 onClick={() => {
                                                     setTheme('system');
-                                                    if (settings.widgetDisplayMode !== 'none') {
-                                                        onSaveSettings({ ...settings, widgetTheme: 'system' });
-                                                    } else {
-                                                        onSaveSettings({ ...settings, mainTheme: 'system' });
-                                                    }
+                                                    onSaveSettings({ ...settings, mainTheme: 'system' });
                                                 }}
                                                 icon={<Monitor className="w-6 h-6" />}
                                                 label={t('settings.system')}
@@ -1273,7 +1345,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                 <TimelineTab
                                     settings={settings}
                                     onSaveSettings={onSaveSettings}
-                                    runningApps={runningApps}
+                                    runningApps={allApps}
                                 />
                             )}
 
@@ -1296,27 +1368,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                             />
                                         </div>
 
-                                        <div id="settings-idle-time" className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                                            <div className="space-y-0.5">
-                                                <Label className="text-base font-semibold">{t('settings.tracking.detectIdleTime')}</Label>
-                                                <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.detectIdleTimeDesc')}</p>
-                                            </div>
-                                            <Select
-                                                value={String(settings.idleThresholdSeconds || 10)}
-                                                onValueChange={(val) => onSaveSettings({ ...settings, idleThresholdSeconds: parseInt(val) })}
-                                            >
-                                                <SelectTrigger className="w-[180px] bg-background border-none">
-                                                    <SelectValue placeholder={t('settings.tracking.selectDuration')} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="5">{t('settings.tracking.seconds5')}</SelectItem>
-                                                    <SelectItem value="10">{t('settings.tracking.seconds10')} (Default)</SelectItem>
-                                                    <SelectItem value="30">{t('settings.tracking.seconds30')}</SelectItem>
-                                                    <SelectItem value="60">{t('settings.tracking.hour1').replace('1 Hour', '1 Minute').replace('1시간', '1분')}</SelectItem>
-                                                    <SelectItem value="300">5 {t('settings.tracking.minutes5').replace('5 Minutes', 'Minutes').replace('5분', '분')}</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
+
 
                                         <div id="settings-screenshot-interval" className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
                                             <div className="space-y-0.5">
@@ -1439,7 +1491,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
                                                     <div className="flex gap-2">
                                                         <Input
-                                                            placeholder="Add Process Name (e.g. Photoshop.exe)"
+                                                            placeholder={t('settings.runningApps.placeholder')}
                                                             className="flex-1 h-8 text-sm"
                                                             onKeyDown={(e) => {
                                                                 if (e.key === 'Enter') {

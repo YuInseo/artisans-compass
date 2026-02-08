@@ -1,5 +1,5 @@
-import { Session, Todo, Project } from "@/types";
-import { ChevronsUp, Sparkles, Lock, Unlock, Moon, Sun, Eraser, CheckCircle, ChevronDown, Briefcase } from "lucide-react";
+import { Session, Todo, Project, AppSettings } from "@/types";
+import { Eraser, Sparkles, Play, Briefcase, AlignLeft, AlignCenter, CheckCircle, Moon, Sun, Lock, Unlock } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -81,6 +81,8 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
         return Math.round((completed / uniqueGeneralTodos.length) * 100);
     }, [uniqueGeneralTodos]);
 
+
+
     const { settings, isWidgetMode, setWidgetMode, saveSettings } = useDataStore();
 
     const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
@@ -138,8 +140,8 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
     useEffect(() => {
         if (!isWidgetMode || !headerRef.current || !editorContentRef.current || !(window as any).ipcRenderer) return;
 
-        // Skip auto-resize if disabled by user
-        if (settings?.widgetAutoResize === false) return;
+        // Skip auto-resize if disabled by user OR if position/size is locked
+        if (settings?.widgetAutoResize === false || settings?.widgetPositionLocked) return;
 
         const calculateAndResize = () => {
             const headerHeight = headerRef.current?.offsetHeight || 0;
@@ -174,8 +176,30 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
             observer.disconnect();
             if (resizeTimeoutRef.current) clearTimeout(resizeTimeoutRef.current);
         };
-    }, [isWidgetMode, todos, settings?.widgetMaxHeight, settings?.widgetAutoResize]);
+    }, [isWidgetMode, todos, settings?.widgetMaxHeight, settings?.widgetAutoResize, settings?.widgetPositionLocked]);
 
+
+
+    // Manual Resize Listener: Save custom height when user resizes manually in widget mode
+    useEffect(() => {
+        if (!isWidgetMode || settings?.widgetAutoResize || settings?.widgetPositionLocked) return;
+
+
+
+        let resizeTimeout: NodeJS.Timeout;
+        const onResize = () => {
+            clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => {
+                const currentHeight = window.innerHeight;
+                if (currentHeight > 100 && settings) { // Basic sanity check
+                    saveSettings({ ...settings, widgetCustomHeight: currentHeight });
+                }
+            }, 500); // 500ms debounce
+        };
+
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, [isWidgetMode, settings?.widgetAutoResize, settings?.widgetPositionLocked, saveSettings]);
     // Theme Switching Logic for Widget Mode
     useEffect(() => {
         if (!settings) return;
@@ -183,16 +207,23 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
         if (isWidgetMode) {
             // Enter Widget Mode: Use widget theme (default to dark)
             // Save current main theme if not set (optional, but good for first run)
-            if (!settings.mainTheme) {
-                // We don't have a reliable way to know "prev" theme here without it being in settings
-                // So we assume the current theme is the main one if we are transitioning FROM main.
+            if (!settings.mainTheme && theme) {
+                // If mainTheme is not saved, save the current theme before switching
+                saveSettings({ ...settings, mainTheme: theme });
             }
             setTheme(settings.widgetTheme || 'dark');
         } else {
             // Exit Widget Mode: Restore main theme
             setTheme(settings.mainTheme || 'dark');
         }
-    }, [isWidgetMode, settings?.widgetTheme, settings?.mainTheme]);
+    }, [isWidgetMode, settings?.widgetTheme, settings?.mainTheme, theme, saveSettings]);
+
+    // Sync Window Lock State (Position & Size)
+    useEffect(() => {
+        if ((window as any).ipcRenderer && settings) {
+            (window as any).ipcRenderer.send('set-window-locked', settings.widgetPositionLocked || false);
+        }
+    }, [settings?.widgetPositionLocked]);
 
     const togglePin = async () => {
         const newState = !isPinned;
@@ -200,17 +231,44 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
         setWidgetMode(newState);
 
         let targetHeight = 800;
-        // If entering widget mode, try to respect the current height or setting
-        if (newState && headerRef.current && editorContentRef.current) {
-            const headerHeight = headerRef.current?.offsetHeight || 0;
-            const contentHeight = editorContentRef.current?.offsetHeight || 0;
-            const calculated = headerHeight + contentHeight + 40;
-            targetHeight = Math.min(calculated, settings?.widgetMaxHeight || 800);
-        } else if (newState) {
-            targetHeight = settings?.widgetMaxHeight || 800;
+        let bounds = undefined;
+
+        if (newState) {
+            // Entering Widget Mode
+            // 1. Determine Height
+            if (settings?.widgetCustomHeight && !settings.widgetAutoResize) {
+                targetHeight = settings.widgetCustomHeight;
+            } else if (headerRef.current && editorContentRef.current) {
+                const headerHeight = headerRef.current?.offsetHeight || 0;
+                const contentHeight = editorContentRef.current?.offsetHeight || 0;
+                const calculated = headerHeight + contentHeight + 40;
+                targetHeight = Math.min(calculated, settings?.widgetMaxHeight || 800);
+            } else {
+                targetHeight = settings?.widgetMaxHeight || 800;
+            }
+
+            // 2. Determine Bounds (if saved)
+            if (settings?.widgetBounds) {
+                bounds = settings.widgetBounds;
+            }
+        } else {
+            // Exiting Widget Mode -> Save current bounds first
+            if ((window as any).ipcRenderer) {
+                const currentBounds = await (window as any).ipcRenderer.invoke('get-window-bounds');
+                if (currentBounds && settings) {
+                    await saveSettings({ ...settings, widgetBounds: currentBounds });
+                }
+            }
         }
 
-        await (window as any).ipcRenderer.send('set-widget-mode', { mode: newState, height: targetHeight });
+        if ((window as any).ipcRenderer) {
+            await (window as any).ipcRenderer.send('set-widget-mode', {
+                mode: newState,
+                height: targetHeight,
+                locked: settings?.widgetPositionLocked,
+                bounds: bounds
+            });
+        }
     }
 
     const [sessions, setSessions] = useState<Session[]>([]);
@@ -241,11 +299,9 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                     setLiveSession(data.currentSession);
                 } else {
                     setLiveSession(null);
-                    // Refresh data logic...
                 }
             });
 
-            // Listen for completed sessions to update total time immediately
             const removeSessionListener = (window as any).ipcRenderer.onSessionCompleted((session: Session) => {
                 setSessions((prev: Session[]) => [...prev, session]);
             });
@@ -287,12 +343,6 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
         const isWork = settings.workApps!.some(app => processName.toLowerCase().includes(app.toLowerCase()));
         return isWork ? liveSession : null;
     }, [liveSession, settings?.filterTimelineByWorkApps, settings?.workApps]);
-
-
-
-
-
-
 
     return (
         <ContextMenu>
@@ -362,7 +412,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
-                                                    onClick={clearUntitledTodos}
+                                                    onClick={() => clearUntitledTodos()}
                                                     title={t('dashboard.clearUntitled')}
                                                     style={{ WebkitAppRegion: 'no-drag' } as any}
                                                 >
@@ -464,7 +514,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                                     <div className="flex items-center justify-between">
                                                                         <span className="text-xs font-medium text-foreground flex items-center gap-2">
                                                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-anchor"><circle cx="12" cy="5" r="3" /><line x1="12" x2="12" y1="22" y2="8" /><path d="M5 12H2a10 10 0 0 0 20 0h-3" /></svg>
-                                                                            Lock Position
+                                                                            {t('dashboard.lockPosition')}
                                                                         </span>
                                                                         <Switch
                                                                             checked={settings?.widgetPositionLocked || false}
@@ -477,7 +527,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                                     <div className="flex items-center justify-between">
                                                                         <span className="text-xs font-medium text-foreground flex items-center gap-2">
                                                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-panel-top-open"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /><path d="m9 16 3-3 3 3" /></svg>
-                                                                            Auto-hide Header
+                                                                            {t('dashboard.autoHideHeader')}
                                                                         </span>
                                                                         <Switch
                                                                             checked={settings?.widgetHeaderAutoHide || false}
@@ -490,7 +540,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                                     <div className="flex items-center justify-between">
                                                                         <span className="text-xs font-medium text-foreground flex items-center gap-2">
                                                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-up-down"><path d="m21 16-4 4-4-4" /><path d="m17 20V4" /><path d="m3 8 4-4 4 4" /><path d="m7 4v16" /></svg>
-                                                                            {t('dashboard.autoHeight') || "Auto-Height"}
+                                                                            {t('dashboard.autoHeight')}
                                                                         </span>
                                                                         <Switch
                                                                             checked={settings?.widgetAutoResize ?? true} // Default to true
@@ -499,7 +549,6 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                                         />
                                                                     </div>
                                                                 </div>
-
                                                             </div>
                                                         </div>
                                                     </PopoverContent>
@@ -515,541 +564,559 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                 >
                                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin-off"><line x1="2" x2="22" y1="2" y2="22" /><line x1="12" x2="12" y1="17" y2="22" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-.25-.95" /><path d="M15 9.34V6h1a2 2 0 0 0 0-4H7.89" /></svg>
                                                 </Button>
-                                            </div>
-                                        </div>
+                                            </div >
+                                        </div >
 
 
                                         {/* Custom Widget Header Content */}
-                                        {settings?.widgetDisplayMode === 'quote' && (
-                                            <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
-                                                <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center relative hover:bg-muted/50 transition-colors">
-                                                    {isEditingQuote ? (
-                                                        <div className="flex flex-col gap-2">
-                                                            <textarea
-                                                                className="w-full bg-background border border-input rounded-md p-2 text-sm font-serif italic focus:ring-1 focus:ring-primary min-h-[80px]"
-                                                                value={quoteInput}
-                                                                onChange={(e) => setQuoteInput(e.target.value)}
-                                                                placeholder="Enter your daily quote..."
-                                                                onKeyDown={(e) => {
-                                                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                                                        e.preventDefault();
-                                                                        // Save
+                                        {
+                                            settings?.widgetDisplayMode === 'quote' && (
+                                                <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
+                                                    <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center relative hover:bg-muted/50 transition-colors">
+                                                        {isEditingQuote ? (
+                                                            <div className="flex flex-col gap-2">
+                                                                <textarea
+                                                                    className="w-full bg-background border border-input rounded-md p-2 text-sm font-serif italic focus:ring-1 focus:ring-primary min-h-[80px]"
+                                                                    value={quoteInput}
+                                                                    onChange={(e) => setQuoteInput(e.target.value)}
+                                                                    placeholder="Enter your daily quote..."
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                                                            e.preventDefault();
+                                                                            // Save
+                                                                            const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                                            if ((window as any).ipcRenderer) {
+                                                                                (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
+                                                                            }
+                                                                            setManualQuote(quoteInput);
+                                                                            setIsEditingQuote(false);
+                                                                        }
+                                                                        if (e.key === 'Escape') {
+                                                                            setIsEditingQuote(false);
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                <div className="flex justify-end gap-2 text-xs">
+                                                                    <button onClick={() => setIsEditingQuote(false)} className="text-muted-foreground hover:text-foreground">Cancel</button>
+                                                                    <button onClick={() => {
                                                                         const todayStr = format(new Date(), 'yyyy-MM-dd');
                                                                         if ((window as any).ipcRenderer) {
                                                                             (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
                                                                         }
                                                                         setManualQuote(quoteInput);
                                                                         setIsEditingQuote(false);
-                                                                    }
-                                                                    if (e.key === 'Escape') {
-                                                                        setIsEditingQuote(false);
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <div className="flex justify-end gap-2 text-xs">
-                                                                <button onClick={() => setIsEditingQuote(false)} className="text-muted-foreground hover:text-foreground">Cancel</button>
-                                                                <button onClick={() => {
-                                                                    const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                                                    if ((window as any).ipcRenderer) {
-                                                                        (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
-                                                                    }
-                                                                    setManualQuote(quoteInput);
-                                                                    setIsEditingQuote(false);
-                                                                }} className="text-primary hover:underline font-bold">Save</button>
+                                                                    }} className="text-primary hover:underline font-bold">Save</button>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div onClick={() => {
-                                                            const defaultQuotes = [
-                                                                "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
-                                                                "완벽함이 아니라 탁월함을 추구하라.",
-                                                                "시작이 반이다.",
-                                                                "몰입은 최고의 휴식이다.",
-                                                                "단순함은 궁극의 정교함이다.",
-                                                                "가장 좋은 방법은 시작하는 것이다.",
-                                                                "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
-                                                                "어제보다 나은 내일을 만들어라.",
-                                                                "작은 진전이 모여 큰 결과를 만든다.",
-                                                                "실패는 성공으로 가는 이정표다.",
-                                                                "코딩은 21세기의 마법이다.",
-                                                                "디테일이 퀄리티를 만든다.",
-                                                                "꾸준함이 재능을 이긴다.",
-                                                                "기록하지 않으면 기억되지 않는다.",
-                                                                "오늘의 노력이 내일의 실력이 된다.",
-                                                                "문제는 해결책을 찾기 위해 존재한다.",
-                                                                "배움에는 끝이 없다.",
-                                                                "나만의 속도로 가라.",
-                                                                "휴식도 훈련의 일부다.",
-                                                                "상상력은 지식보다 중요하다.",
-                                                                "도전하지 않으면 아무것도 얻을 수 없다.",
-                                                                "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
-                                                                "천리길도 한 걸음부터.",
-                                                                "성공은 포기하지 않는 자의 것이다.",
-                                                                "당신의 한계는 당신의 생각뿐이다.",
-                                                                "지금 흘린 땀은 내일의 눈물을 닦아준다.",
-                                                                "위대한 일은 작은 일들이 모여 이루어진다.",
-                                                                "늦었다고 생각할 때가 가장 빠르다.",
-                                                                "열정 없는 천재는 없다.",
-                                                                "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
-                                                                "당신의 작품이 당신을 말해준다."
-                                                            ];
-                                                            const allQuotes = [...defaultQuotes, ...(settings?.customQuotes || [])];
-                                                            const quote = allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
-                                                            setQuoteInput(manualQuote || quote);
-                                                            setIsEditingQuote(true);
-                                                        }} className="cursor-pointer" title="Click to Edit Quote">
-                                                            <p className="text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed">
-                                                                "{manualQuote || (() => {
-                                                                    const defaultQuotes = [
-                                                                        "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
-                                                                        "완벽함이 아니라 탁월함을 추구하라.",
-                                                                        "시작이 반이다.",
-                                                                        "몰입은 최고의 휴식이다.",
-                                                                        "단순함은 궁극의 정교함이다.",
-                                                                        "가장 좋은 방법은 시작하는 것이다.",
-                                                                        "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
-                                                                        "어제보다 나은 내일을 만들어라.",
-                                                                        "작은 진전이 모여 큰 결과를 만든다.",
-                                                                        "실패는 성공으로 가는 이정표다.",
-                                                                        "코딩은 21세기의 마법이다.",
-                                                                        "디테일이 퀄리티를 만든다.",
-                                                                        "꾸준함이 재능을 이긴다.",
-                                                                        "기록하지 않으면 기억되지 않는다.",
-                                                                        "오늘의 노력이 내일의 실력이 된다.",
-                                                                        "문제는 해결책을 찾기 위해 존재한다.",
-                                                                        "배움에는 끝이 없다.",
-                                                                        "나만의 속도로 가라.",
-                                                                        "휴식도 훈련의 일부다.",
-                                                                        "상상력은 지식보다 중요하다.",
-                                                                        "도전하지 않으면 아무것도 얻을 수 없다.",
-                                                                        "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
-                                                                        "천리길도 한 걸음부터.",
-                                                                        "성공은 포기하지 않는 자의 것이다.",
-                                                                        "당신의 한계는 당신의 생각뿐이다.",
-                                                                        "지금 흘린 땀은 내일의 눈물을 닦아준다.",
-                                                                        "위대한 일은 작은 일들이 모여 이루어진다.",
-                                                                        "늦었다고 생각할 때가 가장 빠르다.",
-                                                                        "열정 없는 천재는 없다.",
-                                                                        "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
-                                                                        "당신의 작품이 당신을 말해준다."
-                                                                    ];
-                                                                    const allQuotes = [...defaultQuotes, ...(settings?.customQuotes || [])];
-                                                                    return allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
-                                                                })()}"
-                                                            </p>
-                                                        </div>
-                                                    )}
+                                                        ) : (
+                                                            <div onClick={() => {
+                                                                const defaultQuotes = [
+                                                                    "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
+                                                                    "완벽함이 아니라 탁월함을 추구하라.",
+                                                                    "시작이 반이다.",
+                                                                    "몰입은 최고의 휴식이다.",
+                                                                    "단순함은 궁극의 정교함이다.",
+                                                                    "가장 좋은 방법은 시작하는 것이다.",
+                                                                    "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
+                                                                    "어제보다 나은 내일을 만들어라.",
+                                                                    "작은 진전이 모여 큰 결과를 만든다.",
+                                                                    "실패는 성공으로 가는 이정표다.",
+                                                                    "코딩은 21세기의 마법이다.",
+                                                                    "디테일이 퀄리티를 만든다.",
+                                                                    "꾸준함이 재능을 이긴다.",
+                                                                    "기록하지 않으면 기억되지 않는다.",
+                                                                    "오늘의 노력이 내일의 실력이 된다.",
+                                                                    "문제는 해결책을 찾기 위해 존재한다.",
+                                                                    "배움에는 끝이 없다.",
+                                                                    "나만의 속도로 가라.",
+                                                                    "휴식도 훈련의 일부다.",
+                                                                    "상상력은 지식보다 중요하다.",
+                                                                    "도전하지 않으면 아무것도 얻을 수 없다.",
+                                                                    "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
+                                                                    "천리길도 한 걸음부터.",
+                                                                    "성공은 포기하지 않는 자의 것이다.",
+                                                                    "당신의 한계는 당신의 생각뿐이다.",
+                                                                    "지금 흘린 땀은 내일의 눈물을 닦아준다.",
+                                                                    "위대한 일은 작은 일들이 모여 이루어진다.",
+                                                                    "늦었다고 생각할 때가 가장 빠르다.",
+                                                                    "열정 없는 천재는 없다.",
+                                                                    "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
+                                                                    "당신의 작품이 당신을 말해준다."
+                                                                ];
+                                                                const allQuotes = [...defaultQuotes, ...(settings?.customQuotes || [])];
+                                                                const quote = allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
+                                                                setQuoteInput(manualQuote || quote);
+                                                                setIsEditingQuote(true);
+                                                            }} className="cursor-pointer" title="Click to Edit Quote">
+                                                                <p className="text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed">
+                                                                    "{manualQuote || (() => {
+                                                                        const defaultQuotes = [
+                                                                            "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
+                                                                            "완벽함이 아니라 탁월함을 추구하라.",
+                                                                            "시작이 반이다.",
+                                                                            "몰입은 최고의 휴식이다.",
+                                                                            "단순함은 궁극의 정교함이다.",
+                                                                            "가장 좋은 방법은 시작하는 것이다.",
+                                                                            "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
+                                                                            "어제보다 나은 내일을 만들어라.",
+                                                                            "작은 진전이 모여 큰 결과를 만든다.",
+                                                                            "실패는 성공으로 가는 이정표다.",
+                                                                            "코딩은 21세기의 마법이다.",
+                                                                            "디테일이 퀄리티를 만든다.",
+                                                                            "꾸준함이 재능을 이긴다.",
+                                                                            "기록하지 않으면 기억되지 않는다.",
+                                                                            "오늘의 노력이 내일의 실력이 된다.",
+                                                                            "문제는 해결책을 찾기 위해 존재한다.",
+                                                                            "배움에는 끝이 없다.",
+                                                                            "나만의 속도로 가라.",
+                                                                            "휴식도 훈련의 일부다.",
+                                                                            "상상력은 지식보다 중요하다.",
+                                                                            "도전하지 않으면 아무것도 얻을 수 없다.",
+                                                                            "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
+                                                                            "천리길도 한 걸음부터.",
+                                                                            "성공은 포기하지 않는 자의 것이다.",
+                                                                            "당신의 한계는 당신의 생각뿐이다.",
+                                                                            "지금 흘린 땀은 내일의 눈물을 닦아준다.",
+                                                                            "위대한 일은 작은 일들이 모여 이루어진다.",
+                                                                            "늦었다고 생각할 때가 가장 빠르다.",
+                                                                            "열정 없는 천재는 없다.",
+                                                                            "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
+                                                                            "당신의 작품이 당신을 말해준다."
+                                                                        ];
+                                                                        const allQuotes = [...defaultQuotes, ...(settings?.customQuotes || [])];
+                                                                        return allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
+                                                                    })()}"
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                saveSettings({ ...settings, widgetDisplayMode: 'none' });
+                                                            }}
+                                                            className="absolute top-1 right-1 p-1 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all no-drag"
+                                                            title="Remove Quote"
+                                                            style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )
+                                        }
+
+                                        {
+                                            settings?.widgetDisplayMode === 'goals' && (
+                                                <div className="mb-4 px-1 grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 group relative">
+                                                    <div className="p-2 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+                                                        <div className="text-[10px] font-bold text-blue-600/70 uppercase tracking-wider mb-0.5">{t('dashboard.monthly')}</div>
+                                                        <div className="text-xs font-medium truncate" title={settings.focusGoals?.monthly}>{settings.focusGoals?.monthly || t('dashboard.noGoal')}</div>
+                                                    </div>
+                                                    <div className="p-2 bg-green-500/5 border border-green-500/20 rounded-lg">
+                                                        <div className="text-[10px] font-bold text-green-600/70 uppercase tracking-wider mb-0.5">{t('dashboard.weekly')}</div>
+                                                        <div className="text-xs font-medium truncate" title={settings.focusGoals?.weekly}>{settings.focusGoals?.weekly || t('dashboard.noGoal')}</div>
+                                                    </div>
                                                     <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            saveSettings({ ...settings, widgetDisplayMode: 'none' });
-                                                        }}
-                                                        className="absolute top-1 right-1 p-1 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all no-drag"
-                                                        title="Remove Quote"
+                                                        onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
+                                                        className="absolute -top-1 -right-1 p-1 rounded-full bg-background border border-border shadow-sm text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all z-10 no-drag"
+                                                        title="Remove Goals"
                                                         style={{ WebkitAppRegion: 'no-drag' } as any}
                                                     >
                                                         <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
                                                     </button>
                                                 </div>
-                                            </div>
-                                        )}
+                                            )
+                                        }
 
-                                        {settings?.widgetDisplayMode === 'goals' && (
-                                            <div className="mb-4 px-1 grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 group relative">
-                                                <div className="p-2 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-                                                    <div className="text-[10px] font-bold text-blue-600/70 uppercase tracking-wider mb-0.5">{t('dashboard.monthly')}</div>
-                                                    <div className="text-xs font-medium truncate" title={settings.focusGoals?.monthly}>{settings.focusGoals?.monthly || t('dashboard.noGoal')}</div>
-                                                </div>
-                                                <div className="p-2 bg-green-500/5 border border-green-500/20 rounded-lg">
-                                                    <div className="text-[10px] font-bold text-green-600/70 uppercase tracking-wider mb-0.5">{t('dashboard.weekly')}</div>
-                                                    <div className="text-xs font-medium truncate" title={settings.focusGoals?.weekly}>{settings.focusGoals?.weekly || t('dashboard.noGoal')}</div>
-                                                </div>
-                                                <button
-                                                    onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
-                                                    className="absolute -top-1 -right-1 p-1 rounded-full bg-background border border-border shadow-sm text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all z-10 no-drag"
-                                                    title="Remove Goals"
-                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                                                </button>
-                                            </div>
-                                        )}
+                                        {
+                                            settings?.widgetDisplayMode === 'timer' && (
+                                                <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
+                                                    {/* Timer Calculation */}
+                                                    {(() => {
+                                                        let totalFocusTime = 0;
+                                                        // Deduplicate: If liveSession start time matches any completed session, ignore liveSession (it's transitioning)
+                                                        const isLiveAlreadyCompleted = liveSession && sessions.some(s => s.start === liveSession.start);
+                                                        const effectiveLiveSession = isLiveAlreadyCompleted ? null : liveSession;
 
-                                        {settings?.widgetDisplayMode === 'timer' && (
-                                            <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
-                                                {/* Timer Calculation */}
-                                                {(() => {
-                                                    let totalFocusTime = 0;
-                                                    // Deduplicate: If liveSession start time matches any completed session, ignore liveSession (it's transitioning)
-                                                    const isLiveAlreadyCompleted = liveSession && sessions.some(s => s.start === liveSession.start);
-                                                    const effectiveLiveSession = isLiveAlreadyCompleted ? null : liveSession;
+                                                        const allSessions = effectiveLiveSession ? [...sessions, effectiveLiveSession] : sessions;
 
-                                                    const allSessions = effectiveLiveSession ? [...sessions, effectiveLiveSession] : sessions;
+                                                        allSessions.forEach(session => {
+                                                            const isLive = session === effectiveLiveSession;
 
-                                                    allSessions.forEach(session => {
-                                                        const isLive = session === effectiveLiveSession;
+                                                            // Use stored duration for completed sessions to match backend rounding
+                                                            if (!isLive && typeof session.duration === 'number') {
+                                                                totalFocusTime += session.duration;
+                                                                return;
+                                                            }
 
-                                                        // Use stored duration for completed sessions to match backend rounding
-                                                        if (!isLive && typeof session.duration === 'number') {
-                                                            totalFocusTime += session.duration;
-                                                            return;
-                                                        }
+                                                            const s = new Date(session.start);
+                                                            const e = isLive ? now : new Date(session.end);
+                                                            if (isNaN(s.getTime()) || isNaN(e.getTime())) return;
 
-                                                        const s = new Date(session.start);
-                                                        const e = isLive ? now : new Date(session.end);
-                                                        if (isNaN(s.getTime()) || isNaN(e.getTime())) return;
+                                                            // Fallback calculation for live sessions or missing duration
+                                                            // Use Math.floor to match backend perfectly and prevent "jumps" vs "floors"
+                                                            const msDiff = e.getTime() - s.getTime();
+                                                            const duration = Math.floor(msDiff / 1000);
 
-                                                        // Fallback calculation for live sessions or missing duration
-                                                        // Use Math.floor to match backend perfectly and prevent "jumps" vs "floors"
-                                                        const msDiff = e.getTime() - s.getTime();
-                                                        const duration = Math.floor(msDiff / 1000);
+                                                            if (duration > 0) totalFocusTime += duration;
+                                                        });
 
-                                                        if (duration > 0) totalFocusTime += duration;
-                                                    });
-
-                                                    return (
-                                                        <div className="p-4 bg-muted/30 border border-border/50 rounded-lg flex items-center justify-between relative">
-                                                            <div>
-                                                                <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-1">{t('calendar.totalFocus')}</div>
-                                                                <div className="text-3xl font-bold font-mono tracking-tight text-foreground flex items-baseline gap-1">
-                                                                    {Math.floor(totalFocusTime / 3600)}<span className="text-sm font-sans font-medium text-muted-foreground">h</span>
-                                                                    {Math.floor((totalFocusTime % 3600) / 60)}<span className="text-sm font-sans font-medium text-muted-foreground">m</span>
-                                                                    {totalFocusTime % 60}<span className="text-sm font-sans font-medium text-muted-foreground">s</span>
+                                                        return (
+                                                            <div className="p-4 bg-muted/30 border border-border/50 rounded-lg flex items-center justify-between relative">
+                                                                <div>
+                                                                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-1">{t('calendar.totalFocus')}</div>
+                                                                    <div className="text-3xl font-bold font-mono tracking-tight text-foreground flex items-baseline gap-1">
+                                                                        {Math.floor(totalFocusTime / 3600)}<span className="text-sm font-sans font-medium text-muted-foreground">h</span>
+                                                                        {Math.floor((totalFocusTime % 3600) / 60)}<span className="text-sm font-sans font-medium text-muted-foreground">m</span>
+                                                                        {totalFocusTime % 60}<span className="text-sm font-sans font-medium text-muted-foreground">s</span>
+                                                                    </div>
                                                                 </div>
+
+                                                                {liveSession ? (
+                                                                    <div className="flex flex-col items-end justify-center">
+                                                                        <div className="flex items-center gap-2 mb-1">
+                                                                            <span className="relative flex h-2 w-2">
+                                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                                                            </span>
+                                                                            <span className="text-[10px] font-bold text-green-500 uppercase tracking-wider">{t('calendar.focusing')}</span>
+                                                                        </div>
+                                                                        <div className="text-xs font-medium text-foreground max-w-[100px] truncate text-right border-t border-border/50 pt-1 mt-1" title={liveSession.process}>
+                                                                            {liveSession.process}
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    (() => {
+                                                                        // Find last session (by end date)
+                                                                        const lastSession = sessions.length > 0
+                                                                            ? sessions.reduce((prev, current) => (new Date(prev.end) > new Date(current.end)) ? prev : current)
+                                                                            : null;
+
+                                                                        if (lastSession) {
+                                                                            const h = Math.floor(lastSession.duration / 3600);
+                                                                            const m = Math.floor((lastSession.duration % 3600) / 60);
+                                                                            const s = lastSession.duration % 60;
+                                                                            const durationText = h > 0 ? `${h}h ${m}m ${s}s` : (m > 0 ? `${m}m ${s}s` : `${s}s`);
+
+                                                                            return (
+                                                                                <div className="flex flex-col items-end justify-center opacity-70">
+                                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                                        <span className="relative flex h-2 w-2">
+                                                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground/50"></span>
+                                                                                        </span>
+                                                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('calendar.lastFocus')}</span>
+                                                                                    </div>
+                                                                                    <div className="text-xs font-medium text-muted-foreground text-right border-t border-border/50 pt-1 mt-1">
+                                                                                        {lastSession.process} <span className="text-[10px] opacity-70 ml-1">({durationText})</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        }
+                                                                        return null;
+                                                                    })()
+                                                                )}
+
+                                                                <button
+                                                                    onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
+                                                                    className="absolute top-1 right-1 p-1 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all no-drag"
+                                                                    title="Remove Timer"
+                                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                                                </button>
                                                             </div>
-
-                                                            {liveSession ? (
-                                                                <div className="flex flex-col items-end justify-center">
-                                                                    <div className="flex items-center gap-2 mb-1">
-                                                                        <span className="relative flex h-2 w-2">
-                                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                                                                        </span>
-                                                                        <span className="text-[10px] font-bold text-green-500 uppercase tracking-wider">{t('calendar.focusing')}</span>
-                                                                    </div>
-                                                                    <div className="text-xs font-medium text-foreground max-w-[100px] truncate text-right border-t border-border/50 pt-1 mt-1" title={liveSession.process}>
-                                                                        {liveSession.process}
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                (() => {
-                                                                    // Find last session (by end date)
-                                                                    const lastSession = sessions.length > 0
-                                                                        ? sessions.reduce((prev, current) => (new Date(prev.end) > new Date(current.end)) ? prev : current)
-                                                                        : null;
-
-                                                                    if (lastSession) {
-                                                                        const h = Math.floor(lastSession.duration / 3600);
-                                                                        const m = Math.floor((lastSession.duration % 3600) / 60);
-                                                                        const s = lastSession.duration % 60;
-                                                                        const durationText = h > 0 ? `${h}h ${m}m ${s}s` : (m > 0 ? `${m}m ${s}s` : `${s}s`);
-
-                                                                        return (
-                                                                            <div className="flex flex-col items-end justify-center opacity-70">
-                                                                                <div className="flex items-center gap-2 mb-1">
-                                                                                    <span className="relative flex h-2 w-2">
-                                                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground/50"></span>
-                                                                                    </span>
-                                                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('calendar.lastFocus')}</span>
-                                                                                </div>
-                                                                                <div className="text-xs font-medium text-muted-foreground text-right border-t border-border/50 pt-1 mt-1">
-                                                                                    {lastSession.process} <span className="text-[10px] opacity-70 ml-1">({durationText})</span>
-                                                                                </div>
-                                                                            </div>
-                                                                        );
-                                                                    }
-                                                                    return null;
-                                                                })()
-                                                            )}
-
-                                                            <button
-                                                                onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
-                                                                className="absolute top-1 right-1 p-1 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all no-drag"
-                                                                title="Remove Timer"
-                                                                style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                            >
-                                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })()}
-                                            </div>
-                                        )}
+                                                        );
+                                                    })()}
+                                                </div>
+                                            )
+                                        }
                                     </>
-                                )}
+                                )
+                                }
 
                                 {/* Dashboard Header: Only visible when NOT in widget mode */}
-                                {!isWidgetMode && (
-                                    <div className="flex items-end justify-between mb-6 px-1 shrink-0">
-                                        <div className="flex items-center gap-2">
-                                            <div>
-                                                <h2 className="text-2xl font-bold text-foreground tracking-tight cursor-pointer hover:text-muted-foreground transition-colors flex items-center gap-2">
-                                                    {t('dashboard.todayFocus')}
-                                                </h2>
-                                                <p className="text-sm text-muted-foreground font-medium mt-1">{format(new Date(), 'MMM dd, yyyy')}</p>
+                                {
+                                    !isWidgetMode && (
+                                        <div className="flex items-end justify-between mb-6 px-1 shrink-0">
+                                            <div className="flex items-center gap-2">
+                                                <div>
+                                                    <h2 className="text-2xl font-bold text-foreground tracking-tight cursor-pointer hover:text-muted-foreground transition-colors flex items-center gap-2">
+                                                        {t('dashboard.todayFocus')}
+                                                    </h2>
+                                                    <p className="text-sm text-muted-foreground font-medium mt-1">{format(new Date(), 'MMM dd, yyyy')}</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Controls: Project Dropdown + Action Buttons */}
+                                            <div className="flex items-center gap-3">
+                                                {/* Project Dropdown */}
+                                                <div className="relative">
+                                                    <Select value={activeProjectId} onValueChange={setActiveProjectId}>
+                                                        <SelectTrigger className="w-[180px]">
+                                                            <SelectValue placeholder={t('dashboard.selectProject')} />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {projects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
+                                                            {projects.map(p => (
+                                                                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+
+                                                {/* Action Buttons Group */}
+                                                <div className="flex items-center gap-1">
+                                                    {/* Alignment Toggle */}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                                        onClick={() => settings && saveSettings({ ...settings, editorAlignment: settings.editorAlignment === 'center' ? 'left' : 'center' } as AppSettings)}
+                                                        title={settings?.editorAlignment === 'center' ? t('dashboard.alignLeft') : t('dashboard.alignCenter')}
+                                                    >
+                                                        {settings?.editorAlignment === 'center' ? (
+                                                            <AlignLeft className="w-[18px] h-[18px]" />
+                                                        ) : (
+                                                            <AlignCenter className="w-[18px] h-[18px]" />
+                                                        )}
+                                                    </Button>
+
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                                        onClick={() => clearUntitledTodos()}
+                                                        title={t('dashboard.clearUntitled')}
+                                                    >
+                                                        <Eraser className="w-[18px] h-[18px]" />
+                                                    </Button>
+
+                                                    {/* Pin Button */}
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className={cn("h-9 w-9 transition-all", isPinned ? "text-primary bg-primary/10 rotate-45" : "text-muted-foreground hover:text-foreground")}
+                                                        onClick={togglePin}
+                                                        title={isPinned ? t('dashboard.unpin') : t('dashboard.pin')}
+                                                    >
+                                                        <span className="sr-only">Pin</span>
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin"><line x1="12" x2="12" y1="17" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
+                                                    </Button>
+                                                </div>
                                             </div>
                                         </div>
-
-                                        {/* Controls: Project Dropdown + Action Buttons */}
-                                        <div className="flex items-center gap-3">
-                                            {/* Project Dropdown */}
-                                            <div className="relative">
-                                                <Select value={activeProjectId} onValueChange={setActiveProjectId}>
-                                                    <SelectTrigger className="w-[180px]">
-                                                        <SelectValue placeholder={t('dashboard.selectProject')} />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {projects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
-                                                        {projects.map(p => (
-                                                            <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-
-                                            {/* Action Buttons Group */}
-                                            <div className="flex items-center gap-1">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                                                    onClick={clearUntitledTodos}
-                                                    title={t('dashboard.clearUntitled')}
-                                                >
-                                                    <Eraser className="w-[18px] h-[18px]" />
-                                                </Button>
-
-                                                {/* Pin Button */}
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className={cn("h-9 w-9 transition-all", isPinned ? "text-primary bg-primary/10 rotate-45" : "text-muted-foreground hover:text-foreground")}
-                                                    onClick={togglePin}
-                                                    title={isPinned ? t('dashboard.unpin') : t('dashboard.pin')}
-                                                >
-                                                    <span className="sr-only">Pin</span>
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin"><line x1="12" x2="12" y1="17" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div> {/* End Header Wrapper */}
+                                    )
+                                }
+                            </div > {/* End Header Wrapper */}
 
                             {/* Editor Area (Scrollable) - Only show if projects exist or in widget mode */}
-                            {(isWidgetMode || (projects.length > 0 && activeProjectId && activeProjectId !== 'none')) ? (
-                                <div className={cn(
-                                    "relative pr-2 custom-scrollbar overflow-x-hidden w-full", // Added w-full
-                                    isWidgetMode
-                                        ? "flex-1 overflow-y-auto pb-6 -ml-2 pl-0"
-                                        : "flex-1 overflow-y-auto pb-40" // Heavily increased padding to clear floating elements
-                                )}
-                                    style={{ scrollbarGutter: 'stable' }}
-                                >
-                                    {/* Content Wrapper for Measure & Lock Logic */}
-                                    <div
-                                        ref={editorContentRef}
-                                        className="min-h-full"
+                            {
+                                (isWidgetMode || (projects.length > 0 && activeProjectId && activeProjectId !== 'none')) ? (
+                                    <div className={cn(
+                                        "relative pr-2 custom-scrollbar overflow-x-hidden w-full", // Added w-full
+                                        isWidgetMode
+                                            ? "flex-1 overflow-y-auto -ml-2 pl-0"
+                                            : "flex-1 overflow-y-auto" // Heavily increased padding to clear floating elements
+                                    )}
+                                        style={{ scrollbarGutter: 'stable' }}
                                     >
-                                        <TodoEditor
-                                            key={isWidgetMode ? 'widget' : 'full'}
-                                            todos={todos}
-                                            isWidgetMode={isWidgetMode}
-                                            isWidgetLocked={isWidgetMode && isWidgetLocked}
-                                        />
+                                        {/* Content Wrapper for Measure & Lock Logic */}
+                                        <div
+                                            ref={editorContentRef}
+                                            className={cn(
+                                                "min-h-full transition-all duration-300 ease-in-out",
+                                                (!isWidgetMode && settings?.editorAlignment === 'center') && "max-w-3xl mx-auto"
+                                            )}
+                                        >
+                                            <TodoEditor
+                                                key={`${isWidgetMode ? 'widget' : 'full'}-${settings?.editorAlignment}`}
+                                                todos={todos}
+                                                isWidgetMode={isWidgetMode}
+                                                isWidgetLocked={isWidgetMode && isWidgetLocked}
+                                                editorAlignment={settings?.editorAlignment || 'left'}
+                                                className={isWidgetMode ? "pb-6" : "pb-40"}
+                                            />
 
-                                        {/* General Work Section (Collapsible) */}
-                                        <div className="mt-8 mb-8 border-t border-border/40 pt-2">
-                                            <button
-                                                onClick={() => setIsGeneralOpen(!isGeneralOpen)}
-                                                className="flex items-center gap-2 w-full text-left py-2 hover:bg-muted/30 rounded px-2 transition-colors group"
-                                            >
-                                                <div className={cn("p-1 rounded bg-muted text-muted-foreground group-hover:bg-muted-foreground/20 transition-all", isGeneralOpen && "rotate-90")}>
-                                                    <ChevronDown className="w-3 h-3" />
-                                                </div>
-                                                <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider flex-1">
-                                                    {t('dashboard.generalWork') || "General Work"}
-                                                </span>
-                                                {uniqueGeneralTodos.length > 0 && (
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                                            {uniqueGeneralCompletion}%
+
+
+
+                                            {/* General Work Section REMOVED from here to float outside */}
+                                        </div>
+
+                                        {/* FOOTER AREA - REMOVED, moving to Right Panel */}
+                                    </div>
+                                ) : (
+                                    <div className="flex-1 flex items-center justify-center flex-col text-muted-foreground gap-4">
+                                        <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-2">
+                                            <Sparkles className="w-8 h-8 opacity-20" />
+                                        </div>
+                                        <p className="text-sm">{t('dashboard.noActiveProject')}</p>
+                                        <div className="text-xs opacity-60 max-w-[200px] text-center">
+                                            {t('dashboard.createProjectHint')}
+                                        </div>
+                                    </div>
+                                )
+                            }
+
+                            {/* General Work Floating Panel */}
+                            {
+                                !isWidgetMode && (
+                                    <div className={cn(
+                                        "absolute bottom-6 z-30 pointer-events-auto transition-all duration-300 ease-in-out",
+                                        isGeneralOpen ? "left-6 right-6" : "left-6"
+                                    )}>
+                                        {/* Collapsed State: FAB Button */}
+                                        {!isGeneralOpen && (
+                                            <div className="animate-in fade-in zoom-in duration-300">
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-14 w-14 rounded-full shadow-xl bg-card/80 backdrop-blur-md border border-border/50 hover:scale-105 transition-all group"
+                                                    onClick={() => setIsGeneralOpen(true)}
+                                                >
+                                                    <div className="relative">
+                                                        {/* Notion-style Up Arrow (Play icon rotated -90deg) */}
+                                                        <Play className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors fill-current -rotate-90" />
+                                                        {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                                            <span className="sr-only">
+                                                                {uniqueGeneralTodos.filter(t => !t.completed).length} uncompleted items
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        {/* Expanded State: Full Panel */}
+                                        {isGeneralOpen && (
+                                            <div className="bg-card/95 backdrop-blur-md shadow-2xl border border-border/50 rounded-xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col max-h-[500px]">
+                                                <div
+                                                    className="flex items-center gap-2 p-3 border-b border-border/40"
+                                                >
+                                                    <div
+                                                        className="flex items-center gap-2 flex-1 cursor-pointer select-none transition-colors hover:bg-muted/30 rounded p-1 -ml-1"
+                                                        onClick={() => setIsGeneralOpen(false)}
+                                                    >
+                                                        <div className={cn(
+                                                            "p-1.5 rounded-md transition-colors flex items-center justify-center text-muted-foreground group-hover:bg-muted/50"
+                                                        )}>
+                                                            {/* Notion-style Down Arrow (Play icon rotated 90deg) */}
+                                                            <Play className="w-3.5 h-3.5 fill-current rotate-90 transition-transform duration-200" />
                                                         </div>
-                                                        <div className="text-[10px] text-muted-foreground opacity-50">
-                                                            {uniqueGeneralTodos.length}
+
+                                                        <div className="flex items-center gap-2 flex-1">
+                                                            <Briefcase className="w-4 h-4 text-primary" />
+                                                            <span className="text-sm font-semibold text-foreground">
+                                                                {t('dashboard.generalWork') || "일반 작업"}
+                                                            </span>
+                                                            {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
+                                                                    {uniqueGeneralTodos.filter(t => !t.completed).length}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                )}
-                                            </button>
 
-                                            {isGeneralOpen && (
-                                                <div className="mt-2 pl-2 animate-in slide-in-from-top-2 fade-in duration-200">
-                                                    <TodoEditor
-                                                        key="general-section"
-                                                        todos={uniqueGeneralTodos} // Use the unique list we calculated
-                                                        isWidgetMode={isWidgetMode}
-                                                        isWidgetLocked={isWidgetMode && isWidgetLocked}
-                                                        projectId="general" // IMPORTANT: Target 'general' project in store
-                                                    />
-                                                </div>
-                                            )}
-                                        </div>
-
-
-                                        {/* General Work Section REMOVED from here to float outside */}
-                                    </div>
-
-                                    {/* FOOTER AREA - REMOVED, moving to Right Panel */}
-                                </div>
-                            ) : (
-                                <div className="flex-1 flex items-center justify-center flex-col text-muted-foreground gap-4">
-                                    <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-2">
-                                        <Sparkles className="w-8 h-8 opacity-20" />
-                                    </div>
-                                    <p className="text-sm">{t('dashboard.noActiveProject')}</p>
-                                    <div className="text-xs opacity-60 max-w-[200px] text-center">
-                                        {t('dashboard.createProjectHint')}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* General Work Floating Panel */}
-                            {/* General Work Floating Panel */}
-                            {!isWidgetMode && (
-                                <div className={cn(
-                                    "absolute bottom-6 z-30 pointer-events-auto transition-all duration-300 ease-in-out",
-                                    isGeneralOpen ? "left-6 right-6" : "left-6"
-                                )}>
-                                    {/* Collapsed State: FAB Button */}
-                                    {!isGeneralOpen && (
-                                        <div className="animate-in fade-in zoom-in duration-300">
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className="h-14 w-14 rounded-full shadow-xl bg-card/80 backdrop-blur-md border border-border/50 hover:scale-105 transition-all group"
-                                                onClick={() => setIsGeneralOpen(true)}
-                                            >
-                                                <div className="relative">
-                                                    <ChevronsUp className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                                                    {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
-                                                        <span className="sr-only">
-                                                            {uniqueGeneralTodos.filter(t => !t.completed).length} uncompleted items
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </Button>
-                                        </div>
-                                    )}
-
-                                    {/* Expanded State: Full Panel */}
-                                    {isGeneralOpen && (
-                                        <div className="bg-card/95 backdrop-blur-md shadow-2xl border border-border/50 rounded-xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col max-h-[500px]">
-                                            {/* Header */}
-                                            <div
-                                                className="flex items-center gap-2 p-3 cursor-pointer select-none transition-colors hover:bg-muted/30 border-b border-border/40"
-                                                onClick={() => setIsGeneralOpen(false)}
-                                            >
-                                                <div className={cn(
-                                                    "p-1.5 rounded-full transition-colors flex items-center justify-center text-primary bg-primary/10"
-                                                )}>
-                                                    <ChevronDown className="w-4 h-4" />
-                                                </div>
-
-                                                <div className="flex items-center gap-2 flex-1">
-                                                    <Briefcase className="w-4 h-4 text-primary" />
-                                                    <span className="text-sm font-semibold text-foreground">
-                                                        {t('dashboard.generalWork') || "일반 작업"}
-                                                    </span>
-                                                    {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
-                                                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
-                                                            {uniqueGeneralTodos.filter(t => !t.completed).length}
-                                                        </span>
-                                                    )}
-                                                </div>
-
-                                                {/* Mini Progress Bar */}
-                                                <div className="w-24 h-1.5 bg-muted/50 rounded-full overflow-hidden mr-1">
-                                                    <div className="h-full bg-primary/60 transition-all duration-500" style={{ width: `${uniqueGeneralCompletion}%` }} />
-                                                </div>
-                                            </div>
-
-                                            {/* Content */}
-                                            <div className="overflow-y-auto custom-scrollbar bg-background/50 flex-1 min-h-0">
-                                                <div className="p-2 pl-1">
-                                                    <TodoEditor
-                                                        key="general-section"
-                                                        todos={uniqueGeneralTodos}
-                                                        isWidgetMode={false}
-                                                        isWidgetLocked={false}
-                                                        actions={{
-                                                            addTodo: (text, parentId, afterId) => {
-                                                                return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
-                                                            },
-                                                            updateTodo: (id, updates) => useTodoStore.getState().updateTodo(id, updates, false, 'general'),
-                                                            deleteTodo: (id) => useTodoStore.getState().deleteTodo(id, 'general'),
-                                                            deleteTodos: (ids) => useTodoStore.getState().deleteTodos(ids, 'general'),
-
-                                                            indentTodo: (id) => useTodoStore.getState().indentTodo(id, 'general'),
-                                                            unindentTodo: (id) => useTodoStore.getState().unindentTodo(id, 'general'),
-                                                            moveTodo: (id, pid, idx) => useTodoStore.getState().moveTodo(id, pid, idx, 'general'),
-                                                            moveTodos: (ids, pid, idx) => useTodoStore.getState().moveTodos(ids, pid, idx, 'general'),
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-7 w-7 text-muted-foreground hover:text-foreground mr-2"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            clearUntitledTodos('general');
                                                         }}
-                                                    />
+                                                        title={t('dashboard.clearUntitled')}
+                                                    >
+                                                        <Eraser className="w-4 h-4" />
+                                                    </Button>
+
+                                                    {/* Mini Progress Bar */}
+                                                    <div className="w-24 h-1.5 bg-muted/50 rounded-full overflow-hidden mr-1">
+                                                        <div className="h-full bg-primary/60 transition-all duration-500" style={{ width: `${uniqueGeneralCompletion}%` }} />
+                                                    </div>
+                                                </div>
+
+                                                {/* Content */}
+                                                <div className="overflow-y-auto custom-scrollbar bg-background/50 flex-1 min-h-0">
+                                                    <div className="p-2 pl-1">
+                                                        <TodoEditor
+                                                            key="general-section"
+                                                            todos={uniqueGeneralTodos}
+                                                            isWidgetMode={false}
+                                                            isWidgetLocked={false}
+                                                            actions={{
+                                                                addTodo: (text, parentId, afterId) => {
+                                                                    return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
+                                                                },
+                                                                updateTodo: (id, updates) => useTodoStore.getState().updateTodo(id, updates, false, 'general'),
+                                                                deleteTodo: (id) => useTodoStore.getState().deleteTodo(id, 'general'),
+                                                                deleteTodos: (ids) => useTodoStore.getState().deleteTodos(ids, 'general'),
+
+                                                                indentTodo: (id) => useTodoStore.getState().indentTodo(id, 'general'),
+                                                                unindentTodo: (id) => useTodoStore.getState().unindentTodo(id, 'general'),
+                                                                moveTodo: (id, pid, idx) => useTodoStore.getState().moveTodo(id, pid, idx, 'general'),
+                                                                moveTodos: (ids, pid, idx) => useTodoStore.getState().moveTodos(ids, pid, idx, 'general'),
+                                                            }}
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* End Day Floating Button in Left Panel */}
-                            {!isWidgetMode && (projects.length > 0 && activeProjectId && activeProjectId !== 'none') && (
-                                <div className="absolute bottom-6 right-6 z-20 pointer-events-auto">
-                                    <Button
-                                        variant="default"
-                                        size="lg"
-                                        onClick={() => onEndDay(todos, screenshots)}
-                                        className="gap-2 shadow-lg rounded-full"
-                                    >
-                                        <CheckCircle className="w-5 h-5" />
-                                        {t('dashboard.endDay')}
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
+                                        )}
+                                    </div>
+                                )
+                            }
+                            {
+                                !isWidgetMode && (projects.length > 0 && activeProjectId && activeProjectId !== 'none') && (
+                                    <div className="absolute bottom-6 right-6 z-20 pointer-events-auto">
+                                        <Button
+                                            variant="default"
+                                            size="lg"
+                                            onClick={() => onEndDay(todos, screenshots)}
+                                            className="gap-2 shadow-lg rounded-full"
+                                        >
+                                            <CheckCircle className="w-5 h-5" />
+                                            {t('dashboard.endDay')}
+                                        </Button>
+                                    </div>
+                                )
+                            }
+                        </div >
 
                         {/* RIGHT PANEL - TIMETABLE GRAPH & END DAY */}
-                        {!isWidgetMode && (
-                            <div className={cn(
-                                "shrink-0 border-l border-border/50 flex flex-col transition-all duration-300 ease-in-out bg-background/95 backdrop-blur z-20 group/rightpanel",
-                                isCompactMode
-                                    ? "absolute right-0 top-0 bottom-0 w-2 hover:w-[350px] shadow-2xl border-l-[6px] hover:border-l border-primary"
-                                    : "w-[300px] relative"
-                            )}>
+                        {
+                            !isWidgetMode && (
                                 <div className={cn(
-                                    "flex-1 pt-4 h-full overflow-y-auto custom-scrollbar px-1 transition-all duration-300",
-                                    isCompactMode ? "opacity-0 group-hover/rightpanel:opacity-100 px-4" : "opacity-100"
+                                    "shrink-0 border-l border-border/50 flex flex-col transition-all duration-300 ease-in-out bg-background/95 backdrop-blur z-20 group/rightpanel",
+                                    isCompactMode
+                                        ? "absolute right-0 top-0 bottom-0 w-2 hover:w-[350px] shadow-2xl border-l-[6px] hover:border-l border-primary"
+                                        : "w-[300px] relative"
                                 )}>
-                                    <div className="flex flex-col h-full gap-6">
-                                        {/* Timeline & App Usage Section */}
-                                        <div className="flex-1">
-                                            <TimeTableGraph
-                                                sessions={filteredSessions}
-                                                allSessions={sessions}
-                                                activeProjectId={activeProjectId}
-                                                liveSession={filteredLiveSession}
-                                                allLiveSession={liveSession}
-                                                projects={projects}
-                                                nightTimeStart={settings?.nightTimeStart}
-                                            />
+                                    <div className={cn(
+                                        "flex-1 pt-4 h-full overflow-y-auto custom-scrollbar px-1 transition-all duration-300",
+                                        isCompactMode ? "opacity-0 group-hover/rightpanel:opacity-100 px-4" : "opacity-100"
+                                    )}>
+                                        <div className="flex flex-col h-full gap-6">
+                                            {/* Timeline & App Usage Section */}
+                                            <div className="flex-1">
+                                                <TimeTableGraph
+                                                    sessions={filteredSessions}
+                                                    allSessions={sessions}
+                                                    activeProjectId={activeProjectId}
+                                                    liveSession={filteredLiveSession}
+                                                    allLiveSession={liveSession}
+                                                    projects={projects}
+                                                    nightTimeStart={settings?.nightTimeStart}
+                                                    settings={settings}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </ContextMenuTrigger>
+                            )
+                        }
+                    </div >
+                </div >
+            </ContextMenuTrigger >
         </ContextMenu >
     );
 }

@@ -6,12 +6,14 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import * as SliderPrimitive from "@radix-ui/react-slider"
 
-import { X, Pencil, GripVertical } from "lucide-react";
-import { AppSettings } from "@/types"
-import { useState, useEffect } from "react"
+import { X, Pencil, GripVertical, ChevronDown, ChevronUp } from "lucide-react";
+import { AppSettings, AppInfo } from "@/types"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { useDataStore } from "@/hooks/useDataStore";
+import { useTodoStore } from "@/hooks/useTodoStore";
 import {
     DndContext,
     closestCenter,
@@ -40,17 +42,49 @@ import {
 } from "@/components/ui/dialog"
 
 
-interface RunningApp {
-    id?: string;
-    name: string;
-    process: string;
-    appIcon?: string;
+interface DebouncedColorPickerProps {
+    color: string;
+    onChange: (color: string) => void;
+    className?: string;
+}
+
+function DebouncedColorPicker({ color, onChange, className }: DebouncedColorPickerProps) {
+    const [localColor, setLocalColor] = useState(color);
+
+    useEffect(() => {
+        setLocalColor(color);
+    }, [color]);
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (localColor !== color) {
+                onChange(localColor);
+            }
+        }, 200); // 200ms debounce
+        return () => clearTimeout(timer);
+    }, [localColor, color, onChange]);
+
+    return (
+        <div className={cn("relative w-6 h-6 rounded-full overflow-hidden border border-border/50 shrink-0 group/picker cursor-pointer", className)}>
+            <div
+                className="absolute inset-0 rounded-full border-2 border-transparent ring-2 ring-offset-1 transition-transform group-hover/picker:scale-110 pointer-events-none"
+                style={{ backgroundColor: localColor }}
+            />
+            <input
+                type="color"
+                value={localColor}
+                onChange={(e) => setLocalColor(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                title="Change Color"
+            />
+        </div>
+    );
 }
 
 interface TimelineTabProps {
     settings: AppSettings;
     onSaveSettings: (settings: AppSettings) => Promise<void>;
-    runningApps: RunningApp[];
+    runningApps: AppInfo[];
 }
 
 // Presentational Component for Project Type Item
@@ -85,12 +119,6 @@ function ProjectTypeItem({
 }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(tag);
-    const [localColor, setLocalColor] = useState(color);
-
-    useEffect(() => {
-        setLocalColor(color);
-    }, [color]);
-
     const handleSave = () => {
         if (editName && editName !== tag) {
             onRename?.(editName);
@@ -98,11 +126,6 @@ function ProjectTypeItem({
             setEditName(tag);
         }
         setIsEditing(false);
-    };
-
-    const handleColorChange = (newColor: string) => {
-        setLocalColor(newColor);
-        onColorChange?.(newColor);
     };
 
     return (
@@ -122,21 +145,10 @@ function ProjectTypeItem({
                 <GripVertical className="w-4 h-4" />
             </div>
 
-            <div className="relative w-6 h-6 rounded-full overflow-hidden border border-border/50 shrink-0 group/picker">
-                <div
-                    className="absolute inset-0 rounded-full border-2 border-transparent ring-2 ring-offset-1 transition-transform group-hover/picker:scale-110 pointer-events-none"
-                    style={{ backgroundColor: localColor }}
-                />
-                {!isOverlay && (
-                    <input
-                        type="color"
-                        value={localColor}
-                        onChange={(e) => handleColorChange(e.target.value)}
-                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                        title="Change Color"
-                    />
-                )}
-            </div>
+            <DebouncedColorPicker
+                color={color}
+                onChange={(newColor) => onColorChange?.(newColor)}
+            />
 
             <div className="flex-1 flex items-center gap-2">
                 {isEditing && !isOverlay ? (
@@ -234,36 +246,83 @@ function SortableProjectType(props: {
 function NightTimeSlider({ value, onChange, onCommit }: { value: number, onChange: (val: number) => void, onCommit: (val: number) => void }) {
     const { t } = useTranslation();
     const min = 18;
-    const max = 28;
+    const max = 29; // Extended to 05:00 for better coverage
+    const tickInterval = 0.5; // 30 minutes for ticks
+    const dragStep = 0.05; // 3 minutes for smooth dragging (0.01 is too fine, 0.05 ~ 3min is good)
 
-    const displayValue = value >= 24 ? value - 24 : value;
+    const formatTime = (val: number) => {
+        const normalized = val >= 24 ? val - 24 : val;
+        const h = Math.floor(normalized);
+        const m = Math.round((normalized - h) * 60);
+        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+    };
+
+    const ticks = [];
+    for (let i = min; i <= max; i += tickInterval) {
+        ticks.push(i);
+    }
 
     return (
-        <div className="bg-muted/30 p-4 rounded-lg">
-            <SliderPrimitive.Root
-                className="relative flex w-full touch-none select-none items-center cursor-pointer group pt-6 pb-2"
-                min={min}
-                max={max}
-                step={1}
-                value={[value]}
-                onValueChange={(val) => onChange(val[0])}
-                onValueCommit={(val) => onCommit(val[0])}
-            >
-                <SliderPrimitive.Track className="relative h-2 w-full grow overflow-hidden rounded-full bg-secondary">
-                    <SliderPrimitive.Range className="absolute h-full bg-primary" />
-                </SliderPrimitive.Track>
-                <SliderPrimitive.Thumb className="block h-5 w-5 rounded-full border-2 border-primary bg-background ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50">
-                    <span className="absolute -top-7 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary bg-background border border-primary/20 px-1.5 py-0.5 rounded shadow-sm whitespace-nowrap">
-                        {displayValue}:00
-                    </span>
-                </SliderPrimitive.Thumb>
-            </SliderPrimitive.Root>
+        <div className="bg-muted/30 p-6 rounded-lg select-none">
+            <div className="relative h-12 flex items-center">
+                {/* Ticks / Rhythm Markings */}
+                <div className="absolute top-0 left-0 right-0 h-full pointer-events-none">
+                    {ticks.map((tick) => {
+                        const percent = ((tick - min) / (max - min)) * 100;
+                        const isMajor = Number.isInteger(tick);
+                        const tickLabel = tick >= 24 ? tick - 24 : tick;
 
-            <div className="flex justify-between text-[10px] text-muted-foreground mt-2 px-1">
-                <span>18:00</span>
-                <span>{t('settings.timeline.nextDay')} 04:00</span>
+                        return (
+                            <div
+                                key={tick}
+                                className="absolute top-1/2 -translate-y-1/2 flex flex-col items-center gap-2"
+                                style={{ left: `${percent}%`, transform: 'translateX(-50%)' }}
+                            >
+                                {/* Tick Line */}
+                                <div className={cn(
+                                    "rounded-full bg-border transition-colors",
+                                    isMajor ? "w-0.5 h-3 bg-border" : "w-[1px] h-1.5 bg-border/50"
+                                )} />
+                                {/* Label - Only for Major */}
+                                {isMajor && (
+                                    <span className="text-[10px] font-mono text-muted-foreground/60">
+                                        {tickLabel}
+                                    </span>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
+                <SliderPrimitive.Root
+                    className="relative flex w-full touch-none select-none items-center cursor-pointer group z-10"
+                    min={min}
+                    max={max}
+                    step={dragStep}
+                    value={[value]}
+                    onValueChange={(val) => onChange(val[0])}
+                    onValueCommit={(val) => {
+                        // Snap to nearest 30 minutes (0.5)
+                        const raw = val[0];
+                        const snapped = Math.round(raw / 0.5) * 0.5;
+                        onCommit(snapped);
+                    }}
+                >
+                    <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-border/40 backdrop-blur-sm">
+                        <SliderPrimitive.Range className="absolute h-full bg-primary/80 group-hover:bg-primary transition-colors" />
+                    </SliderPrimitive.Track>
+                    <SliderPrimitive.Thumb className="block h-5 w-5 rounded-full border-2 border-primary bg-background shadow-md transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 hover:scale-110">
+                        <div className="absolute -top-9 left-1/2 -translate-x-1/2 flex flex-col items-center">
+                            <span className="text-xs font-bold text-primary bg-background border border-primary/20 px-2 py-0.5 rounded-md shadow-sm whitespace-nowrap">
+                                {formatTime(value)}
+                            </span>
+                            <div className="w-0 h-0 border-l-[4px] border-l-transparent border-t-[4px] border-t-border border-r-[4px] border-r-transparent mt-[-1px]" />
+                        </div>
+                    </SliderPrimitive.Thumb>
+                </SliderPrimitive.Root>
             </div>
-            <p className="text-xs text-muted-foreground mt-3">
+
+            <p className="text-xs text-muted-foreground mt-2 text-center">
                 {t('settings.timeline.nightTimeStartDesc')}
             </p>
         </div>
@@ -277,6 +336,8 @@ export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineT
     const [activeDragId, setActiveDragId] = useState<string | null>(null);
     const [dragWidth, setDragWidth] = useState<number | undefined>(undefined);
     const [runningAppsSearch, setRunningAppsSearch] = useState("");
+    const [ignoredAppsSearch, setIgnoredAppsSearch] = useState("");
+    const [isIgnoredAppsOpen, setIsIgnoredAppsOpen] = useState(false);
 
     // Confirmation Dialog State
     const [confirmConfig, setConfirmConfig] = useState<{
@@ -288,8 +349,22 @@ export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineT
 
     // Local state for Night Time Start preview
     const [previewTime, setPreviewTime] = useState(settings.nightTimeStart || 22);
+    const lastPreviewUpdate = useRef(0);
+
+    const handlePreviewChange = useCallback((val: number) => {
+        setPreviewTime(val); // Local update (instant)
+
+        const now = Date.now();
+        // Throttle preview updates to ~30fps (32ms) to avoid lagging the UI
+        if (now - lastPreviewUpdate.current > 32) {
+            previewSettings({ nightTimeStart: val });
+            lastPreviewUpdate.current = now;
+        }
+    }, [previewSettings]);
 
     useEffect(() => {
+        // Only update local state from props if we're not actively dragging (which we can infer if values match closely or via other means)
+        // But simpler: just sync when settings change externally (e.g. on mount/save)
         setPreviewTime(settings.nightTimeStart || 22);
     }, [settings.nightTimeStart]);
 
@@ -530,14 +605,14 @@ export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineT
                                     </div>
                                 ))}
                                 {(!settings.workApps || settings.workApps.length === 0) && (
-                                    <div className="text-xs text-muted-foreground italic p-1">No apps configured</div>
+                                    <div className="text-xs text-muted-foreground italic p-1">{t('settings.runningApps.noAppsConfigured')}</div>
                                 )}
                             </div>
                         </div>
 
                         <div className="flex gap-2">
                             <Input
-                                placeholder="Add Process Name (e.g. Code.exe)..."
+                                placeholder={t('settings.runningApps.placeholder')}
                                 className="h-9 text-sm bg-background border-input"
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') {
@@ -572,7 +647,7 @@ export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineT
                         </div>
 
                         <div className="pt-4 border-t border-border/50">
-                            <h4 className="text-sm font-semibold mb-2">{t('settings.runningApps') || "Running Apps Details"}</h4>
+                            <h4 className="text-sm font-semibold mb-2">{t('settings.runningApps.title')}</h4>
                             <div className="bg-muted/40 rounded-lg p-2 border border-border/50">
                                 <Input
                                     className="h-8 mb-2 bg-background/50 border-border/50"
@@ -621,6 +696,150 @@ export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineT
                 )}
             </div>
 
+            {/* Ignored Apps Section (Non-Work Programs) */}
+            <div className="flex flex-col bg-muted/30 rounded-lg border border-border/50 overflow-hidden mt-4" id="settings-ignored-apps">
+                {/* Header */}
+                <div
+                    className="flex items-center justify-between p-4 bg-muted/20 cursor-pointer hover:bg-muted/30 transition-colors"
+                    onClick={() => setIsIgnoredAppsOpen(!isIgnoredAppsOpen)}
+                >
+                    <div className="space-y-0.5">
+                        <Label className="text-base font-semibold cursor-pointer">{t('settings.timeline.ignoredApps') || "Non-Work Programs"}</Label>
+                        <p className="text-xs text-muted-foreground opacity-80">
+                            {t('settings.timeline.ignoredAppsDesc') || "These programs will be treated as non-work time."}
+                        </p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        {isIgnoredAppsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                </div>
+
+                {isIgnoredAppsOpen && (
+                    <div className="flex flex-col gap-4 p-4 border-t border-border/50 animate-in slide-in-from-top-2 fade-in duration-200">
+
+                        {/* Color Picker for Ignored Apps */}
+                        <div className="flex items-center justify-between p-2 bg-background/50 rounded-lg border border-border/40 mb-2">
+                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                                {t('settings.timeline.ignoredAppsColor') || "Display Color"}
+                            </Label>
+                            <div className="flex items-center gap-2">
+                                <span className="text-xs font-mono text-muted-foreground">{settings.ignoredAppsColor || '#808080'}</span>
+                                <DebouncedColorPicker
+                                    color={settings.ignoredAppsColor || '#808080'}
+                                    onChange={(newColor) => onSaveSettings({ ...settings, ignoredAppsColor: newColor })}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                                {t('settings.timeline.configuredApps') || "Configured Apps"}
+                            </Label>
+                            <div className="flex flex-wrap gap-2 min-h-[40px] p-3 rounded-lg bg-background border border-border/50">
+                                {settings.ignoredApps?.map(app => (
+                                    <div key={app} className="flex items-center gap-1 bg-muted px-2 py-1.5 rounded text-xs font-medium border border-border">
+                                        {app}
+                                        <button
+                                            onClick={() => onSaveSettings({ ...settings, ignoredApps: settings.ignoredApps?.filter(a => a !== app) })}
+                                            className="hover:text-destructive transition-colors ml-1"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                                {(!settings.ignoredApps || settings.ignoredApps.length === 0) && (
+                                    <div className="text-xs text-muted-foreground italic p-1">{t('settings.runningApps.noAppsConfigured')}</div>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <Input
+                                placeholder={t('settings.runningApps.placeholder')}
+                                className="h-9 text-sm bg-background border-input"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        const val = (e.currentTarget as HTMLInputElement).value?.trim();
+                                        if (val && !settings.ignoredApps?.includes(val)) {
+                                            onSaveSettings({
+                                                ...settings,
+                                                ignoredApps: [...(settings.ignoredApps || []), val]
+                                            });
+                                            (e.currentTarget as HTMLInputElement).value = '';
+                                        }
+                                    }
+                                }}
+                            />
+                            <Button
+                                size="sm"
+                                className="h-9 shrink-0"
+                                onClick={(e) => {
+                                    const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                    const val = input.value?.trim();
+                                    if (val && !settings.ignoredApps?.includes(val)) {
+                                        onSaveSettings({
+                                            ...settings,
+                                            ignoredApps: [...(settings.ignoredApps || []), val]
+                                        });
+                                        input.value = '';
+                                    }
+                                }}
+                            >
+                                Add
+                            </Button>
+                        </div>
+
+                        <div className="pt-4 border-t border-border/50">
+                            <h4 className="text-sm font-semibold mb-2">{t('settings.runningApps.title')}</h4>
+                            <div className="bg-muted/40 rounded-lg p-2 border border-border/50">
+                                <Input
+                                    className="h-8 mb-2 bg-background/50 border-border/50"
+                                    placeholder={t("common.search")}
+                                    onChange={(e) => setIgnoredAppsSearch(e.target.value)}
+                                />
+                                <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                                    {runningApps
+                                        .filter(app => !ignoredAppsSearch || app.name.toLowerCase().includes(ignoredAppsSearch.toLowerCase()) || app.process.toLowerCase().includes(ignoredAppsSearch.toLowerCase()))
+                                        .map(app => {
+                                            const isAdded = settings.ignoredApps?.some(wa => wa.toLowerCase() === app.process.toLowerCase());
+                                            return (
+                                                <div key={app.process} className="flex items-center justify-between p-2 rounded hover:bg-muted/50 group">
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="text-sm font-medium truncate">{app.name}</span>
+                                                        <span className="text-xs text-muted-foreground truncate">{app.process}</span>
+                                                    </div>
+                                                    <Button
+                                                        size="sm"
+                                                        variant={isAdded ? "secondary" : "ghost"}
+                                                        className={cn("h-7 text-xs", isAdded ? "opacity-50" : "hover:bg-primary/10 hover:text-primary")}
+                                                        disabled={isAdded}
+                                                        onClick={() => {
+                                                            if (!isAdded) {
+                                                                onSaveSettings({
+                                                                    ...settings,
+                                                                    ignoredApps: [...(settings.ignoredApps || []), app.process]
+                                                                });
+                                                            }
+                                                        }}
+                                                    >
+                                                        {isAdded ? "Added" : "Add"}
+                                                    </Button>
+                                                </div>
+                                            );
+                                        })}
+                                    {runningApps.length === 0 && (
+                                        <div className="text-center py-4 text-xs text-muted-foreground">
+                                            {t('settings.loadingApps')}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+
             <div className="space-y-4">
                 <div className="flex flex-col gap-3">
                     <div className="flex items-center justify-between">
@@ -629,12 +848,82 @@ export function TimelineTab({ settings, onSaveSettings, runningApps }: TimelineT
                     <div className="px-1">
                         <NightTimeSlider
                             value={previewTime}
-                            onChange={(val) => {
-                                setPreviewTime(val);
-                                previewSettings({ nightTimeStart: val });
+                            onChange={handlePreviewChange}
+                            onCommit={(val) => {
+                                // Ensure final value is previewed and saved
+                                handlePreviewChange(val);
+                                onSaveSettings({ ...settings, nightTimeStart: val });
                             }}
-                            onCommit={(val) => onSaveSettings({ ...settings, nightTimeStart: val })}
                         />
+                    </div>
+
+                    <div className="flex items-center justify-between px-1 pt-2">
+                        <div className="space-y-0.5 max-w-[70%]">
+                            <Label className="text-sm font-medium">{t('settings.timeline.enableUnresolvedNotification')}</Label>
+                            <p className="text-xs text-muted-foreground">{t('settings.timeline.enableUnresolvedNotificationDesc')}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-[10px] px-2"
+                                onClick={async () => {
+                                    console.log("[TimelineTab] Test button clicked");
+
+                                    // Calculate real unresolved count
+                                    // @ts-ignore
+                                    const { projectTodos } = useTodoStore.getState();
+                                    const allTodos = Object.values(projectTodos).flat();
+                                    const countUnresolved = (list: any[]): number => {
+                                        let count = 0;
+                                        for (const todo of list) {
+                                            if (!todo.completed) count++;
+                                            if (todo.children) count += countUnresolved(todo.children);
+                                        }
+                                        return count;
+                                    };
+                                    const realCount = countUnresolved(allTodos);
+
+                                    // Use IPC for reliable testing
+                                    // @ts-ignore
+                                    if (window.ipcRenderer && window.ipcRenderer.showNotification) {
+                                        console.log("[TimelineTab] calling ipcRenderer.showNotification");
+                                        try {
+                                            // @ts-ignore
+                                            await window.ipcRenderer.showNotification({
+                                                title: t('settings.timeline.testNotificationTitle'),
+                                                body: t('notifications.unresolvedTodosBody', { count: realCount })
+                                            });
+                                            console.log("[TimelineTab] IPC call sent");
+                                            toast.success(t('settings.timeline.testNotificationSent'), {
+                                                description: t('settings.timeline.testNotificationCheckTaskbar'),
+                                            });
+                                        } catch (e) {
+                                            console.error("[TimelineTab] IPC call failed:", e);
+                                            toast.error(t('settings.timeline.testNotificationFailed'));
+                                            alert(t('settings.timeline.testNotificationFailed') + ": " + e);
+                                        }
+                                    } else {
+                                        // Fallback
+                                        if (Notification.permission === 'granted') {
+                                            new Notification(t('settings.timeline.testNotificationTitle'), {
+                                                body: t('settings.timeline.testNotificationFallback'),
+                                                icon: '/appLOGO.png'
+                                            });
+                                            toast(t('settings.timeline.testNotificationFallback'));
+                                        } else {
+                                            Notification.requestPermission();
+                                        }
+                                    }
+                                }}
+                            >
+                                Test
+                            </Button>
+                            <Switch
+                                checked={settings.enableUnresolvedTodoNotifications || false}
+                                onCheckedChange={(checked) => onSaveSettings({ ...settings, enableUnresolvedTodoNotifications: checked })}
+                            />
+                        </div>
                     </div>
 
                 </div>

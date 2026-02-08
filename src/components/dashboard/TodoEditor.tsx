@@ -39,9 +39,11 @@ interface TodoEditorProps {
         moveTodo: (activeId: string, parentId: string | null, index: number) => void;
         moveTodos: (activeIds: string[], parentId: string | null, index: number) => void;
     };
+    editorAlignment?: 'left' | 'center';
+    className?: string;
 }
 
-const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll, showIndentationGuides, ...props }: any) => {
+const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll, showIndentationGuides, editorAlignment, ...props }: any) => {
     const {
         attributes,
         listeners,
@@ -50,14 +52,14 @@ const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll
         transition,
         isDragging,
         isOver
-    } = useSortable({ id: todo.id });
+    } = useSortable({ id: todo.id, data: { depth: props.depth } });
 
     const style = {
-        transform: CSS.Translate.toString(transform),
+        transform: CSS.Transform.toString(transform),
         transition,
         zIndex: isDragging ? 50 : 'auto',
         position: 'relative' as 'relative',
-        opacity: isDragging ? 0.3 : 1, // Fade out original
+        opacity: isDragging ? 0.3 : 1,
     };
 
     // Calculate left offset for the indicator based on depth
@@ -71,16 +73,15 @@ const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll
             style={style}
             {...attributes}
             className="w-full"
-        // Removed data-todo-id from here to allow "margin" selection
         >
             <TodoItem
                 todo={todo}
-                {...props}
-                isDragging={isDragging}
                 dragHandleProps={listeners}
-                data-todo-id={todo.id} // Passed to TodoItem visually
+                isDragging={isDragging}
                 onSelectAll={onSelectAll}
-                showIndentationGuides={showIndentationGuides} // Pass it down
+                showIndentationGuides={showIndentationGuides}
+                editorAlignment={editorAlignment}
+                {...props}
             />
             {/* Visual Drop Indicator */}
             {isOver && !isDragging && indicatorPosition && (
@@ -98,19 +99,34 @@ const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll
 
 // ... imports ...
 
-export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projectId, actions }: TodoEditorProps) {
+export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projectId, editorAlignment = 'left', className, actions: propActions }: TodoEditorProps) {
     const store = useTodoStore();
     const { settings } = useDataStore();
 
-    // Wrap store actions if projectId is provided
-    const addTodo = actions?.addTodo || (projectId ? (t: string, p: string | null = null, a: string | null = null) => store.addTodo(t, p, a, projectId) : store.addTodo);
-    const updateTodo = actions?.updateTodo || (projectId ? (id: string, u: Partial<Todo>, s = false) => store.updateTodo(id, u, s, projectId) : store.updateTodo);
-    const deleteTodo = actions?.deleteTodo || (projectId ? (id: string) => store.deleteTodo(id, projectId) : store.deleteTodo);
-    const deleteTodos = actions?.deleteTodos || (projectId ? (ids: string[]) => store.deleteTodos(ids, projectId) : store.deleteTodos);
-    const indentTodo = actions?.indentTodo || (projectId ? (id: string) => store.indentTodo(id, projectId) : store.indentTodo);
-    const unindentTodo = actions?.unindentTodo || (projectId ? (id: string) => store.unindentTodo(id, projectId) : store.unindentTodo);
-    const moveTodo = actions?.moveTodo || (projectId ? (id: string, p: string | null, i: number) => store.moveTodo(id, p, i, projectId) : store.moveTodo);
-    const moveTodos = actions?.moveTodos || (projectId ? (ids: string[], p: string | null, i: number) => store.moveTodos(ids, p, i, projectId) : store.moveTodos);
+    // Use provided actions or fallback to store actions
+    const actions = useMemo(() => {
+        if (propActions) return propActions;
+
+        return {
+            addTodo: (t: string, p: string | null = null, a: string | null = null) => store.addTodo(t, p, a, projectId),
+            updateTodo: (id: string, u: Partial<Todo>, s = false) => store.updateTodo(id, u, s, projectId),
+            deleteTodo: (id: string) => store.deleteTodo(id, projectId),
+            deleteTodos: (ids: string[]) => store.deleteTodos(ids, projectId),
+            indentTodo: (id: string) => store.indentTodo(id, projectId),
+            unindentTodo: (id: string) => store.unindentTodo(id, projectId),
+            moveTodo: (activeId: string, parentId: string | null, index: number) => store.moveTodo(activeId, parentId, index, projectId),
+            moveTodos: (activeIds: string[], parentId: string | null, index: number) => store.moveTodos(activeIds, parentId, index, projectId)
+        };
+    }, [propActions, store, projectId]);
+
+    const {
+        addTodo,
+        updateTodo,
+        deleteTodo,
+        deleteTodos,
+        moveTodo,
+        moveTodos
+    } = actions;
 
 
     // We strictly control focus via state
@@ -197,7 +213,101 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
         setFocusedId(id);
     }, [visibleItems, focusedId, selectedIds]);
 
+    // Helper to find node location
+    const findNodeLocation = (items: Todo[], id: string, parentId: string | null = null): { parentId: string | null, index: number, item: Todo } | null => {
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].id === id) return { parentId, index: i, item: items[i] };
+            if (items[i].children) {
+                const res = findNodeLocation(items[i].children!, id, items[i].id);
+                if (res) return res;
+            }
+        }
+        return null;
+    };
+
     // Handlers
+    const handleIndent = useCallback((id: string) => {
+        // Use the focused/target ID as the "Leader" for the operation
+        const leaderId = selectedIds.has(id) ?
+            visibleIds.filter(vid => selectedIds.has(vid))[0] // Top-most selected
+            : id;
+
+        const idsToMove = selectedIds.has(id) ?
+            visibleIds.filter(vid => selectedIds.has(vid))
+            : [id];
+
+        const location = findNodeLocation(todos, leaderId);
+        if (!location) return;
+
+        const { parentId, index } = location;
+
+        // To indent, the leader must have a previous sibling to become a child of
+        if (index > 0) {
+            // Find the new parent (the previous sibling)
+            // We need to find the list it belongs to. 
+            // Since we don't have direct access to the parent object easily without re-traversing, 
+            // let's optimize: findNodeLocation gives us parentId.
+            // We can search for the parent node to get its children, OR just look in the specific list if we had it.
+            // Let's assume we can search 'todos' again or pass current list to findNodeLocation?
+            // Actually, we can just find the sibling from the full path?
+            // Simpler: We know 'index'. We need the sibling at 'index - 1' in the SAME list.
+
+            // Re-find the list containing the leader
+            const getSiblings = (items: Todo[], pId: string | null): Todo[] | null => {
+                if (pId === null) return items;
+                for (const item of items) {
+                    if (item.id === pId) return item.children || [];
+                    if (item.children) {
+                        const res = getSiblings(item.children, pId);
+                        if (res) return res;
+                    }
+                }
+                return null;
+            };
+
+            const siblings = getSiblings(todos, parentId);
+            if (siblings && siblings[index - 1]) {
+                const newParent = siblings[index - 1];
+                // Move all selected items to the end of newParent's children
+                const targetIndex = (newParent.children?.length) || 0;
+                moveTodos(idsToMove, newParent.id, targetIndex);
+            }
+        }
+    }, [selectedIds, visibleIds, todos, moveTodos]);
+
+    const handleUnindent = useCallback((id: string) => {
+        const leaderId = selectedIds.has(id) ?
+            visibleIds.filter(vid => selectedIds.has(vid))[0]
+            : id;
+
+        const idsToMove = selectedIds.has(id) ?
+            visibleIds.filter(vid => selectedIds.has(vid))
+            : [id];
+
+        const location = findNodeLocation(todos, leaderId);
+        if (!location) return;
+
+        const { parentId } = location;
+
+        // To unindent, current parent must not be null (cannot unindent from root)
+        if (parentId !== null) {
+            // New parent is the "Grandparent" (parent of current parent)
+            // We need to find the current parent's location to know where to insert (after current parent)
+            const parentLocation = findNodeLocation(todos, parentId);
+            if (parentLocation) {
+                // Insert after the current parent
+                moveTodos(idsToMove, parentLocation.parentId, parentLocation.index + 1);
+            } else {
+                // Parent must be root? No, findNodeLocation searches recursively. 
+                // If parentId is not null, but parentLocation not found? Should not happen.
+                // Unless parent is not valid?
+                // Wait, if parentId is activeProjectId (if top level)? 
+                // No, findNodeLocation returns parentId as null for top level items in 'todos' array.
+                // So if parentId !== null, it matches a node ID.
+            }
+        }
+    }, [selectedIds, visibleIds, todos, moveTodos]);
+
     const handleAdd = useCallback((parentId: string | null, afterId: string | null) => {
         const newId = addTodo("", parentId, afterId);
         setFocusedId(newId);
@@ -449,47 +559,58 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
     // Track pointer Y for auto-scroll independent of events
     const pointerY = useRef(0);
 
-    useEffect(() => {
-        if (!selectionBox) return;
+    // Ref to track if we are currently in a "potential" drag state
+    const dragStartRef = useRef<{ x: number, y: number, initialTarget: EventTarget | null } | null>(null);
+    const isDragSelectingRef = useRef(false);
 
-        let animationFrameId: number;
+    const handleSelectionMove = (e: React.PointerEvent) => {
+        // Update global pointerY for auto-scroll
+        pointerY.current = e.clientY;
 
-        const scrollLoop = () => {
-            const scrollThreshold = 50;
-            const scrollSpeed = 15; // Increased speed
-            const viewHeight = window.innerHeight;
-            const y = pointerY.current;
+        if (!dragStartRef.current) return;
+        if (!containerRef.current) return;
 
-            if (y < scrollThreshold) {
-                window.scrollBy(0, -scrollSpeed);
-            } else if (y > viewHeight - scrollThreshold) {
-                window.scrollBy(0, scrollSpeed);
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const currentX = e.clientX - containerRect.left;
+        const currentY = e.clientY - containerRect.top;
+
+        // Check threshold if not already selecting
+        if (!isDragSelectingRef.current) {
+            const dx = Math.abs(currentX - dragStartRef.current.x);
+            const dy = Math.abs(currentY - dragStartRef.current.y);
+
+            if (dx > 5 || dy > 5) {
+                // Threshold exceeded, START selection
+                isDragSelectingRef.current = true;
+
+                // IMPORTANT: Capture pointer on the div to track outside movement
+                e.currentTarget.setPointerCapture(e.pointerId);
+
+                setSelectionBox({
+                    startX: dragStartRef.current.x,
+                    startY: dragStartRef.current.y,
+                    currentX: dragStartRef.current.x,
+                    currentY: dragStartRef.current.y
+                });
+
+                setSelectedIds(new Set()); // Clear selection on new drag start
+                setFocusedId(null);
             }
+        } else {
+            // Already selecting, just update
+            e.preventDefault();
 
-            animationFrameId = requestAnimationFrame(scrollLoop);
-        };
+            setSelectionBox(prev => {
+                if (!prev) return null;
+                return { ...prev, currentX, currentY };
+            });
 
-        // Start loop
-        animationFrameId = requestAnimationFrame(scrollLoop);
-
-        const handleSelectionMove = (e: PointerEvent) => {
-            pointerY.current = e.clientY; // Update ref
-
-            if (!containerRef.current) return;
-
-            const containerRect = containerRef.current.getBoundingClientRect();
-            // Calculate coordinates relative to the container
-            // This ensures logic holds even if page scrolls
-            const currentX = e.clientX - containerRect.left;
-            const currentY = e.clientY - containerRect.top;
-
-            setSelectionBox(prev => prev ? { ...prev, currentX, currentY } : null);
-
+            // Re-calculate selection
             const rect = {
-                left: Math.min(selectionBox.startX, currentX),
-                top: Math.min(selectionBox.startY, currentY),
-                width: Math.abs(currentX - selectionBox.startX),
-                height: Math.abs(currentY - selectionBox.startY)
+                left: Math.min(dragStartRef.current.x, currentX),
+                top: Math.min(dragStartRef.current.y, currentY),
+                width: Math.abs(currentX - dragStartRef.current.x),
+                height: Math.abs(currentY - dragStartRef.current.y)
             };
 
             const elements = containerRef.current.querySelectorAll('[data-todo-id]');
@@ -497,35 +618,80 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
 
             elements.forEach((el) => {
                 const elRect = el.getBoundingClientRect();
-                // Convert to relative coordinates to match selection box
                 const elRelativeTop = elRect.top - containerRect.top;
                 const elRelativeBottom = elRect.bottom - containerRect.top;
 
-                // Vertical-only intersection check using relative coordinates
-                const isIntersecting = !(
-                    rect.top >= elRelativeBottom ||
-                    rect.top + rect.height <= elRelativeTop
-                );
+                const isOverlapping =
+                    elRelativeTop < rect.top + rect.height &&
+                    elRelativeBottom > rect.top;
 
-                if (isIntersecting) {
+                if (isOverlapping) {
                     const id = el.getAttribute('data-todo-id');
                     if (id) newSelected.add(id);
                 }
             });
 
             setSelectedIds(newSelected);
+        }
+    };
+
+    const handleSelectionEnd = (e: React.PointerEvent) => {
+        if (dragStartRef.current) {
+            if (isDragSelectingRef.current) {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+                setSelectionBox(null);
+            }
+            dragStartRef.current = null;
+            isDragSelectingRef.current = false;
+        }
+    };
+
+    // Auto-scroll effect - Independent of event listeners now
+    useEffect(() => {
+        if (!selectionBox) return;
+
+        let animationFrameId: number;
+
+        const scrollLoop = () => {
+            if (!containerRef.current) return;
+
+            const getScrollParent = (node: HTMLElement | null): HTMLElement | Window => {
+                if (!node) return window;
+                if (node.scrollHeight > node.clientHeight) {
+                    const overflowY = window.getComputedStyle(node).overflowY;
+                    if (overflowY === 'auto' || overflowY === 'scroll') return node;
+                }
+                return getScrollParent(node.parentElement);
+            };
+
+            const scrollParent = getScrollParent(containerRef.current);
+            const scrollThreshold = 50;
+            const scrollSpeed = 15;
+
+            const y = pointerY.current;
+
+            if (scrollParent instanceof Window) {
+                const viewHeight = window.innerHeight;
+                if (y < scrollThreshold) {
+                    window.scrollBy(0, -scrollSpeed);
+                } else if (y > viewHeight - scrollThreshold) {
+                    window.scrollBy(0, scrollSpeed);
+                }
+            } else {
+                const rect = scrollParent.getBoundingClientRect();
+                if (y < rect.top + scrollThreshold) {
+                    scrollParent.scrollTop -= scrollSpeed;
+                } else if (y > rect.bottom - scrollThreshold) {
+                    scrollParent.scrollTop += scrollSpeed;
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(scrollLoop);
         };
 
-        const handleSelectionEnd = () => {
-            setSelectionBox(null);
-        };
-
-        window.addEventListener('pointermove', handleSelectionMove);
-        window.addEventListener('pointerup', handleSelectionEnd);
+        animationFrameId = requestAnimationFrame(scrollLoop);
 
         return () => {
-            window.removeEventListener('pointermove', handleSelectionMove);
-            window.removeEventListener('pointerup', handleSelectionEnd);
             cancelAnimationFrame(animationFrameId);
         };
     }, [selectionBox]);
@@ -533,36 +699,29 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
     const handleSelectionStart = (e: React.PointerEvent) => {
         const target = e.target as HTMLElement;
 
-        // Prevent selection start only if clicking interactive elements
+        // Prevent selection start only if clicking interactive elements OR TEXT
         if (
             target.tagName === 'INPUT' ||
             target.tagName === 'TEXTAREA' ||
             target.tagName === 'BUTTON' ||
-            target.closest('button') || // Check parent button
-            target.closest('[data-dnd-handle]') || // If we mark handles explicitly
-            target.closest('[data-editable-text]') || // Allow text selection/focus
-            target.closest('.lucide') // Icons often clickable
+            target.closest('button') ||
+            target.closest('[data-dnd-handle]') ||
+            target.closest('[data-editable-text]') || // Ignored text - CLICK TO EDIT
+            target.closest('.lucide')
         ) {
             return;
         }
 
-        // We DO NOT block [data-todo-id] anymore, allowing drag from indentation/background.
-        e.preventDefault(); // Prevent native text selection
-        e.currentTarget.setPointerCapture(e.pointerId); // Capture pointer for consistent drag
+        // Do NOT preventDefault here. Allow browser to handle click.
+        // Do NOT capture pointer here. Wait for drag threshold.
 
-        // Calculate start position relative to container (handles scroll)
         const containerRect = e.currentTarget.getBoundingClientRect();
         const startX = e.clientX - containerRect.left;
         const startY = e.clientY - containerRect.top;
 
-        setSelectionBox({
-            startX,
-            startY,
-            currentX: startX,
-            currentY: startY
-        });
-        setSelectedIds(new Set()); // Clear selection on new drag
-        setFocusedId(null);
+        // Just record start position
+        dragStartRef.current = { x: startX, y: startY, initialTarget: e.target };
+        isDragSelectingRef.current = false;
     };
 
     // Calculate active index and item once
@@ -587,8 +746,11 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
             {/* Outer container captures interactions across full width */}
             <div
                 ref={containerRef}
-                className={cn("w-full h-full min-h-full relative select-none")}
+                className={cn("w-full h-full min-h-full relative select-none", className)}
                 onPointerDown={handleSelectionStart}
+                onPointerMove={handleSelectionMove}
+                onPointerUp={handleSelectionEnd}
+                onPointerLeave={handleSelectionEnd} // Safety
             >
                 {/* Inner container centers the content */}
                 <div className={cn(
@@ -621,13 +783,14 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
                                 <SortableTodoItem
                                     key={item.todo.id}
                                     id={item.todo.id}
+                                    data-todo-id={item.todo.id}
                                     todo={item.todo}
                                     depth={item.depth}
                                     onUpdate={updateTodo}
                                     onAdd={handleAdd}
                                     onDelete={handleDelete}
-                                    onIndent={indentTodo}
-                                    onUnindent={unindentTodo}
+                                    onIndent={handleIndent}
+                                    onUnindent={handleUnindent}
                                     focusedId={focusedId}
                                     onFocus={setFocusedId}
                                     onNavigate={handleNavigate}
@@ -641,6 +804,7 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
                                     showIndentationGuides={settings?.showIndentationGuides} // Pass prop
                                     spellCheck={settings?.enableSpellCheck ?? false}
                                     isWidgetMode={isWidgetMode}
+                                    editorAlignment={editorAlignment}
                                 />
                             );
                         })}
