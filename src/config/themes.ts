@@ -24,6 +24,7 @@ export interface ThemeColors {
 export interface Theme {
     name: string;
     label: string;
+    description?: string;
     colors: ThemeColors;
 }
 

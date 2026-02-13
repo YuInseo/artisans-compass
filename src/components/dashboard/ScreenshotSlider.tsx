@@ -31,19 +31,29 @@ export function ScreenshotSlider({ images, initialIndex = 0, className, duration
     const currentSrc = images.length > 0 ? getSrc(images[currentIndex]) : null;
 
     const INTERVAL_MS = durationSeconds * 1000 / Math.max(1, images.length);
-    const safeInterval = Math.max(30, INTERVAL_MS); // Cap at ~30fps max speed to prevent freeze
+    // Enforce minimum repaint interval of ~30ms (approx 33fps) to prevent browser freeze
+    const MIN_REPAINT_INTERVAL = 30;
+
+    // Calculate step size: if desired interval is smaller than min repaint, skip frames
+    const step = INTERVAL_MS < MIN_REPAINT_INTERVAL
+        ? Math.max(1, Math.round(MIN_REPAINT_INTERVAL / INTERVAL_MS))
+        : 1;
+
+    const safeInterval = Math.max(MIN_REPAINT_INTERVAL, INTERVAL_MS);
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
     useEffect(() => {
         if (isPlaying) {
             timerRef.current = setInterval(() => {
                 setCurrentIndex((prev) => {
-                    if (prev >= images.length - 1) {
+                    const nextIndex = prev + step;
+
+                    if (nextIndex >= images.length) {
                         if (isLooping) return 0; // Loop back to start
                         setIsPlaying(false);
-                        return prev;
+                        return images.length - 1;
                     }
-                    return prev + 1;
+                    return nextIndex;
                 });
             }, safeInterval);
         } else {

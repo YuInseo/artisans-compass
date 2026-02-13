@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net, desktopCapturer, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, net, desktopCapturer, shell, screen, Menu } from 'electron'
 // import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
@@ -302,10 +302,20 @@ ipcMain.on('set-widget-mode', (_event, { mode, height, locked, bounds }: { mode:
       // Temporarily unlock to allow resize
       win.setResizable(true);
 
-      win.setSize(1500, 900);
+      // intelligent centering: find which screen the *widget* is currently on, and center the main window *there*
+      const currentBounds = win.getBounds();
+      const display = screen.getDisplayMatching(currentBounds);
+
+      const targetWidth = 1500;
+      const targetHeight = 900;
+
+      const x = Math.round(display.bounds.x + (display.bounds.width - targetWidth) / 2);
+      const y = Math.round(display.bounds.y + (display.bounds.height - targetHeight) / 2);
+
+      win.setBounds({ x, y, width: targetWidth, height: targetHeight });
+
       win.setAlwaysOnTop(false, 'normal');
       win.setOpacity(1.0); // Always restore full opacity
-      win.center(); // Optional: Center it back
 
       if (locked) {
         win.setResizable(false);
@@ -674,6 +684,44 @@ app.whenReady().then(async () => {
       return new Response('Internal Error', { status: 500 });
     }
   });
+
+  // --- Menu Setup ---
+  const { recoverFromScreenshots } = await import('./recovery');
+
+  // IPC for Settings UI
+  ipcMain.handle('recover-from-screenshots', async () => {
+    const result = await recoverFromScreenshots();
+    return result;
+  });
+
+  const menu = Menu.buildFromTemplate([
+    {
+      label: 'File',
+      submenu: [
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' }
+      ]
+    },
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Recover Data from Screenshots',
+          click: () => {
+            recoverFromScreenshots();
+          }
+        }
+      ]
+    }
+  ]);
+  Menu.setApplicationMenu(menu);
 
   const { getTrackerState } = await import('./tracking/tracker');
   setupStorageHandlers(getTrackerState);

@@ -1,5 +1,5 @@
 import { Session, Todo, Project, AppSettings } from "@/types";
-import { Eraser, Sparkles, Play, Briefcase, AlignLeft, AlignCenter, CheckCircle, Moon, Sun, Lock, Unlock } from 'lucide-react';
+import { Eraser, Sparkles, Briefcase, AlignLeft, AlignCenter, CheckCircle, Moon, Sun, Lock, Unlock, Play } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/context-menu";
 
 import { TodoEditor } from "./TodoEditor";
+import { TimerWidget } from "./TimerWidget";
 import { TimeTableGraph } from "./TimeTableGraph";
 
 
@@ -204,19 +205,75 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
     useEffect(() => {
         if (!settings) return;
 
-        if (isWidgetMode) {
-            // Enter Widget Mode: Use widget theme (default to dark)
-            // Save current main theme if not set (optional, but good for first run)
-            if (!settings.mainTheme && theme) {
-                // If mainTheme is not saved, save the current theme before switching
-                saveSettings({ ...settings, mainTheme: theme });
+        // Determine target theme based on mode and settings
+        let targetTheme = settings.mainTheme || 'dark';
+        let targetPreset = settings.themePreset || 'standard';
+
+        if (settings.separateWidgetTheme && isWidgetMode) {
+            // If separation is enabled and we are in widget mode, use widget theme
+            targetTheme = settings.widgetTheme || 'dark';
+            targetPreset = settings.widgetThemePreset || settings.themePreset || 'standard';
+
+            // Auto-save main theme if entering widget mode for the first time without a saved main theme
+            if (!settings.mainTheme && theme && theme !== targetTheme) {
+                saveSettings({ ...settings, mainTheme: theme as 'dark' | 'light' | 'system' });
             }
-            setTheme(settings.widgetTheme || 'dark');
-        } else {
-            // Exit Widget Mode: Restore main theme
-            setTheme(settings.mainTheme || 'dark');
         }
-    }, [isWidgetMode, settings?.widgetTheme, settings?.mainTheme, theme, saveSettings]);
+
+        // Apply theme if different
+        if (theme !== targetTheme) {
+            setTheme(targetTheme);
+        }
+
+        // We need a way to apply themePreset to ThemeProvider or modify root directly?
+        // ThemeProvider reads settings.themePreset. If we change *settings* here, it persists and affects main window too!
+        // We shouldn't change *settings.themePreset* directly if we want isolation.
+        // Option 1: Update ThemeProvider to accept override/local storage?
+        // Option 2: Apply CSS vars manually here for widget override.
+        // Let's assume ThemeProvider listens to 'settings.themePreset'. We can't change that setting without affecting main.
+        // But DailyPanel is the *entire app* in widget mode.
+        // So *changing the effective theme* involves manipulating DOM or context.
+        // Wait, ThemeProvider uses `const { settings } = useDataStore()`.
+        // If we want dynamic overrides without saving to global settings, we need a local override mechanism.
+        // But ThemeProvider implementation is simple.
+        // Let's verify ThemeProvider again.
+
+        if (isWidgetMode && settings.separateWidgetTheme && settings.widgetThemePreset && settings.widgetThemePreset !== settings.themePreset) {
+            // We need to override the CSS Variables manually because ThemeProvider uses global settings.
+            // Or we temporarily update the DOM manually here, since ThemeProvider only reacts to settings change or theme change.
+            // But if ThemeProvider has useEffect[settings?.themePreset]...
+            // Let's manually apply the widget preset colors here.
+            import('@/config/themes').then(({ themes }) => {
+                const themeConfig = themes[targetPreset] || themes['default'];
+                const root = window.document.documentElement;
+                if (themeConfig) {
+                    Object.entries(themeConfig.colors).forEach(([key, value]) => {
+                        const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+                        root.style.setProperty(cssVar, value);
+                    });
+                }
+            });
+        } else if (!isWidgetMode) {
+            // Restore main preset if needed? ThemeProvider should handle it if settings didn't change.
+            // But if we manually overrode it above, we might need to restore.
+            // Actually, ThemeProvider runs on mount and settings change.
+            // If we manually set props, they persist until unset or overwritten.
+            // So we should re-apply main theme preset when exiting widget mode.
+            if (settings.themePreset) {
+                import('@/config/themes').then(({ themes }) => {
+                    const themeConfig = themes[settings.themePreset || 'default'] || themes['default'];
+                    const root = window.document.documentElement;
+                    if (themeConfig) {
+                        Object.entries(themeConfig.colors).forEach(([key, value]) => {
+                            const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+                            root.style.setProperty(cssVar, value);
+                        });
+                    }
+                });
+            }
+        }
+
+    }, [isWidgetMode, settings?.widgetTheme, settings?.mainTheme, settings?.separateWidgetTheme, settings?.themePreset, settings?.widgetThemePreset, theme, saveSettings, setTheme]);
 
     // Sync Window Lock State (Position & Size)
     useEffect(() => {
@@ -348,7 +405,10 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
         <ContextMenu>
             <ContextMenuTrigger asChild>
                 <div
-                    className="h-full w-full flex flex-row text-foreground font-sans transition-colors duration-300 select-none"
+                    className={cn(
+                        "h-full w-full flex flex-row text-foreground font-sans transition-colors duration-300 select-none",
+                        !isWidgetMode && "rounded-[12px] overflow-hidden border border-border/40 shadow-2xl"
+                    )}
                     style={{
                         backgroundColor: isWidgetMode
                             ? (settings?.widgetOpacity === 0 ? 'transparent' : `hsl(var(--card) / ${settings?.widgetOpacity ?? 0.95})`)
@@ -363,253 +423,264 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                         >
                             {/* Header Wrapper for Measure */}
                             <div ref={headerRef} className="shrink-0">
-                                {isWidgetMode && (
-                                    <>
-                                        <div
-                                            className={cn(
-                                                "h-9 border-b border-border flex items-center justify-between pl-3 pr-2 select-none mb-2 backdrop-blur-sm transition-all duration-300",
-                                                settings?.widgetHeaderAutoHide ? "opacity-0 hover:opacity-100 bg-muted/90" : "bg-muted/80"
-                                            )}
-                                            style={{ WebkitAppRegion: settings?.widgetPositionLocked ? 'no-drag' : 'drag' } as any}
-                                        >
-                                            {/* Left: Project Select (Draggable Area with Interactive Children) */}
-                                            <div className="flex items-center gap-2 min-w-0 flex-1 mr-2" style={{ WebkitAppRegion: settings?.widgetPositionLocked ? 'no-drag' : 'drag' } as any}>
-                                                <div className="h-6 flex-1 max-w-[180px]">
-                                                    <Select value={activeProjectId} onValueChange={setActiveProjectId}>
-                                                        <SelectTrigger
-                                                            className="h-6 w-full bg-transparent border-none p-0 text-xs font-bold text-muted-foreground hover:text-foreground focus:ring-0 shadow-none uppercase tracking-widest gap-1 no-drag justify-start text-left"
-                                                            style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                        >
-                                                            <Sparkles className="w-3.5 h-3.5 text-primary/70 shrink-0 mr-1" />
-                                                            <SelectValue placeholder={t('dashboard.selectProject').toUpperCase()}>
-                                                                {projects.find(p => p.id === activeProjectId)?.name || t('dashboard.focusWidget')}
-                                                            </SelectValue>
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {(() => {
-                                                                const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                                                const activeProjects = projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
 
-                                                                return (
-                                                                    <>
-                                                                        {activeProjects.length === 0 && <SelectItem value="none">{t('dashboard.noProject')}</SelectItem>}
-                                                                        {activeProjects.map(p => (
-                                                                            <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>
-                                                                        ))}
-                                                                    </>
-                                                                );
-                                                            })()}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
+                                <div style={{ display: isWidgetMode ? 'contents' : 'none' }}>
+                                    <div
+                                        className={cn(
+                                            "h-9 border-b border-border flex items-center justify-between pl-3 pr-2 select-none mb-2 backdrop-blur-sm transition-all duration-300",
+                                            settings?.widgetHeaderAutoHide ? "opacity-0 hover:opacity-100 bg-muted/90" : "bg-muted/80"
+                                        )}
+                                        style={{ WebkitAppRegion: settings?.widgetPositionLocked ? 'no-drag' : 'drag' } as any}
+                                    >
+                                        {/* Left: Project Select (Draggable Area with Interactive Children) */}
+                                        <div className="flex items-center gap-2 min-w-0 flex-1 mr-2" style={{ WebkitAppRegion: settings?.widgetPositionLocked ? 'no-drag' : 'drag' } as any}>
+                                            <div className="h-6 flex-1 max-w-[240px]">
+                                                <Select value={activeProjectId} onValueChange={setActiveProjectId}>
+                                                    <SelectTrigger
+                                                        className={cn("h-6 w-full bg-transparent border-none p-0 text-xs font-bold text-muted-foreground hover:text-foreground focus:ring-0 shadow-none uppercase tracking-widest gap-1 no-drag justify-start text-left", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}
+                                                        style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                    >
+                                                        <Sparkles className="w-3.5 h-3.5 text-primary/70 shrink-0 mr-1" />
+                                                        <SelectValue placeholder={t('dashboard.selectProject').toUpperCase()}>
+                                                            {projects.find(p => p.id === activeProjectId)?.name || t('dashboard.focusWidget')}
+                                                        </SelectValue>
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {(() => {
+                                                            const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                            const activeProjects = projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
+
+                                                            return (
+                                                                <>
+                                                                    {activeProjects.length === 0 && <SelectItem value="none">{t('dashboard.noProject')}</SelectItem>}
+                                                                    {activeProjects.map(p => (
+                                                                        <SelectItem key={p.id} value={p.id} className="text-xs">{p.name}</SelectItem>
+                                                                    ))}
+                                                                </>
+                                                            );
+                                                        })()}
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
+                                        </div>
 
-                                            {/* Right: Controls (Consolidated Menu) */}
-                                            <div className="flex items-center gap-0.5 shrink-0">
+                                        {/* Right: Controls (Consolidated Menu) */}
+                                        <div className="flex items-center gap-0.5 shrink-0">
 
 
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
-                                                    onClick={() => clearUntitledTodos()}
-                                                    title={t('dashboard.clearUntitled')}
-                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                >
-                                                    <Eraser className="w-3.5 h-3.5" />
-                                                </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
+                                                onClick={() => clearUntitledTodos()}
+                                                title={t('dashboard.clearUntitled')}
+                                                style={{ WebkitAppRegion: 'no-drag' } as any}
+                                            >
+                                                <Eraser className="w-3.5 h-3.5" />
+                                            </Button>
 
-                                                <Popover>
-                                                    <PopoverTrigger asChild>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
-                                                            style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-settings-2"><path d="M20 7h-9" /><path d="M14 17H5" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></svg>
-                                                        </Button>
-                                                    </PopoverTrigger>
-                                                    <PopoverContent className="w-72 p-0" side="bottom" align="end">
-                                                        <div className="flex flex-col max-h-[300px]">
-                                                            <div className="p-4 overflow-y-auto custom-scrollbar space-y-4">
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
+                                                        style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-settings-2"><path d="M20 7h-9" /><path d="M14 17H5" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></svg>
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-72 p-0" side="bottom" align="end">
+                                                    <div className="flex flex-col max-h-[300px]">
+                                                        <div className="p-4 overflow-y-auto custom-scrollbar space-y-4">
 
-                                                                {/* Opacity Slider */}
-                                                                <div className="space-y-2">
-                                                                    <div className="flex items-center justify-between text-xs">
-                                                                        <span className="text-muted-foreground">{t('dashboard.opacity')}</span>
-                                                                        <span>{Math.round((settings?.widgetOpacity ?? 1) * 100)}%</span>
-                                                                    </div>
-                                                                    <Slider
-                                                                        min={0}
-                                                                        max={1.0}
-                                                                        step={0.05}
-                                                                        value={[settings?.widgetOpacity ?? 0.95]}
-                                                                        onValueChange={(val) => settings && saveSettings({ ...settings, widgetOpacity: val[0] })}
+                                                            {/* Opacity Slider */}
+                                                            <div className="space-y-2">
+                                                                <div className="flex items-center justify-between text-xs">
+                                                                    <span className="text-muted-foreground">{t('dashboard.opacity')}</span>
+                                                                    <span>{Math.round((settings?.widgetOpacity ?? 1) * 100)}%</span>
+                                                                </div>
+                                                                <Slider
+                                                                    min={0}
+                                                                    max={1.0}
+                                                                    step={0.05}
+                                                                    value={[settings?.widgetOpacity ?? 0.95]}
+                                                                    onValueChange={(val) => settings && saveSettings({ ...settings, widgetOpacity: val[0] })}
+                                                                />
+                                                            </div>
+
+
+
+                                                            {/* Display Mode Select */}
+                                                            <div className="space-y-2">
+                                                                <div className="text-xs font-medium text-muted-foreground">{t('settings.appearance.selectDisplay')}</div>
+                                                                <Select
+                                                                    value={settings?.widgetDisplayMode || 'none'}
+                                                                    onValueChange={(val: any) => settings && saveSettings({ ...settings, widgetDisplayMode: val })}
+                                                                >
+                                                                    <SelectTrigger className="h-7 text-xs">
+                                                                        <SelectValue />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="none" className="text-xs">{t('settings.appearance.none')}</SelectItem>
+                                                                        <SelectItem value="quote" className="text-xs">{t('settings.appearance.dailyQuote')}</SelectItem>
+                                                                        <SelectItem value="goals" className="text-xs">{t('settings.appearance.focusGoals')}</SelectItem>
+                                                                        <SelectItem value="timer" className="text-xs">{t('dashboard.timer') || 'Focus Timer'}</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+
+                                                            <div className="space-y-2">
+                                                                {/* Theme Toggle */}
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                        {theme === 'dark' ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
+                                                                        {t('settings.theme')}
+                                                                    </span>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-7 text-xs px-2"
+                                                                        onClick={() => {
+                                                                            const newTheme = theme === 'dark' ? 'light' : 'dark';
+                                                                            setTheme(newTheme);
+                                                                            if (settings) {
+                                                                                if (isWidgetMode && settings.separateWidgetTheme) {
+                                                                                    saveSettings({ ...settings, widgetTheme: newTheme as 'dark' | 'light' | 'system' });
+                                                                                } else {
+                                                                                    saveSettings({ ...settings, mainTheme: newTheme as 'dark' | 'light' | 'system' });
+                                                                                }
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        {theme === 'dark' ? 'Dark' : 'Light'}
+                                                                    </Button>
+                                                                </div>
+
+                                                                {/* Lock Content */}
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                        {isWidgetLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
+                                                                        {t('dashboard.lockWidget')}
+                                                                    </span>
+                                                                    <Switch
+                                                                        checked={isWidgetLocked}
+                                                                        onCheckedChange={setIsWidgetLocked}
+                                                                        className="scale-75 origin-right"
                                                                     />
                                                                 </div>
 
-
-
-                                                                {/* Display Mode Select */}
-                                                                <div className="space-y-2">
-                                                                    <div className="text-xs font-medium text-muted-foreground">{t('settings.appearance.selectDisplay')}</div>
-                                                                    <Select
-                                                                        value={settings?.widgetDisplayMode || 'none'}
-                                                                        onValueChange={(val: any) => settings && saveSettings({ ...settings, widgetDisplayMode: val })}
-                                                                    >
-                                                                        <SelectTrigger className="h-7 text-xs">
-                                                                            <SelectValue />
-                                                                        </SelectTrigger>
-                                                                        <SelectContent>
-                                                                            <SelectItem value="none" className="text-xs">{t('settings.appearance.none')}</SelectItem>
-                                                                            <SelectItem value="quote" className="text-xs">{t('settings.appearance.dailyQuote')}</SelectItem>
-                                                                            <SelectItem value="goals" className="text-xs">{t('settings.appearance.focusGoals')}</SelectItem>
-                                                                            <SelectItem value="timer" className="text-xs">{t('dashboard.timer') || 'Focus Timer'}</SelectItem>
-                                                                        </SelectContent>
-                                                                    </Select>
+                                                                {/* Lock Position */}
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-anchor"><circle cx="12" cy="5" r="3" /><line x1="12" x2="12" y1="22" y2="8" /><path d="M5 12H2a10 10 0 0 0 20 0h-3" /></svg>
+                                                                        {t('dashboard.lockPosition')}
+                                                                    </span>
+                                                                    <Switch
+                                                                        checked={settings?.widgetPositionLocked || false}
+                                                                        onCheckedChange={(checked) => settings && saveSettings({ ...settings, widgetPositionLocked: checked })}
+                                                                        className="scale-75 origin-right"
+                                                                    />
                                                                 </div>
 
-                                                                <div className="space-y-2">
-                                                                    {/* Theme Toggle */}
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
-                                                                            {theme === 'dark' ? <Moon className="w-3.5 h-3.5" /> : <Sun className="w-3.5 h-3.5" />}
-                                                                            {t('settings.theme')}
-                                                                        </span>
-                                                                        <Button
-                                                                            variant="outline"
-                                                                            size="sm"
-                                                                            className="h-7 text-xs px-2"
-                                                                            onClick={() => {
-                                                                                const newTheme = theme === 'dark' ? 'light' : 'dark';
-                                                                                setTheme(newTheme);
-                                                                                if (settings) {
-                                                                                    if (isWidgetMode) {
-                                                                                        saveSettings({ ...settings, widgetTheme: newTheme });
-                                                                                    } else {
-                                                                                        saveSettings({ ...settings, mainTheme: newTheme });
-                                                                                    }
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            {theme === 'dark' ? 'Dark' : 'Light'}
-                                                                        </Button>
-                                                                    </div>
+                                                                {/* Auto-Hide Header */}
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-panel-top-open"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /><path d="m9 16 3-3 3 3" /></svg>
+                                                                        {t('dashboard.autoHideHeader')}
+                                                                    </span>
+                                                                    <Switch
+                                                                        checked={settings?.widgetHeaderAutoHide || false}
+                                                                        onCheckedChange={(checked) => settings && saveSettings({ ...settings, widgetHeaderAutoHide: checked })}
+                                                                        className="scale-75 origin-right"
+                                                                    />
+                                                                </div>
 
-                                                                    {/* Lock Content */}
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
-                                                                            {isWidgetLocked ? <Lock className="w-3.5 h-3.5" /> : <Unlock className="w-3.5 h-3.5" />}
-                                                                            {t('dashboard.lockWidget')}
-                                                                        </span>
-                                                                        <Switch
-                                                                            checked={isWidgetLocked}
-                                                                            onCheckedChange={setIsWidgetLocked}
-                                                                            className="scale-75 origin-right"
-                                                                        />
-                                                                    </div>
-
-                                                                    {/* Lock Position */}
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
-                                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-anchor"><circle cx="12" cy="5" r="3" /><line x1="12" x2="12" y1="22" y2="8" /><path d="M5 12H2a10 10 0 0 0 20 0h-3" /></svg>
-                                                                            {t('dashboard.lockPosition')}
-                                                                        </span>
-                                                                        <Switch
-                                                                            checked={settings?.widgetPositionLocked || false}
-                                                                            onCheckedChange={(checked) => settings && saveSettings({ ...settings, widgetPositionLocked: checked })}
-                                                                            className="scale-75 origin-right"
-                                                                        />
-                                                                    </div>
-
-                                                                    {/* Auto-Hide Header */}
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
-                                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-panel-top-open"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><line x1="3" x2="21" y1="9" y2="9" /><path d="m9 16 3-3 3 3" /></svg>
-                                                                            {t('dashboard.autoHideHeader')}
-                                                                        </span>
-                                                                        <Switch
-                                                                            checked={settings?.widgetHeaderAutoHide || false}
-                                                                            onCheckedChange={(checked) => settings && saveSettings({ ...settings, widgetHeaderAutoHide: checked })}
-                                                                            className="scale-75 origin-right"
-                                                                        />
-                                                                    </div>
-
-                                                                    {/* Auto-Height Toggle */}
-                                                                    <div className="flex items-center justify-between">
-                                                                        <span className="text-xs font-medium text-foreground flex items-center gap-2">
-                                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-up-down"><path d="m21 16-4 4-4-4" /><path d="m17 20V4" /><path d="m3 8 4-4 4 4" /><path d="m7 4v16" /></svg>
-                                                                            {t('dashboard.autoHeight')}
-                                                                        </span>
-                                                                        <Switch
-                                                                            checked={settings?.widgetAutoResize ?? true} // Default to true
-                                                                            onCheckedChange={(checked) => settings && saveSettings({ ...settings, widgetAutoResize: checked })}
-                                                                            className="scale-75 origin-right"
-                                                                        />
-                                                                    </div>
+                                                                {/* Auto-Height Toggle */}
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-xs font-medium text-foreground flex items-center gap-2">
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-up-down"><path d="m21 16-4 4-4-4" /><path d="m17 20V4" /><path d="m3 8 4-4 4 4" /><path d="m7 4v16" /></svg>
+                                                                        {t('dashboard.autoHeight')}
+                                                                    </span>
+                                                                    <Switch
+                                                                        checked={settings?.widgetAutoResize ?? true} // Default to true
+                                                                        onCheckedChange={(checked) => settings && saveSettings({ ...settings, widgetAutoResize: checked })}
+                                                                        className="scale-75 origin-right"
+                                                                    />
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    </PopoverContent>
-                                                </Popover>
+                                                    </div>
+                                                </PopoverContent>
+                                            </Popover>
 
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    className="h-6 w-6 text-muted-foreground hover:text-destructive no-drag"
-                                                    onClick={togglePin}
-                                                    title={t('dashboard.unpin')}
-                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin-off"><line x1="2" x2="22" y1="2" y2="22" /><line x1="12" x2="12" y1="17" y2="22" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-.25-.95" /><path d="M15 9.34V6h1a2 2 0 0 0 0-4H7.89" /></svg>
-                                                </Button>
-                                            </div >
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-6 w-6 text-muted-foreground hover:text-destructive no-drag"
+                                                onClick={togglePin}
+                                                title={t('dashboard.unpin')}
+                                                style={{ WebkitAppRegion: 'no-drag' } as any}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin-off"><line x1="2" x2="22" y1="2" y2="22" /><line x1="12" x2="12" y1="17" y2="22" /><path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16h14v-.76a2 2 0 0 0-.25-.95" /><path d="M15 9.34V6h1a2 2 0 0 0 0-4H7.89" /></svg>
+                                            </Button>
                                         </div >
+                                    </div >
+                                </div >
 
 
-                                        {/* Custom Widget Header Content */}
-                                        {
-                                            settings?.widgetDisplayMode === 'quote' && (
-                                                <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
-                                                    <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center relative hover:bg-muted/50 transition-colors">
-                                                        {isEditingQuote ? (
-                                                            <div className="flex flex-col gap-2">
-                                                                <textarea
-                                                                    className="w-full bg-background border border-input rounded-md p-2 text-sm font-serif italic focus:ring-1 focus:ring-primary min-h-[80px]"
-                                                                    value={quoteInput}
-                                                                    onChange={(e) => setQuoteInput(e.target.value)}
-                                                                    placeholder="Enter your daily quote..."
-                                                                    onKeyDown={(e) => {
-                                                                        if (e.key === 'Enter' && !e.shiftKey) {
-                                                                            e.preventDefault();
-                                                                            // Save
-                                                                            const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                                                            if ((window as any).ipcRenderer) {
-                                                                                (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
-                                                                            }
-                                                                            setManualQuote(quoteInput);
-                                                                            setIsEditingQuote(false);
-                                                                        }
-                                                                        if (e.key === 'Escape') {
-                                                                            setIsEditingQuote(false);
-                                                                        }
-                                                                    }}
-                                                                />
-                                                                <div className="flex justify-end gap-2 text-xs">
-                                                                    <button onClick={() => setIsEditingQuote(false)} className="text-muted-foreground hover:text-foreground">Cancel</button>
-                                                                    <button onClick={() => {
-                                                                        const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                                                        if ((window as any).ipcRenderer) {
-                                                                            (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
-                                                                        }
-                                                                        setManualQuote(quoteInput);
-                                                                        setIsEditingQuote(false);
-                                                                    }} className="text-primary hover:underline font-bold">Save</button>
-                                                                </div>
-                                                            </div>
-                                                        ) : (
-                                                            <div onClick={() => {
+
+                                {/* Custom Widget Header Content */}
+                                {
+                                    settings?.widgetDisplayMode === 'quote' && (
+                                        <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
+                                            <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center relative hover:bg-muted/50 transition-colors">
+                                                {isEditingQuote ? (
+                                                    <div className="flex flex-col gap-2">
+                                                        <textarea
+                                                            className="w-full bg-background border border-input rounded-md p-2 text-sm font-serif italic focus:ring-1 focus:ring-primary min-h-[80px]"
+                                                            value={quoteInput}
+                                                            onChange={(e) => setQuoteInput(e.target.value)}
+                                                            placeholder="Enter your daily quote..."
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter' && !e.shiftKey) {
+                                                                    e.preventDefault();
+                                                                    // Save
+                                                                    const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                                    if ((window as any).ipcRenderer) {
+                                                                        (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
+                                                                    }
+                                                                    setManualQuote(quoteInput);
+                                                                    setIsEditingQuote(false);
+                                                                }
+                                                                if (e.key === 'Escape') {
+                                                                    setIsEditingQuote(false);
+                                                                }
+                                                            }}
+                                                        />
+                                                        <div className="flex justify-end gap-2 text-xs">
+                                                            <button onClick={() => setIsEditingQuote(false)} className="text-muted-foreground hover:text-foreground">Cancel</button>
+                                                            <button onClick={() => {
+                                                                const todayStr = format(new Date(), 'yyyy-MM-dd');
+                                                                if ((window as any).ipcRenderer) {
+                                                                    (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
+                                                                }
+                                                                setManualQuote(quoteInput);
+                                                                setIsEditingQuote(false);
+                                                            }} className="text-primary hover:underline font-bold">Save</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div onClick={() => {
+
+                                                        setIsEditingQuote(true);
+                                                    }}
+                                                        className="cursor-pointer"
+                                                        title="Click to Edit Quote"
+                                                    >
+
+                                                        <p className={cn("text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}>
+                                                            "{manualQuote || (() => {
                                                                 const defaultQuotes = [
                                                                     "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
                                                                     "완벽함이 아니라 탁월함을 추구하라.",
@@ -644,274 +715,153 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                                     "당신의 작품이 당신을 말해준다."
                                                                 ];
                                                                 const allQuotes = [...defaultQuotes, ...(settings?.customQuotes || [])];
-                                                                const quote = allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
-                                                                setQuoteInput(manualQuote || quote);
-                                                                setIsEditingQuote(true);
-                                                            }} className="cursor-pointer" title="Click to Edit Quote">
-                                                                <p className="text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed">
-                                                                    "{manualQuote || (() => {
-                                                                        const defaultQuotes = [
-                                                                            "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
-                                                                            "완벽함이 아니라 탁월함을 추구하라.",
-                                                                            "시작이 반이다.",
-                                                                            "몰입은 최고의 휴식이다.",
-                                                                            "단순함은 궁극의 정교함이다.",
-                                                                            "가장 좋은 방법은 시작하는 것이다.",
-                                                                            "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
-                                                                            "어제보다 나은 내일을 만들어라.",
-                                                                            "작은 진전이 모여 큰 결과를 만든다.",
-                                                                            "실패는 성공으로 가는 이정표다.",
-                                                                            "코딩은 21세기의 마법이다.",
-                                                                            "디테일이 퀄리티를 만든다.",
-                                                                            "꾸준함이 재능을 이긴다.",
-                                                                            "기록하지 않으면 기억되지 않는다.",
-                                                                            "오늘의 노력이 내일의 실력이 된다.",
-                                                                            "문제는 해결책을 찾기 위해 존재한다.",
-                                                                            "배움에는 끝이 없다.",
-                                                                            "나만의 속도로 가라.",
-                                                                            "휴식도 훈련의 일부다.",
-                                                                            "상상력은 지식보다 중요하다.",
-                                                                            "도전하지 않으면 아무것도 얻을 수 없다.",
-                                                                            "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
-                                                                            "천리길도 한 걸음부터.",
-                                                                            "성공은 포기하지 않는 자의 것이다.",
-                                                                            "당신의 한계는 당신의 생각뿐이다.",
-                                                                            "지금 흘린 땀은 내일의 눈물을 닦아준다.",
-                                                                            "위대한 일은 작은 일들이 모여 이루어진다.",
-                                                                            "늦었다고 생각할 때가 가장 빠르다.",
-                                                                            "열정 없는 천재는 없다.",
-                                                                            "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
-                                                                            "당신의 작품이 당신을 말해준다."
-                                                                        ];
-                                                                        const allQuotes = [...defaultQuotes, ...(settings?.customQuotes || [])];
-                                                                        return allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
-                                                                    })()}"
-                                                                </p>
-                                                            </div>
-                                                        )}
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                saveSettings({ ...settings, widgetDisplayMode: 'none' });
-                                                            }}
-                                                            className="absolute top-1 right-1 p-1 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all no-drag"
-                                                            title="Remove Quote"
-                                                            style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                                                        </button>
+                                                                return allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
+                                                            })()}"
+                                                        </p>
                                                     </div>
-                                                </div>
-                                            )
-                                        }
-
-                                        {
-                                            settings?.widgetDisplayMode === 'goals' && (
-                                                <div className="mb-4 px-1 grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 group relative">
-                                                    <div className="p-2 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-                                                        <div className="text-[10px] font-bold text-blue-600/70 uppercase tracking-wider mb-0.5">{t('dashboard.monthly')}</div>
-                                                        <div className="text-xs font-medium truncate" title={settings.focusGoals?.monthly}>{settings.focusGoals?.monthly || t('dashboard.noGoal')}</div>
-                                                    </div>
-                                                    <div className="p-2 bg-green-500/5 border border-green-500/20 rounded-lg">
-                                                        <div className="text-[10px] font-bold text-green-600/70 uppercase tracking-wider mb-0.5">{t('dashboard.weekly')}</div>
-                                                        <div className="text-xs font-medium truncate" title={settings.focusGoals?.weekly}>{settings.focusGoals?.weekly || t('dashboard.noGoal')}</div>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
-                                                        className="absolute -top-1 -right-1 p-1 rounded-full bg-background border border-border shadow-sm text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all z-10 no-drag"
-                                                        title="Remove Goals"
-                                                        style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                    >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                                                    </button>
-                                                </div>
-                                            )
-                                        }
-
-                                        {
-                                            settings?.widgetDisplayMode === 'timer' && (
-                                                <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
-                                                    {/* Timer Calculation */}
-                                                    {(() => {
-                                                        let totalFocusTime = 0;
-                                                        // Deduplicate: If liveSession start time matches any completed session, ignore liveSession (it's transitioning)
-                                                        const isLiveAlreadyCompleted = liveSession && sessions.some(s => s.start === liveSession.start);
-                                                        const effectiveLiveSession = isLiveAlreadyCompleted ? null : liveSession;
-
-                                                        const allSessions = effectiveLiveSession ? [...sessions, effectiveLiveSession] : sessions;
-
-                                                        allSessions.forEach(session => {
-                                                            const isLive = session === effectiveLiveSession;
-
-                                                            // Use stored duration for completed sessions to match backend rounding
-                                                            if (!isLive && typeof session.duration === 'number') {
-                                                                totalFocusTime += session.duration;
-                                                                return;
-                                                            }
-
-                                                            const s = new Date(session.start);
-                                                            const e = isLive ? now : new Date(session.end);
-                                                            if (isNaN(s.getTime()) || isNaN(e.getTime())) return;
-
-                                                            // Fallback calculation for live sessions or missing duration
-                                                            // Use Math.floor to match backend perfectly and prevent "jumps" vs "floors"
-                                                            const msDiff = e.getTime() - s.getTime();
-                                                            const duration = Math.floor(msDiff / 1000);
-
-                                                            if (duration > 0) totalFocusTime += duration;
-                                                        });
-
-                                                        return (
-                                                            <div className="p-4 bg-muted/30 border border-border/50 rounded-lg flex items-center justify-between relative">
-                                                                <div>
-                                                                    <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-1">{t('calendar.totalFocus')}</div>
-                                                                    <div className="text-3xl font-bold font-mono tracking-tight text-foreground flex items-baseline gap-1">
-                                                                        {Math.floor(totalFocusTime / 3600)}<span className="text-sm font-sans font-medium text-muted-foreground">h</span>
-                                                                        {Math.floor((totalFocusTime % 3600) / 60)}<span className="text-sm font-sans font-medium text-muted-foreground">m</span>
-                                                                        {totalFocusTime % 60}<span className="text-sm font-sans font-medium text-muted-foreground">s</span>
-                                                                    </div>
-                                                                </div>
-
-                                                                {liveSession ? (
-                                                                    <div className="flex flex-col items-end justify-center">
-                                                                        <div className="flex items-center gap-2 mb-1">
-                                                                            <span className="relative flex h-2 w-2">
-                                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
-                                                                            </span>
-                                                                            <span className="text-[10px] font-bold text-green-500 uppercase tracking-wider">{t('calendar.focusing')}</span>
-                                                                        </div>
-                                                                        <div className="text-xs font-medium text-foreground max-w-[100px] truncate text-right border-t border-border/50 pt-1 mt-1" title={liveSession.process}>
-                                                                            {liveSession.process}
-                                                                        </div>
-                                                                    </div>
-                                                                ) : (
-                                                                    (() => {
-                                                                        // Find last session (by end date)
-                                                                        const lastSession = sessions.length > 0
-                                                                            ? sessions.reduce((prev, current) => (new Date(prev.end) > new Date(current.end)) ? prev : current)
-                                                                            : null;
-
-                                                                        if (lastSession) {
-                                                                            const h = Math.floor(lastSession.duration / 3600);
-                                                                            const m = Math.floor((lastSession.duration % 3600) / 60);
-                                                                            const s = lastSession.duration % 60;
-                                                                            const durationText = h > 0 ? `${h}h ${m}m ${s}s` : (m > 0 ? `${m}m ${s}s` : `${s}s`);
-
-                                                                            return (
-                                                                                <div className="flex flex-col items-end justify-center opacity-70">
-                                                                                    <div className="flex items-center gap-2 mb-1">
-                                                                                        <span className="relative flex h-2 w-2">
-                                                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-muted-foreground/50"></span>
-                                                                                        </span>
-                                                                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{t('calendar.lastFocus')}</span>
-                                                                                    </div>
-                                                                                    <div className="text-xs font-medium text-muted-foreground text-right border-t border-border/50 pt-1 mt-1">
-                                                                                        {lastSession.process} <span className="text-[10px] opacity-70 ml-1">({durationText})</span>
-                                                                                    </div>
-                                                                                </div>
-                                                                            );
-                                                                        }
-                                                                        return null;
-                                                                    })()
-                                                                )}
-
-                                                                <button
-                                                                    onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
-                                                                    className="absolute top-1 right-1 p-1 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all no-drag"
-                                                                    title="Remove Timer"
-                                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
-                                                                >
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                                                                </button>
-                                                            </div>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            )
-                                        }
-                                    </>
-                                )
-                                }
-
-                                {/* Dashboard Header: Only visible when NOT in widget mode */}
-                                {
-                                    !isWidgetMode && (
-                                        <div className="flex items-end justify-between mb-6 px-1 shrink-0">
-                                            <div className="flex items-center gap-2">
-                                                <div>
-                                                    <h2 className="text-2xl font-bold text-foreground tracking-tight cursor-pointer hover:text-muted-foreground transition-colors flex items-center gap-2">
-                                                        {t('dashboard.todayFocus')}
-                                                    </h2>
-                                                    <p className="text-sm text-muted-foreground font-medium mt-1">{format(new Date(), 'MMM dd, yyyy')}</p>
-                                                </div>
-                                            </div>
-
-                                            {/* Controls: Project Dropdown + Action Buttons */}
-                                            <div className="flex items-center gap-3">
-                                                {/* Project Dropdown */}
-                                                <div className="relative">
-                                                    <Select value={activeProjectId} onValueChange={setActiveProjectId}>
-                                                        <SelectTrigger className="w-[180px]">
-                                                            <SelectValue placeholder={t('dashboard.selectProject')} />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {projects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
-                                                            {projects.map(p => (
-                                                                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-
-                                                {/* Action Buttons Group */}
-                                                <div className="flex items-center gap-1">
-                                                    {/* Alignment Toggle */}
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                                                        onClick={() => settings && saveSettings({ ...settings, editorAlignment: settings.editorAlignment === 'center' ? 'left' : 'center' } as AppSettings)}
-                                                        title={settings?.editorAlignment === 'center' ? t('dashboard.alignLeft') : t('dashboard.alignCenter')}
-                                                    >
-                                                        {settings?.editorAlignment === 'center' ? (
-                                                            <AlignLeft className="w-[18px] h-[18px]" />
-                                                        ) : (
-                                                            <AlignCenter className="w-[18px] h-[18px]" />
-                                                        )}
-                                                    </Button>
-
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                                                        onClick={() => clearUntitledTodos()}
-                                                        title={t('dashboard.clearUntitled')}
-                                                    >
-                                                        <Eraser className="w-[18px] h-[18px]" />
-                                                    </Button>
-
-                                                    {/* Pin Button */}
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="icon"
-                                                        className={cn("h-9 w-9 transition-all", isPinned ? "text-primary bg-primary/10 rotate-45" : "text-muted-foreground hover:text-foreground")}
-                                                        onClick={togglePin}
-                                                        title={isPinned ? t('dashboard.unpin') : t('dashboard.pin')}
-                                                    >
-                                                        <span className="sr-only">Pin</span>
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin"><line x1="12" x2="12" y1="17" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
-                                                    </Button>
-                                                </div>
+                                                )}
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        saveSettings({ ...settings, widgetDisplayMode: 'none' });
+                                                    }}
+                                                    className="absolute top-1 right-1 p-1 rounded-full text-muted-foreground/30 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all no-drag"
+                                                    title="Remove Quote"
+                                                    style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                                </button>
                                             </div>
                                         </div>
                                     )
                                 }
-                            </div > {/* End Header Wrapper */}
+
+                                {
+                                    settings?.widgetDisplayMode === 'goals' && (
+                                        <div className="mb-4 px-1 grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 group relative">
+                                            <div className="p-2 bg-blue-500/5 border border-blue-500/20 rounded-lg">
+                                                <div className={cn("text-[10px] font-bold text-blue-600/70 uppercase tracking-wider mb-0.5", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}>{t('dashboard.monthly')}</div>
+                                                <div className={cn("text-xs font-medium truncate", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")} title={settings.focusGoals?.monthly}>{settings.focusGoals?.monthly || t('dashboard.noGoal')}</div>
+                                            </div>
+                                            <div className="p-2 bg-green-500/5 border border-green-500/20 rounded-lg">
+                                                <div className={cn("text-[10px] font-bold text-green-600/70 uppercase tracking-wider mb-0.5", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}>{t('dashboard.weekly')}</div>
+                                                <div className={cn("text-xs font-medium truncate", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")} title={settings.focusGoals?.weekly}>{settings.focusGoals?.weekly || t('dashboard.noGoal')}</div>
+                                            </div>
+                                            <button
+                                                onClick={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
+                                                className="absolute -top-1 -right-1 p-1 rounded-full bg-background border border-border shadow-sm text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-all z-10 no-drag"
+                                                title="Remove Goals"
+                                                style={{ WebkitAppRegion: 'no-drag' } as any}
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                            </button>
+                                        </div>
+                                    )
+                                }
+
+                                {
+                                    settings?.widgetDisplayMode === 'timer' && (
+                                        <TimerWidget
+                                            isWidgetMode={isWidgetMode}
+                                            liveSession={liveSession}
+                                            sessions={sessions}
+                                            now={now}
+                                            onRemove={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
+                                        />
+                                    )
+                                }
+
+
+
+
+                                {/* Dashboard Header: Only visible when NOT in widget mode */}
+
+                                <div className="flex items-end justify-between mb-6 px-1 shrink-0" style={{ display: !isWidgetMode ? 'flex' : 'none' }}>
+                                    <div className="flex items-end gap-2">
+                                        <div>
+                                            <h2 className="text-2xl font-bold text-foreground tracking-tight cursor-pointer hover:text-muted-foreground transition-colors flex items-center gap-2 whitespace-nowrap">
+                                                {t('dashboard.todayFocus')}
+                                            </h2>
+                                            <p className="text-sm text-muted-foreground font-medium mt-1 truncate max-w-[120px] sm:max-w-none">{format(new Date(), 'MMM dd, yyyy')}</p>
+                                        </div>
+
+                                        {/* Alignment Switch Group - Hidden on small screens */}
+                                        <div className="hidden sm:flex items-center gap-0.5 bg-muted/30 p-0.5 rounded-lg border border-border/50 ml-2 h-8 mb-0.5">
+                                            <button
+                                                onClick={() => settings && saveSettings({ ...settings, editorAlignment: 'left' } as AppSettings)}
+                                                className={cn(
+                                                    "h-6 w-8 flex items-center justify-center rounded-md transition-all text-muted-foreground hover:text-foreground",
+                                                    settings?.editorAlignment !== 'center' && "bg-background text-foreground shadow-sm font-medium"
+                                                )}
+                                                title={t('dashboard.alignLeft')}
+                                            >
+                                                <AlignLeft className="w-3.5 h-3.5" />
+                                            </button>
+                                            <div className="w-px h-3 bg-border/50 mx-0.5" />
+                                            <button
+                                                onClick={() => settings && saveSettings({ ...settings, editorAlignment: 'center' } as AppSettings)}
+                                                className={cn(
+                                                    "h-6 w-8 flex items-center justify-center rounded-md transition-all text-muted-foreground hover:text-foreground",
+                                                    settings?.editorAlignment === 'center' && "bg-background text-foreground shadow-sm font-medium"
+                                                )}
+                                                title={t('dashboard.alignCenter')}
+                                            >
+                                                <AlignCenter className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Controls: Project Dropdown + Action Buttons */}
+                                    <div className="flex items-center gap-3">
+                                        {/* Project Dropdown */}
+                                        <div className="relative">
+                                            <Select value={activeProjectId} onValueChange={setActiveProjectId}>
+                                                <SelectTrigger className="w-[180px] sm:w-[220px]">
+                                                    <SelectValue placeholder={t('dashboard.selectProject')} />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {projects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
+                                                    {projects.map(p => (
+                                                        <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+
+                                        {/* Action Buttons Group */}
+                                        <div className="flex items-center gap-1">
+
+
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                                                onClick={() => clearUntitledTodos()}
+                                                title={t('dashboard.clearUntitled')}
+                                            >
+                                                <Eraser className="w-[18px] h-[18px]" />
+                                            </Button>
+
+                                            {/* Pin Button */}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className={cn("h-9 w-9 transition-all", isPinned ? "text-primary bg-primary/10 rotate-45" : "text-muted-foreground hover:text-foreground")}
+                                                onClick={togglePin}
+                                                title={isPinned ? t('dashboard.unpin') : t('dashboard.pin')}
+                                            >
+                                                <span className="sr-only">Pin</span>
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pin"><line x1="12" x2="12" y1="17" y2="22" /><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z" /></svg>
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div> {/* End Header Wrapper */}
 
                             {/* Editor Area (Scrollable) - Only show if projects exist or in widget mode */}
                             {
-                                (isWidgetMode || (projects.length > 0 && activeProjectId && activeProjectId !== 'none')) ? (
+                                isWidgetMode || (projects.length > 0 && activeProjectId && activeProjectId !== 'none') ? (
                                     <div className={cn(
                                         "relative pr-2 custom-scrollbar overflow-x-hidden w-full", // Added w-full
                                         isWidgetMode
@@ -925,7 +875,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                             ref={editorContentRef}
                                             className={cn(
                                                 "min-h-full transition-all duration-300 ease-in-out",
-                                                (!isWidgetMode && settings?.editorAlignment === 'center') && "max-w-3xl mx-auto"
+                                                (!isWidgetMode && settings?.editorAlignment === 'center') && "max-w-5xl"
                                             )}
                                         >
                                             <TodoEditor
@@ -975,8 +925,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                     onClick={() => setIsGeneralOpen(true)}
                                                 >
                                                     <div className="relative">
-                                                        {/* Notion-style Up Arrow (Play icon rotated -90deg) */}
-                                                        <Play className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors fill-current -rotate-90" />
+                                                        <Briefcase className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
                                                         {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
                                                             <span className="sr-only">
                                                                 {uniqueGeneralTodos.filter(t => !t.completed).length} uncompleted items
@@ -1034,6 +983,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                     <div className="w-24 h-1.5 bg-muted/50 rounded-full overflow-hidden mr-1">
                                                         <div className="h-full bg-primary/60 transition-all duration-500" style={{ width: `${uniqueGeneralCompletion}%` }} />
                                                     </div>
+                                                    <span className="text-[10px] text-muted-foreground font-medium w-6 text-right tabular-nums">{uniqueGeneralCompletion}%</span>
                                                 </div>
 
                                                 {/* Content */}
@@ -1107,6 +1057,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                                     projects={projects}
                                                     nightTimeStart={settings?.nightTimeStart}
                                                     settings={settings}
+                                                    onUpdateSettings={saveSettings}
                                                 />
                                             </div>
                                         </div>

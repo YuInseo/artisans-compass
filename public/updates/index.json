@@ -1,5 +1,29 @@
 [
   {
+    "version": "0.2.3",
+    "date": "2026-02-11",
+    "title": "Version 0.2.3",
+    "file": "v0.2.3.md"
+  },
+  {
+    "version": "0.2.2",
+    "date": "2026-02-11",
+    "title": "Version 0.2.2",
+    "file": "v0.2.2.md"
+  },
+  {
+    "version": "0.2.1",
+    "date": "2026-02-10",
+    "title": "Version 0.2.1",
+    "file": "v0.2.1.md"
+  },
+  {
+    "version": "0.2.0",
+    "date": "2026-02-10",
+    "title": "Version 0.2.0",
+    "file": "v0.2.0.md"
+  },
+  {
     "version": "0.0.101",
     "date": "2026-02-06",
     "title": "Version 0.0.101",

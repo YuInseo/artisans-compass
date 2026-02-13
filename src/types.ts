@@ -72,8 +72,13 @@ export interface AppSettings {
     enableUnresolvedTodoNotifications?: boolean; // default: false
     mainTheme?: 'dark' | 'light' | 'system';
     widgetTheme?: 'dark' | 'light' | 'system';
+    separateWidgetTheme?: boolean; // default: false
+    widgetThemePreset?: string; // For separate color themes
     editorAlignment?: 'left' | 'center'; // default: 'left'
     customQuotes?: string[]; // User defined quotes
+    timelineShowDetail?: boolean; // default: false
+    showCurrentTimeIndicator?: boolean; // default: true
+    nightTimeStartSnapInterval?: number; // default: 30 (minutes)
 }
 
 export interface Project {

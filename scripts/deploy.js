@@ -28,20 +28,12 @@ async function main() {
     const releaseTitle = '';
     const releaseNotes = '';
 
-    // --- Version Bump Logic ---
+    // --- Version Logic ---
     const packagePath = path.resolve(__dirname, '../package.json');
     const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+    const newVersion = packageJson.version;
+    console.log(`\x1b[32m[Info]\x1b[0m Deploying version: ${newVersion}`);
 
-    // Increment patch version (x.y.z -> x.y.z+1)
-    const versionParts = packageJson.version.split('.').map(Number);
-    versionParts[2] += 1;
-    const newVersion = versionParts.join('.');
-
-    console.log(`\x1b[32m[Auto Bump]\x1b[0m Updating version: ${packageJson.version} -> ${newVersion}`);
-    packageJson.version = newVersion;
-
-    // Save package.json
-    fs.writeFileSync(packagePath, JSON.stringify(packageJson, null, 2) + '\n');
 
     // --- Env Loading ---
     const envPath = path.resolve(__dirname, '../.env');

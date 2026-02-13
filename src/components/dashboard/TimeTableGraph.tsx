@@ -3,6 +3,32 @@ import { differenceInMinutes, differenceInSeconds, getHours, getMinutes, format,
 import { AppSettings, Session, Project } from '@/types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuTrigger,
+    ContextMenuSeparator,
+    ContextMenuItem,
+    ContextMenuCheckboxItem,
+} from "@/components/ui/context-menu";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import { Settings2, X, Briefcase } from "lucide-react";
 
 import { useTranslation } from "react-i18next";
 
@@ -21,12 +47,16 @@ interface TimeTableGraphProps {
     projects?: Project[];
     nightTimeStart?: number; // 0-24 or >24 for next day
     settings?: AppSettings | null; // Added
+    onUpdateSettings?: (settings: AppSettings) => void;
 }
 
-export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLiveSession, hideAppUsage, projects = [], activeProjectId, nightTimeStart = 22, settings }: TimeTableGraphProps) {
+export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLiveSession, hideAppUsage, projects = [], activeProjectId, nightTimeStart = 22, settings, onUpdateSettings }: TimeTableGraphProps) {
     const { t } = useTranslation();
     // const { settings } = useDataStore(); // Removed
     const [now, setNow] = useState(new Date());
+    const [isIgnoredAppsModalOpen, setIsIgnoredAppsModalOpen] = useState(false);
+    const [modalMode, setModalMode] = useState<'ignored' | 'work'>('ignored');
+    const [appsToConfigure, setAppsToConfigure] = useState<{ name: string; duration: number }[]>([]);
 
     // Update 'now' every second to keep live session growing and enable seconds display
     useEffect(() => {
@@ -83,36 +113,81 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             })
             .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-        // 2. Merge Logic: Combine adjacent sessions regardless of App Title
-        // This creates "work blocks" where small gaps are ignored.
-        const mergedEvents: (typeof rawEvents[number] & { appDistribution: Record<string, number> })[] = [];
+        // 2. Merge Logic: Two-Pass Strategy
+        // Pass 1: Pre-Merge SAME APP sessions (gap <= 5m)
+        const preMergedEvents: (typeof rawEvents[number] & { appDistribution: Record<string, number> })[] = [];
 
         rawEvents.forEach(evt => {
             const currentDuration = differenceInSeconds(evt.end, evt.start);
 
-            if (mergedEvents.length === 0) {
-                mergedEvents.push({
+            if (preMergedEvents.length === 0) {
+                preMergedEvents.push({
                     ...evt,
                     appDistribution: { [evt.title]: currentDuration }
                 });
                 return;
             }
 
-            const last = mergedEvents[mergedEvents.length - 1];
+            const last = preMergedEvents[preMergedEvents.length - 1];
             const timeDiff = differenceInSeconds(evt.start, last.end);
 
-            // Merge if gap is small (<= 5 mins = 300 seconds)
-            if (timeDiff <= 300) {
-                // Extend the last block's end time
+            // Pass 1: Pre-Merge SAME APP sessions (gap <= 5m)
+            const isSameApp = last.title === evt.title;
+
+            if (timeDiff <= 300 && isSameApp) {
+                // Merge same app
                 last.end = new Date(Math.max(last.end.getTime(), evt.end.getTime()));
-                // Track app usage for naming the merged block later
                 last.appDistribution[evt.title] = (last.appDistribution[evt.title] || 0) + currentDuration;
             } else {
-                // If gap is too large, start a new merged block
-                mergedEvents.push({
+                preMergedEvents.push({
                     ...evt,
                     appDistribution: { [evt.title]: currentDuration }
                 });
+            }
+        });
+
+        // Pass 2: Summary Merge (Cross App)
+        const mergedEvents: (typeof rawEvents[number] & { appDistribution: Record<string, number> })[] = [];
+
+        preMergedEvents.forEach(evt => {
+            if (mergedEvents.length === 0) {
+                mergedEvents.push(evt);
+                return;
+            }
+
+            const last = mergedEvents[mergedEvents.length - 1];
+            const timeDiff = differenceInSeconds(evt.start, last.end);
+            const currentDuration = differenceInSeconds(evt.end, evt.start);
+            const isSummaryView = !settings?.timelineShowDetail;
+            const isSameApp = last.title === evt.title;
+
+            let shouldMerge = false;
+
+            if (isSummaryView) {
+                // Summary View: Merge if gap is small
+                if (timeDiff <= 300) {
+                    shouldMerge = true;
+
+                    // Exception: Different App AND Duration >= 15 mins
+                    if (!isSameApp && currentDuration >= 900) {
+                        shouldMerge = false;
+                    }
+                }
+            } else {
+                // Detail View: Merge if Same App (already done in Pass 1) OR Minor Interruption (< 2m)
+                if (timeDiff <= 300 && currentDuration < 120) {
+                    shouldMerge = true;
+                }
+            }
+
+            if (shouldMerge) {
+                last.end = new Date(Math.max(last.end.getTime(), evt.end.getTime()));
+                // Merge app distribution
+                Object.entries(evt.appDistribution).forEach(([app, dur]) => {
+                    last.appDistribution[app] = (last.appDistribution[app] || 0) + (dur as number);
+                });
+            } else {
+                mergedEvents.push(evt);
             }
         });
 
@@ -169,6 +244,15 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
         const columns: RenderEvent[][] = [];
         events.forEach(event => {
             let placed = false;
+
+            // Force single column for Summary View (flatten overlaps)
+            if (!settings?.timelineShowDetail) {
+                if (columns.length === 0) columns.push([]);
+                columns[0].push(event);
+                event.colIndex = 0;
+                return;
+            }
+
             for (let i = 0; i < columns.length; i++) {
                 const lastEventInCol = columns[i][columns[i].length - 1];
                 // Check if the current event can fit into this column without overlapping the last event
@@ -195,6 +279,11 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             const widthPercent = 100 / totalTracks;
             const leftPercent = (event.colIndex || 0) * widthPercent;
 
+            // In Summary View, use full width and ignore nesting
+            const isSummary = !settings?.timelineShowDetail;
+            const finalLeft = isSummary ? "0%" : `${leftPercent}%`;
+            const finalWidth = isSummary ? "100%" : `${widthPercent}%`;
+
             const hours = Math.floor(event.durationMins / 60);
             const mins = event.durationMins % 60;
             const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
@@ -202,14 +291,16 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             return {
                 top: `${top}%`,
                 height: `${Math.max(height, 0.5)}%`, // Ensure minimum height for visibility
-                left: `${leftPercent}%`,
-                width: `${widthPercent}%`,
+                left: finalLeft,
+                width: finalWidth,
                 title: event.title,
                 timeRange: `${format(event.startDate, 'h:mm a')} - ${format(event.endDate, 'h:mm a')}`,
                 duration: durationStr,
+                durationMins: event.durationMins, // Added
                 isShort: event.durationMins < 30,
                 fullApps: Object.keys(event.appDistribution).join(", "), // For tooltip
                 type: event.type,
+                appDistribution: event.appDistribution, // Pass through for tooltip
                 isNightTime: (() => {
                     if (event.isIgnored) return false; // Ignored apps should use their own color, not night time yellow
                     const h = event.startHour;
@@ -394,13 +485,53 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
         </div>
     );
 
+    const toggleAppIgnored = (appName: string, currentIgnored: boolean) => {
+        if (!settings || !onUpdateSettings) return;
+
+        const newIgnoredApps = currentIgnored
+            ? settings.ignoredApps?.filter(app => app !== appName) || []
+            : [...(settings.ignoredApps || []), appName];
+
+        onUpdateSettings({ ...settings, ignoredApps: newIgnoredApps });
+    };
+
+    const toggleWorkApp = (appName: string, isCurrentlyWork: boolean) => {
+        if (!settings || !onUpdateSettings) return;
+
+        const newWorkApps = isCurrentlyWork
+            ? settings.workApps?.filter(app => app !== appName) || []
+            : [...(settings.workApps || []), appName];
+
+        onUpdateSettings({ ...settings, workApps: newWorkApps });
+    };
+
+    const toggleWorkFilter = (checked: boolean) => {
+        if (!settings || !onUpdateSettings) return;
+        onUpdateSettings({ ...settings, filterTimelineByWorkApps: checked });
+    };
+
+    // Helper to open modal with specific mode (reusing existing state logic for ease)
+    const openModal = (mode: 'ignored' | 'work', block: any) => {
+        const apps = Object.entries(block.appDistribution)
+            .sort(([, a], [, b]) => (b as number) - (a as number))
+            .map(([name, duration]) => ({ name, duration: duration as number }));
+
+        if (apps.length === 0) {
+            setAppsToConfigure([{ name: block.title, duration: block.durationMins * 60 }]);
+        } else {
+            setAppsToConfigure(apps);
+        }
+        setModalMode(mode);
+        setIsIgnoredAppsModalOpen(true);
+    };
+
     return (
         <div className="w-full h-full flex flex-col pointer-events-auto select-none">
             <Tabs defaultValue="timetable" className="flex-1 flex flex-col min-h-0">
                 <div className="px-2 mb-2 shrink-0">
-                    <TabsList className="flex w-full">
-                        <TabsTrigger value="timetable" className="flex-1 text-xs">{t('settings.timelineLabel') || 'TimeTable'}</TabsTrigger>
-                        {!hideAppUsage && <TabsTrigger value="app-usage" className="flex-1 text-xs">{t('calendar.appUsage')}</TabsTrigger>}
+                    <TabsList className="flex w-full bg-muted/50 p-0.5 h-8">
+                        <TabsTrigger value="timetable" className="flex-1 text-[10px] px-3 h-7 data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings.timelineLabel') || 'Timeline'}</TabsTrigger>
+                        {!hideAppUsage && <TabsTrigger value="app-usage" className="flex-1 text-[10px] px-3 h-7 data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('calendar.appUsage')}</TabsTrigger>}
                     </TabsList>
                 </div>
 
@@ -431,7 +562,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                             <div className="absolute top-0 bottom-0 left-8 border-l border-border/20 h-full pointer-events-none"></div>
 
                             {/* Current Time Indicator */}
-                            {(!date || isSameDay(date, now)) && (
+                            {(settings?.showCurrentTimeIndicator !== false) && (!date || isSameDay(date, now)) && (
                                 <div
                                     className="absolute left-8 right-0 border-t-2 border-red-500/50 border-dashed z-20 pointer-events-none flex items-center"
                                     style={{
@@ -447,38 +578,86 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                             <div className="absolute top-0 bottom-0 left-8 right-0">
                                 <TooltipProvider delayDuration={0}>
                                     {sessionBlocks.map((block, i) => (
-                                        <Tooltip key={i}>
-                                            <TooltipTrigger asChild>
-                                                <div
-                                                    className={cn(
-                                                        "absolute rounded-sm transition-colors cursor-pointer z-10 flex flex-col justify-center px-2 overflow-hidden",
-                                                        !block.color && !block.isNightTime && "bg-primary/80 text-primary-foreground", // Fallback class
-                                                        block.isNightTime && "bg-yellow-500/90 dark:bg-yellow-600/90 text-yellow-950 dark:text-yellow-100" // Night time style
-                                                    )}
-                                                    style={{
-                                                        top: block.top,
-                                                        height: block.height,
-                                                        left: block.left,
-                                                        width: block.width,
-                                                        backgroundColor: block.isNightTime ? undefined : (block.color || undefined)
-                                                    }}
-                                                >
-                                                    {block.isNightTime && (
-                                                        <div className="absolute top-1 right-1 z-20 opacity-100 drop-shadow-md">
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-yellow-950 dark:text-yellow-100"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
+                                        <ContextMenu key={i}>
+                                            <ContextMenuTrigger>
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <div
+                                                            className={cn(
+                                                                "absolute rounded-sm transition-colors cursor-pointer z-10 flex flex-col justify-center px-2 overflow-hidden",
+                                                                !block.color && !block.isNightTime && "bg-primary/80 text-primary-foreground", // Fallback class
+                                                                block.isNightTime && "bg-yellow-500/90 dark:bg-yellow-600/90 text-yellow-950 dark:text-yellow-100" // Night time style
+                                                            )}
+                                                            style={{
+                                                                top: block.top,
+                                                                height: block.height,
+                                                                left: block.left,
+                                                                width: block.width,
+                                                                backgroundColor: block.isNightTime ? undefined : (block.color || undefined)
+                                                            }}
+                                                        >
+                                                            {block.isNightTime && (
+                                                                <div className="absolute top-1 right-1 z-20 opacity-100 drop-shadow-md">
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-yellow-950 dark:text-yellow-100"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
+                                                                </div>
+                                                            )}
                                                         </div>
-                                                    )}
-                                                </div>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="right" className="flex flex-col gap-0.5 bg-background/95 backdrop-blur border-border p-3 shadow-xl z-50">
-                                                <p className="font-bold text-sm text-foreground">{block.title}</p>
-                                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                    <span className="font-mono">{block.timeRange}</span>
-                                                    <span>•</span>
-                                                    <span>{block.duration}</span>
-                                                </div>
-                                            </TooltipContent>
-                                        </Tooltip>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent side="right" className="flex flex-col gap-0.5 bg-background/95 backdrop-blur border-border p-3 shadow-xl z-50 min-w-[180px]">
+                                                        <p className="font-bold text-sm text-foreground mb-1">{block.title}</p>
+                                                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                                                            <span className="font-mono">{block.timeRange}</span>
+                                                            <span>•</span>
+                                                            <span>{block.duration}</span>
+                                                        </div>
+
+                                                        {/* App Breakdown for Merged Blocks */}
+                                                        {Object.keys(block.appDistribution).length > 0 && (
+                                                            <div className="flex flex-col gap-1 border-t border-border/50 pt-2 mt-1">
+                                                                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Apps in this block</span>
+                                                                {Object.entries(block.appDistribution)
+                                                                    .sort(([, a], [, b]) => (b as number) - (a as number))
+                                                                    .map(([appName, duration]) => {
+                                                                        const d = duration as number;
+                                                                        const m = Math.floor(d / 60);
+                                                                        const s = d % 60;
+                                                                        const durStr = m > 0 ? `${m}m` : `${s}s`;
+                                                                        return (
+                                                                            <div key={appName} className="flex justify-between items-center text-xs">
+                                                                                <span className="truncate max-w-[120px] text-muted-foreground/80" title={appName}>{appName}</span>
+                                                                                <span className="font-mono text-[10px] opacity-70 ml-2">{durStr}</span>
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                            </div>
+                                                        )}
+                                                    </TooltipContent>
+                                                </Tooltip>
+                                            </ContextMenuTrigger>
+                                            <ContextMenuContent className="w-64">
+                                                <ContextMenuCheckboxItem
+                                                    checked={settings?.filterTimelineByWorkApps}
+                                                    onCheckedChange={toggleWorkFilter}
+                                                >
+                                                    {t('settings.timeline.filterWorkApps') || "Show Only Work Apps"}
+                                                </ContextMenuCheckboxItem>
+                                                <ContextMenuSeparator />
+                                                <ContextMenuItem
+                                                    onSelect={() => openModal('work', block)}
+                                                    className="gap-2 cursor-pointer"
+                                                >
+                                                    <Briefcase className="w-4 h-4" />
+                                                    {t('settings.timeline.configureWorkApps') || "Configure Work Programs..."}
+                                                </ContextMenuItem>
+                                                <ContextMenuItem
+                                                    onSelect={() => openModal('ignored', block)}
+                                                    className="gap-2 cursor-pointer"
+                                                >
+                                                    <Settings2 className="w-4 h-4" />
+                                                    {t('settings.timeline.configureIgnoredApps') || "Configure Ignored Apps..."}
+                                                </ContextMenuItem>
+                                            </ContextMenuContent>
+                                        </ContextMenu>
                                     ))}
                                 </TooltipProvider>
                             </div>
@@ -543,6 +722,145 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                     </div>
                 </TabsContent>
             </Tabs>
+
+            <Dialog open={isIgnoredAppsModalOpen} onOpenChange={setIsIgnoredAppsModalOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>
+                            {modalMode === 'ignored'
+                                ? (t('settings.timeline.configureIgnoredApps') || "Manage Ignored Apps")
+                                : (t('settings.timeline.configureWorkApps') || "Configure Work Programs")}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {modalMode === 'ignored'
+                                ? (t('settings.timeline.configureIgnoredAppsDesc') || "Select apps to ignore. Ignored apps will be excluded from focus time calculations.")
+                                : (t('settings.timeline.configureWorkAppsDesc') || "Select apps to classify as Work. These will be visible when the Work Filter is active.")}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex flex-col gap-6 py-4">
+                        {/* 1. List of Currently Configured Apps (Badges) */}
+                        <div className="flex flex-col gap-2">
+                            <h4 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                {modalMode === 'ignored'
+                                    ? (t('settings.timeline.ignoredAppsList') || "Currently Ignored")
+                                    : (t('settings.timeline.workAppsList') || "Current Work Apps")}
+                            </h4>
+                            <div className="flex flex-wrap gap-2 min-h-[2.5rem] p-3 border rounded-md bg-muted/20">
+                                {/* Check if empty */}
+                                {appsToConfigure.filter(app => {
+                                    const list = modalMode === 'ignored' ? settings?.ignoredApps : settings?.workApps;
+                                    return list?.includes(app.name);
+                                }).length === 0 && (
+                                        <span className="text-sm text-muted-foreground self-center italic">
+                                            {modalMode === 'ignored'
+                                                ? (t('settings.timeline.noIgnoredApps') || "No apps ignored in this block")
+                                                : (t('settings.timeline.noAppsInList') || "No apps in this list")}
+                                        </span>
+                                    )}
+
+                                {/* Render Badges */}
+                                {appsToConfigure
+                                    .filter(app => {
+                                        const list = modalMode === 'ignored' ? settings?.ignoredApps : settings?.workApps;
+                                        return list?.includes(app.name);
+                                    })
+                                    .map(app => (
+                                        <Badge
+                                            key={app.name}
+                                            variant={modalMode === 'ignored' ? "secondary" : "default"} // Different style for Work apps
+                                            className={cn(
+                                                "pl-2 pr-1 h-7 text-sm flex items-center gap-1",
+                                                modalMode === 'work' && "bg-blue-600 hover:bg-blue-700 text-white" // Custom color for Work
+                                            )}
+                                        >
+                                            {app.name}
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className={cn(
+                                                    "h-4 w-4 ml-1 hover:bg-transparent rounded-full",
+                                                    modalMode === 'work' ? "text-blue-200 hover:text-white" : "text-muted-foreground hover:text-foreground"
+                                                )}
+                                                onClick={() => {
+                                                    if (modalMode === 'ignored') {
+                                                        toggleAppIgnored(app.name, true);
+                                                    } else {
+                                                        toggleWorkApp(app.name, true);
+                                                    }
+                                                }}
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </Button>
+                                        </Badge>
+                                    ))}
+                            </div>
+                        </div>
+
+                        {/* 2. Dropdown to Add Apps to List */}
+                        <div className="flex flex-col gap-2">
+                            <h4 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                {modalMode === 'ignored'
+                                    ? (t('settings.timeline.addIgnoredApp') || "Add App to Ignore")
+                                    : (t('settings.timeline.addWorkApp') || "Add Work App")}
+                            </h4>
+                            <Select onValueChange={(val) => {
+                                if (modalMode === 'ignored') {
+                                    toggleAppIgnored(val, false);
+                                } else {
+                                    toggleWorkApp(val, false);
+                                }
+                            }}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder={
+                                        modalMode === 'ignored'
+                                            ? (t('settings.timeline.selectAppToIgnore') || "Select an app to ignore...")
+                                            : (t('settings.timeline.selectAppToAdd') || "Select an app...")
+                                    } />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {appsToConfigure.filter(app => {
+                                        const list = modalMode === 'ignored' ? settings?.ignoredApps : settings?.workApps;
+                                        return !list?.includes(app.name);
+                                    }).length === 0 ? (
+                                        <div className="p-2 text-sm text-muted-foreground text-center">
+                                            {modalMode === 'ignored'
+                                                ? (t('settings.timeline.allAppsIgnored') || "All apps are already ignored")
+                                                : (t('settings.timeline.allAppsAdded') || "All apps are already added")}
+                                        </div>
+                                    ) : (
+                                        appsToConfigure
+                                            .filter(app => {
+                                                const list = modalMode === 'ignored' ? settings?.ignoredApps : settings?.workApps;
+                                                return !list?.includes(app.name);
+                                            })
+                                            .map((app) => {
+                                                // Format duration
+                                                const totalSeconds = app.duration;
+                                                const m = Math.floor(totalSeconds / 60);
+                                                const s = Math.floor(totalSeconds % 60);
+                                                const durStr = m > 0 ? `${m}m` : `${s}s`;
+
+                                                return (
+                                                    <SelectItem key={app.name} value={app.name}>
+                                                        <span className="flex justify-between w-full gap-4">
+                                                            <span>{app.name}</span>
+                                                            <span className="text-muted-foreground font-mono text-xs opacity-70">({durStr})</span>
+                                                        </span>
+                                                    </SelectItem>
+                                                );
+                                            })
+                                    )}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button onClick={() => setIsIgnoredAppsModalOpen(false)}>
+                            {t('common.done') || "Done"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
 
         </div >

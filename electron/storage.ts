@@ -147,15 +147,39 @@ export function readJson<T>(filePath: string, defaultValue: T): T {
 }
 
 export function writeJson(filePath: string, data: any) {
+    const tempPath = filePath + '.tmp';
     try {
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
-        fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8');
+
+        // 1. Write to temp file with explicit sync to ensure data is on disk
+        // using low-level file descriptors for better control
+        const fd = fs.openSync(tempPath, 'w');
+        try {
+            fs.writeSync(fd, JSON.stringify(data));
+            fs.fsyncSync(fd); // Flush to physical storage
+        } finally {
+            fs.closeSync(fd);
+        }
+
+        // 2. Atomic Rename
+        fs.renameSync(tempPath, filePath);
+
         return true;
     } catch (error) {
         log.error(`[Storage] Error writing ${filePath}:`, error);
+
+        // Cleanup temp file
+        try {
+            if (fs.existsSync(tempPath)) {
+                fs.unlinkSync(tempPath);
+            }
+        } catch (cleanupError) {
+            // Ignore cleanup errors
+        }
+
         return false;
     }
 }

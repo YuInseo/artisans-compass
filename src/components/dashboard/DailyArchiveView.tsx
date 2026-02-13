@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Play, Clock, CheckCircle2, Check, CornerDownRight, Import, ChevronsUp, ChevronDown, Briefcase } from "lucide-react";
-import { Todo, Session, Project } from "@/types";
+import { Play, Clock, CheckCircle2, Check, CornerDownRight, Import, ChevronDown, Briefcase } from "lucide-react";
+import { Todo, Session, Project, AppSettings } from "@/types";
 import { TimeTableGraph } from "./TimeTableGraph";
 import { format } from "date-fns";
 import { ScreenshotSlider } from "./ScreenshotSlider";
@@ -123,6 +123,8 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
     const [todos, setTodos] = useState<Todo[]>(filteredTodos);
     const [dynamicScreenshots, setDynamicScreenshots] = useState<string[]>(initialScreenshots);
 
+    const [settings, setSettings] = useState<AppSettings | null>(null);
+
     // Dynamic Screenshot & Settings Loading
     const [enableSpellCheck, setEnableSpellCheck] = useState(false);
     const [showHint, setShowHint] = useState(() => {
@@ -156,21 +158,38 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                 const images = await (window as any).ipcRenderer.invoke('get-daily-screenshots', dateStr);
                 setDynamicScreenshots(images);
 
-                const settings = await (window as any).ipcRenderer.invoke('get-settings');
-                if (settings && typeof settings.enableSpellCheck === 'boolean') {
-                    setEnableSpellCheck(settings.enableSpellCheck);
-                }
-
-                // Prioritize saved daily setting, fallback to global setting
-                if (savedNightTimeStart !== undefined) {
-                    setNightTimeStart(savedNightTimeStart);
-                } else if (settings && typeof settings.nightTimeStart === 'number') {
-                    setNightTimeStart(settings.nightTimeStart);
+                const loadedSettings = await (window as any).ipcRenderer.invoke('get-settings');
+                if (loadedSettings) {
+                    setSettings(loadedSettings);
+                    if (typeof loadedSettings.enableSpellCheck === 'boolean') {
+                        setEnableSpellCheck(loadedSettings.enableSpellCheck);
+                    }
+                    // Prioritize saved daily setting, fallback to global setting
+                    if (savedNightTimeStart !== undefined) {
+                        setNightTimeStart(savedNightTimeStart);
+                    } else if (typeof loadedSettings.nightTimeStart === 'number') {
+                        setNightTimeStart(loadedSettings.nightTimeStart);
+                    }
                 }
             }
         };
         loadData();
     }, [date]);
+
+    const handleUpdateSettings = async (newSettings: AppSettings) => {
+        if ((window as any).ipcRenderer) {
+            await (window as any).ipcRenderer.invoke('save-settings', newSettings);
+            setSettings(newSettings);
+            // Update local state derived from settings if needed
+            if (typeof newSettings.nightTimeStart === 'number') {
+                // Only update if not overridden by prop, but here we might want to reflect global change?
+                // Actually nightTimeStart prop takes precedence if provided.
+                if (savedNightTimeStart === undefined) {
+                    setNightTimeStart(newSettings.nightTimeStart);
+                }
+            }
+        }
+    };
 
     useEffect(() => {
         setTodos(filteredTodos);
@@ -470,11 +489,11 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                 </h3>
                             </div>
 
-                            <div className="w-full aspect-video max-h-[80%] relative rounded-xl overflow-hidden border border-border bg-card/50 shadow-2xl">
+                            <div className="w-full max-w-2xl relative rounded-xl bg-card/50 shadow-2xl p-4 border border-border">
                                 <ScreenshotSlider
                                     images={dynamicScreenshots}
                                     durationSeconds={timelapseDurationSeconds}
-                                    className="w-full h-full object-contain"
+                                    className="w-full"
                                 />
                             </div>
                         </div>
@@ -582,7 +601,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                         }}
                                     >
                                         <div className="relative">
-                                            <ChevronsUp className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                                            <Briefcase className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
                                             {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
                                                 <span className="sr-only">
                                                     {uniqueGeneralTodos.filter(t => !t.completed).length} uncompleted items
@@ -669,7 +688,14 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                         </div>
 
                         <div className="flex-1 overflow-hidden relative">
-                            <TimeTableGraph sessions={sessions} date={date} projects={projects} nightTimeStart={nightTimeStart} />
+                            <TimeTableGraph
+                                sessions={sessions}
+                                date={date}
+                                projects={projects}
+                                nightTimeStart={nightTimeStart}
+                                settings={settings}
+                                onUpdateSettings={handleUpdateSettings}
+                            />
                         </div>
 
                         <div className="p-4 pt-2 flex flex-col gap-3 bg-card shrink-0 pb-6 border-t border-border mt-auto">

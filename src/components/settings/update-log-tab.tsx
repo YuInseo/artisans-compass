@@ -169,16 +169,16 @@ export function UpdateLogTab() {
                             <ReactMarkdown
                                 remarkPlugins={[remarkGfm]}
                                 components={{
-                                    h1: ({ node, ...props }) => <h1 className="text-xl font-bold mb-3 mt-5 border-b pb-1" {...props} />,
-                                    h2: ({ node, ...props }) => <h2 className="text-lg font-semibold mb-2 mt-4" {...props} />,
-                                    h3: ({ node, ...props }) => <h3 className="text-base font-medium mb-2 mt-3" {...props} />,
-                                    ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />,
-                                    ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />,
-                                    li: ({ node, ...props }) => <li className="pl-1 text-sm text-foreground/90" {...props} />,
-                                    p: ({ node, ...props }) => <p className="mb-2 text-sm leading-relaxed text-muted-foreground" {...props} />,
-                                    a: ({ node, ...props }) => <a className="text-primary hover:underline underline-offset-4" {...props} />,
-                                    blockquote: ({ node, ...props }) => <blockquote className="border-l-4 border-muted pl-4 italic text-muted-foreground my-4" {...props} />,
-                                    code: ({ node, ...props }) => <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono" {...props} />,
+                                    h1: ({ node, ...props }: any) => <h1 className="text-xl font-bold mb-3 mt-5 border-b pb-1" {...props} />,
+                                    h2: ({ node, ...props }: any) => <h2 className="text-lg font-semibold mb-2 mt-4" {...props} />,
+                                    h3: ({ node, ...props }: any) => <h3 className="text-base font-medium mb-2 mt-3" {...props} />,
+                                    ul: ({ node, ...props }: any) => <ul className="list-disc pl-5 mb-2 space-y-1" {...props} />,
+                                    ol: ({ node, ...props }: any) => <ol className="list-decimal pl-5 mb-2 space-y-1" {...props} />,
+                                    li: ({ node, ...props }: any) => <li className="pl-1 text-sm text-foreground/90" {...props} />,
+                                    p: ({ node, ...props }: any) => <p className="mb-2 text-sm leading-relaxed text-muted-foreground" {...props} />,
+                                    a: ({ node, ...props }: any) => <a className="text-primary hover:underline underline-offset-4" {...props} />,
+                                    blockquote: ({ node, ...props }: any) => <blockquote className="border-l-4 border-muted pl-4 italic text-muted-foreground my-4" {...props} />,
+                                    code: ({ node, ...props }: any) => <code className="bg-muted px-1.5 py-0.5 rounded text-xs font-mono" {...props} />,
                                 }}
                             >
                                 {selectedUpdate.content || ""}

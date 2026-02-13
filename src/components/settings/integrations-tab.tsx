@@ -129,6 +129,20 @@ export function IntegrationsTab({ settings, onSaveSettings }: IntegrationsTabPro
                             {t('settings.backup.import')}
                         </Button>
                     </div>
+                    <div className="flex gap-4 mt-2">
+                        <Button
+                            variant="secondary"
+                            onClick={async () => {
+                                if ((window as any).ipcRenderer) {
+                                    await (window as any).ipcRenderer.invoke('recover-from-screenshots');
+                                }
+                            }}
+                            className="flex-1 gap-2"
+                        >
+                            <RefreshCw className="w-4 h-4" />
+                            {t('settings.backup.importScreenshots')}
+                        </Button>
+                    </div>
                 </div>
                 {/* Notion Card */}
                 <div className="p-4 bg-muted/30 rounded-lg flex flex-col gap-4 border border-border/50" id="settings-notion">

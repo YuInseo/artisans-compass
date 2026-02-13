@@ -62,11 +62,18 @@ export function setupTracker(win: BrowserWindow) {
                 // types say owner: { name: string, processId: number, path?: string }
                 STATE.activeWindowPath = (result.owner as any).path || "";
             } else {
-                // Log only once/rarely to avoid span? No, seeing it is important now.
-                // console.log("active-win returned null result (Desktop focused or Permission issue)");
+                // IMPORTANT: If we cannot detect the window (e.g. desktop, secured app, or error),
+                // we MUST reset the active state to prevent "sticking" to the previous app.
+                STATE.activeProcess = "";
+                STATE.activeTitle = "";
+                STATE.activeWindowId = 0;
+                STATE.activeWindowPath = "";
             }
         } catch (error) {
             console.error('Failed to get active window:', error);
+            // Also reset on error to be safe
+            STATE.activeProcess = "";
+            STATE.activeTitle = "";
         }
     };
 

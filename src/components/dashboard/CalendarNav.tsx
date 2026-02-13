@@ -314,10 +314,10 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 sEnd: selectedRangeEndMatcher
                             }}
                             modifiersClassNames={{
-                                projectRange: "bg-primary/30 !text-foreground font-bold border border-primary/40 rounded-lg",
-                                selectedRange: "bg-accent/30 !text-foreground font-bold border border-accent/40 rounded-lg z-0",
-                                sStart: "bg-accent text-accent-foreground shadow-sm rounded-lg z-10 font-bold",
-                                sEnd: "bg-accent text-accent-foreground shadow-sm rounded-lg z-10 font-bold"
+                                projectRange: "bg-primary/30 !text-foreground font-bold border border-primary/40 rounded-[14px]",
+                                selectedRange: "bg-accent/30 !text-foreground font-bold border border-accent/40 rounded-[14px] z-0",
+                                sStart: "bg-accent text-accent-foreground shadow-sm rounded-[14px] z-10 font-bold",
+                                sEnd: "bg-accent text-accent-foreground shadow-sm rounded-[14px] z-10 font-bold"
                             }}
                             classNames={{
                                 months: "flex flex-col w-full h-full space-y-0",
@@ -335,13 +335,13 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
                                 row: "grid grid-cols-7 w-full flex-1 gap-0.5 mt-0",
                                 cell: "relative p-0 text-center w-full h-full flex items-center justify-center focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-transparent",
                                 day: cn(
-                                    "h-full w-full p-0 font-normal aria-selected:opacity-100 hover:bg-muted/30 transition-all duration-300 rounded-lg group relative flex flex-col items-center justify-start pt-3 text-sm text-muted-foreground hover:text-foreground"
+                                    "h-full w-full p-0 font-normal aria-selected:opacity-100 hover:bg-muted/30 transition-all duration-300 rounded-[14px] group relative flex flex-col items-center justify-start pt-1 text-sm text-muted-foreground hover:text-foreground"
                                 ),
-                                day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground shadow-md scale-[0.98] transition-transform rounded-lg",
-                                day_today: "bg-accent/5 text-accent font-bold rounded-lg",
+                                day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground shadow-md scale-[0.98] transition-transform rounded-[14px]",
+                                day_today: "bg-accent/5 text-accent font-bold rounded-[14px]",
                                 day_outside: "text-muted-foreground/20 opacity-30",
                                 day_disabled: "text-muted-foreground opacity-20",
-                                day_range_middle: "aria-selected:bg-accent/10 aria-selected:text-accent-foreground rounded-lg my-0",
+                                day_range_middle: "aria-selected:bg-accent/10 aria-selected:text-accent-foreground rounded-[14px] my-0",
                                 day_hidden: "invisible",
                             }}
                             components={{

@@ -6,6 +6,8 @@ import {
     DialogContent,
     DialogTitle,
     DialogDescription,
+    DialogHeader,
+    DialogFooter,
 } from "@/components/ui/dialog"
 import {
     Select,
@@ -20,19 +22,22 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
-import { X, Cloud, Check, Moon, Sun, Monitor, Info, FileText, RefreshCw, AlertCircle, History, Settings, Palette, LayoutTemplate, Shield, Database } from "lucide-react";
+import { X, Cloud, Check, Moon, Sun, Monitor, FileText, RefreshCw, History, Settings, Palette, LayoutTemplate, Shield, Database, Activity, Loader2 } from "lucide-react";
 import { AppSettings, AppInfo } from "@/types"
 import { useState, useEffect, useMemo } from "react"
 import { toast } from "sonner";
 import { cn } from "@/lib/utils"
 import { useTranslation, Trans } from 'react-i18next';
 import { useDataStore } from "@/hooks/useDataStore";
-import { TimelineTab } from "./settings/timeline-tab";
+import { TimetableTab } from "./settings/timeline-tab";
+import { TimelineViewTab } from "./settings/timeline-view-tab";
+import { GeneralTab } from "./settings/general-tab";
+import { TrackingTab } from "./settings/tracking-tab";
 // @ts-ignore
 import { NotionSetupDialog } from "./notion-setup-dialog"; // Import
 import { version } from "../../package.json";
-
-export type SettingsTab = 'general' | 'appearance' | 'timeline' | 'tracking' | 'integrations' | 'updatelog';
+import { themes } from "@/config/themes";
+export type SettingsTab = 'general' | 'appearance' | 'timetable' | 'timeline' | 'tracking' | 'integrations' | 'updatelog';
 
 interface SettingsModalProps {
     open?: boolean;
@@ -45,7 +50,7 @@ interface SettingsModalProps {
 
 
 export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, defaultTab = 'general' }: SettingsModalProps) {
-    const { setTheme, theme } = useTheme()
+    const { setTheme } = useTheme()
     const { t, i18n } = useTranslation();
     const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab);
     const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -63,7 +68,20 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
 
     // General Tab State
-    const [newAppInput, setNewAppInput] = useState("");
+    // General Tab State\n
+    // Recovery State
+    const [isRecovering, setIsRecovering] = useState(false);
+    const [recoveryResult, setRecoveryResult] = useState<{
+        success: boolean;
+        count: number;
+        stats?: {
+            days: number;
+            images: number;
+            sessions: number;
+        };
+        error?: string;
+    } | null>(null);
+
     const [runningApps, setRunningApps] = useState<AppInfo[]>([]);
 
     useEffect(() => {
@@ -474,24 +492,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         }
     };
 
-    const addApp = (appName: string) => {
-        if (!settings) return;
-        if (appName && !settings.targetProcessPatterns.includes(appName)) {
-            onSaveSettings({
-                ...settings,
-                targetProcessPatterns: [...settings.targetProcessPatterns, appName]
-            });
-        }
-        setNewAppInput("");
-    };
 
-    const removeApp = (appToRemove: string) => {
-        if (!settings) return;
-        onSaveSettings({
-            ...settings,
-            targetProcessPatterns: settings.targetProcessPatterns.filter(p => p !== appToRemove)
-        });
-    };
 
     useEffect(() => {
         if (open && activeTab === 'general') {
@@ -587,10 +588,11 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         if (!activeTab || activeTab === 'updatelog') return;
 
         const sectionMap: Record<string, string[]> = {
-            general: ['settings-language', 'settings-weekly', 'settings-tracked-apps', 'settings-running-apps', 'settings-startup', 'settings-idle-time'],
+            general: ['settings-language', 'settings-weekly', 'settings-tracked-apps-card', 'settings-startup', 'settings-developer-mode'],
             appearance: ['settings-theme', 'settings-color-theme', 'settings-widgets', 'settings-editor'],
-            timeline: ['settings-project-types', 'settings-timeline-preview', 'settings-work-apps'],
-            tracking: ['settings-screenshot-enable', 'settings-screenshot-interval', 'settings-timelapse', 'settings-screenshot-mode']
+            timetable: ['settings-work-apps'],
+            timeline: ['settings-project-types', 'settings-timeline-preview'],
+            tracking: ['settings-screenshots']
         };
 
         const currentSections = sectionMap[activeTab];
@@ -642,14 +644,9 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                         label={t('settings.weeklySchedule')}
                     />
                     <SectionButton
-                        active={activeSection === 'settings-tracked-apps'}
-                        onClick={() => scrollToSection('settings-tracked-apps')}
-                        label={t('settings.monitoredProcesses')}
-                    />
-                    <SectionButton
-                        active={activeSection === 'settings-running-apps'}
-                        onClick={() => scrollToSection('settings-running-apps')}
-                        label={t('settings.runningApps.title')}
+                        active={activeSection === 'settings-tracked-apps-card'}
+                        onClick={() => scrollToSection('settings-tracked-apps-card')}
+                        label={t('settings.trackedApps')}
                     />
                     <SectionButton
                         active={activeSection === 'settings-startup'}
@@ -657,9 +654,9 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                         label={t('settings.startupBehavior')}
                     />
                     <SectionButton
-                        active={activeSection === 'settings-idle-time'}
-                        onClick={() => scrollToSection('settings-idle-time')}
-                        label={t('settings.tracking.detectIdleTime')}
+                        active={activeSection === 'settings-developer-mode'}
+                        onClick={() => scrollToSection('settings-developer-mode')}
+                        label={t('settings.developerMode') || "Developer Mode"}
                     />
                 </div>
             )}
@@ -690,12 +687,23 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                     <SectionButton
                         active={activeSection === 'settings-editor'}
                         onClick={() => scrollToSection('settings-editor')}
-                        label={t('settings.appearance.indentationLines')}
+                        label={t('settings.editor') || "Editor Settings"}
                     />
+                </div>
+            )}
+
+            <SidebarButton
+                active={activeTab === 'timetable'}
+                onClick={() => { setActiveTab('timetable'); setActiveSection(null); }}
+                label={t('sidebar.timetable')}
+                icon={<LayoutTemplate className="w-4 h-4 mr-2" />}
+            />
+            {activeTab === 'timetable' && (
+                <div className="flex flex-col gap-[2px]">
                     <SectionButton
-                        active={activeSection === 'settings-quotes'}
-                        onClick={() => scrollToSection('settings-quotes')}
-                        label={t('settings.appearance.customQuotes')}
+                        active={activeSection === 'settings-work-apps'}
+                        onClick={() => scrollToSection('settings-work-apps')}
+                        label={t('settings.timeline.workApps')}
                     />
                 </div>
             )}
@@ -704,7 +712,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                 active={activeTab === 'timeline'}
                 onClick={() => { setActiveTab('timeline'); setActiveSection(null); }}
                 label={t('sidebar.timeline')}
-                icon={<LayoutTemplate className="w-4 h-4 mr-2" />}
+                icon={<Activity className="w-4 h-4 mr-2" />}
             />
             {activeTab === 'timeline' && (
                 <div className="flex flex-col gap-[2px]">
@@ -718,11 +726,6 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                         onClick={() => scrollToSection('settings-timeline-preview')}
                         label={t('settings.timeline.dragPreview')}
                     />
-                    <SectionButton
-                        active={activeSection === 'settings-work-apps'}
-                        onClick={() => scrollToSection('settings-work-apps')}
-                        label={t('settings.timeline.workApps')}
-                    />
                 </div>
             )}
 
@@ -735,25 +738,9 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
             {activeTab === 'tracking' && (
                 <div className="flex flex-col gap-[2px]">
                     <SectionButton
-                        active={activeSection === 'settings-screenshot-enable'}
-                        onClick={() => scrollToSection('settings-screenshot-enable')}
-                        label={t('settings.tracking.screenshotActivation')}
-                    />
-
-                    <SectionButton
-                        active={activeSection === 'settings-screenshot-interval'}
-                        onClick={() => scrollToSection('settings-screenshot-interval')}
-                        label={t('settings.tracking.screenshotInterval')}
-                    />
-                    <SectionButton
-                        active={activeSection === 'settings-timelapse'}
-                        onClick={() => scrollToSection('settings-timelapse')}
-                        label={t('settings.tracking.timelapseSpeed')}
-                    />
-                    <SectionButton
-                        active={activeSection === 'settings-screenshot-mode'}
-                        onClick={() => scrollToSection('settings-screenshot-mode')}
-                        label={t('settings.tracking.screenshotMode')}
+                        active={activeSection === 'settings-screenshots'}
+                        onClick={() => scrollToSection('settings-screenshots')}
+                        label={t('settings.tracking.title')}
                     />
                 </div>
             )}
@@ -789,314 +776,15 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         if (!settings) return null;
 
         return (
-            <div className="space-y-6 animate-in fade-in duration-300">
-                {/* General Preferences Section */}
-                <div>
-                    <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.general')}</h3>
-                    <Separator className="bg-border/60 mb-6" />
-
-                    <div id="settings-language" className="space-y-4 mb-8">
-                        <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.language')}</h5>
-                        <div className="flex flex-col gap-3">
-                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.language')}</Label>
-                            <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
-                                <Select
-                                    value={i18n.language}
-                                    onValueChange={(val) => i18n.changeLanguage(val)}
-                                >
-                                    <SelectTrigger className="w-[180px] bg-background border-none">
-                                        <SelectValue placeholder="Select Language" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="en">English</SelectItem>
-                                        <SelectItem value="ko">한국어</SelectItem>
-                                        <SelectItem value="ja">日本語</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <span className="text-sm text-foreground">{t('settings.languageDesc')}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <Separator className="bg-border/30 mb-8" />
-
-                    <div id="settings-weekly" className="space-y-4 mb-8">
-                        <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.weeklySchedule')}</h5>
-                        <div className="flex flex-col gap-3">
-                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.startOfWeek')}</Label>
-                            <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
-                                <Select
-                                    value={settings.startOfWeek || 'sunday'}
-                                    onValueChange={(val: any) => onSaveSettings({ ...settings, startOfWeek: val })}
-                                >
-                                    <SelectTrigger className="w-[180px] bg-background border-none">
-                                        <SelectValue placeholder="Select Day" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="sunday">Sunday</SelectItem>
-                                        <SelectItem value="monday">Monday</SelectItem>
-                                        <SelectItem value="tuesday">Tuesday</SelectItem>
-                                        <SelectItem value="wednesday">Wednesday</SelectItem>
-                                        <SelectItem value="thursday">Thursday</SelectItem>
-                                        <SelectItem value="friday">Friday</SelectItem>
-                                        <SelectItem value="saturday">Saturday</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                <span className="text-sm text-foreground">{t('settings.weeklyResetDesc')}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <Separator className="bg-border/30 mb-8" />
-                </div>
-
-                <div>
-                    <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.trackedApps')}</h3>
-                    <p className="text-sm text-muted-foreground mb-4">
-                        {t('settings.autoTrackingDesc')}
-                    </p>
-                    <Separator className="bg-border/60" />
-                </div>
-
-                {/* Active Apps Pills */}
-                <div id="settings-tracked-apps" className="space-y-2 pt-2">
-                    <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.monitoredProcesses')}</h5>
-                    <div className="flex flex-wrap gap-2 min-h-[40px] p-4 rounded-lg bg-muted/30">
-                        {settings.targetProcessPatterns.map(app => (
-                            <div key={app} className="flex items-center gap-1 bg-background px-3 py-1.5 rounded text-sm font-medium shadow-sm group border border-border/50">
-                                {app}
-                                <button
-                                    onClick={() => removeApp(app)}
-                                    className="hover:text-destructive transition-colors ml-1 opacity-50 group-hover:opacity-100"
-                                >
-                                    <X className="w-3.5 h-3.5" />
-                                </button>
-                            </div>
-                        ))}
-                        {settings.targetProcessPatterns.length === 0 && (
-                            <div className="text-sm text-muted-foreground italic">No apps tracked</div>
-                        )}
-                    </div>
-                </div>
-
-                {/* Detected Apps List (Mini) */}
-                <div id="settings-running-apps" className="mt-8 pt-4">
-                    <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">{t('settings.runningApps.title')}</h5>
-                    <div className="rounded-lg overflow-hidden border border-border/50 bg-muted/30">
-                        {/* Search / Add Input Header */}
-                        <div className="p-2 border-b border-border/10 bg-muted/50">
-                            <div className="flex gap-2">
-                                <Input
-                                    placeholder={t('common.search')}
-                                    value={newAppInput}
-                                    onChange={(e) => setNewAppInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && addApp(newAppInput)}
-                                    className="h-8 text-xs bg-background/50 border-none focus-visible:ring-0 focus-visible:ring-offset-0"
-                                />
-                                {newAppInput.trim() && (
-                                    <Button
-                                        size="sm"
-                                        onClick={() => addApp(newAppInput)}
-                                        className="h-8 bg-primary text-primary-foreground text-xs"
-                                    >
-                                        {t('common.add')}
-                                    </Button>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="max-h-60 overflow-y-auto custom-scrollbar">
-                            {runningApps.length === 0 ? (
-                                <div className="p-4 text-center text-sm text-muted-foreground">{t('settings.runningApps.scanning')}</div>
-                            ) : (
-                                <>
-                                    {runningApps
-                                        .filter(app => {
-                                            const identifier = app.process || app.name;
-                                            const isAlreadyTracked = settings.targetProcessPatterns.includes(identifier);
-                                            const matchesSearch = !newAppInput ||
-                                                (app.process && app.process.toLowerCase().includes(newAppInput.toLowerCase())) ||
-                                                (app.name && app.name.toLowerCase().includes(newAppInput.toLowerCase()));
-
-                                            return !isAlreadyTracked && matchesSearch;
-                                        })
-                                        .map((app, idx) => (
-                                            <div
-                                                key={`${app.id}-${idx}`}
-                                                className="flex items-center justify-between px-4 py-2 hover:bg-muted/50 transition-colors border-b border-border/10 last:border-0"
-                                            >
-                                                <div className="flex flex-col min-w-0">
-                                                    <span className="font-medium text-sm truncate">{app.process}</span>
-                                                    <span className="text-xs text-muted-foreground truncate opacity-70">{app.name}</span>
-                                                </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() => addApp(app.process || app.name)}
-                                                    className="h-7 text-xs bg-background hover:bg-muted text-muted-foreground hover:text-foreground border border-border/50"
-                                                >
-                                                    {t('settings.runningApps.add')}
-                                                </Button>
-                                            </div>
-                                        ))
-                                    }
-                                </>
-                            )}
-                        </div>
-                    </div>
-                    {/* Startup Behavior */}
-                    <div id="settings-startup" className="mt-8 pt-4 border-t border-border/40">
-                        <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-4">{t('settings.startupBehavior')}</h5>
-                        <div className="flex items-center justify-between">
-                            <div className="space-y-0.5">
-                                <Label className="text-sm font-medium">{t('settings.autoLaunch')}</Label>
-                                <p className="text-xs text-muted-foreground">{t('settings.autoLaunchDesc')}</p>
-                            </div>
-                            <Switch
-                                checked={settings.autoLaunch || false}
-                                onCheckedChange={async (checked: boolean) => {
-                                    // specific IPC call for auto-launch
-                                    if ((window as any).ipcRenderer) {
-                                        const success = await (window as any).ipcRenderer.invoke('set-auto-launch', checked);
-                                        if (success) {
-                                            onSaveSettings({ ...settings, autoLaunch: checked });
-                                        } else {
-                                            console.warn("Auto-launch change rejected by backend");
-                                        }
-                                    }
-                                }}
-                            />
-                        </div>
-
-                        <div className="flex items-center justify-between mt-4">
-                            <div className="space-y-0.5">
-                                <Label className="text-sm font-medium">{t('settings.autoUpdate')}</Label>
-                                <p className="text-xs text-muted-foreground">{t('settings.autoUpdateDesc')}</p>
-                            </div>
-                            <Switch
-                                checked={settings.autoUpdate || false}
-                                onCheckedChange={(checked) => onSaveSettings({ ...settings, autoUpdate: checked })}
-                            />
-                        </div>
-                    </div>
-
-                    {/* Idle Detection (Moved from Tracking) */}
-                    <div id="settings-idle-time" className="mt-8 pt-4 border-t border-border/40">
-                        <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-4">{t('settings.tracking.detectIdleTime')}</h5>
-                        <div className="flex items-center justify-between">
-                            <div className="space-y-0.5">
-                                <Label className="text-sm font-medium">{t('settings.tracking.detectIdleTime')}</Label>
-                                <p className="text-xs text-muted-foreground">{t('settings.tracking.detectIdleTimeDesc')}</p>
-                            </div>
-                            <Select
-                                value={String(settings.idleThresholdSeconds || 10)}
-                                onValueChange={(val) => onSaveSettings({ ...settings, idleThresholdSeconds: parseInt(val) })}
-                            >
-                                <SelectTrigger className="w-[180px] bg-background border-none">
-                                    <SelectValue placeholder={t('settings.tracking.selectDuration')} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="5">{t('settings.tracking.seconds5')}</SelectItem>
-                                    <SelectItem value="10">{t('settings.tracking.seconds10')} (Default)</SelectItem>
-                                    <SelectItem value="30">{t('settings.tracking.seconds30')}</SelectItem>
-                                    <SelectItem value="60">{t('settings.tracking.hour1').replace('1 Hour', '1 Minute').replace('1시간', '1분')}</SelectItem>
-                                    <SelectItem value="300">5 {t('settings.tracking.minutes5').replace('5 Minutes', 'Minutes').replace('5분', '분')}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-
-                    {/* Developer Options (Added to General Tab) */}
-                    <div className="mt-8 pt-4 border-t border-border/40">
-                        <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-4">{t('settings.developerOptions')}</h5>
-
-                        <div className="flex flex-col gap-4">
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label className="text-sm font-medium">{t('settings.developerMode')}</Label>
-                                    <p className="text-xs text-muted-foreground">{t('settings.developerModeDesc')}</p>
-                                </div>
-                                <Switch
-                                    checked={settings.developerMode || false}
-                                    onCheckedChange={(checked) => {
-                                        onSaveSettings({ ...settings, developerMode: checked });
-                                        if ((window as any).ipcRenderer) {
-                                            (window as any).ipcRenderer.send('toggle-devtools', checked);
-                                        }
-                                    }}
-                                />
-                            </div>
-
-                            <div className="flex items-center justify-between">
-                                <div className="space-y-0.5">
-                                    <Label className="text-sm font-medium">{t('settings.debuggerMode')}</Label>
-                                    <p className="text-xs text-muted-foreground">{t('settings.debuggerModeDesc')}</p>
-                                </div>
-                                <Switch
-                                    checked={settings.debuggerMode || false}
-                                    onCheckedChange={(checked) => onSaveSettings({ ...settings, debuggerMode: checked })}
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Update Section */}
-                    <div className="mt-8 pt-4 border-t border-border/40">
-                        <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-4">{t('settings.softwareUpdate.title')}</h5>
-                        <div className="bg-muted/30 rounded-lg p-4 border border-border/50">
-                            <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                    <div className={cn("w-10 h-10 rounded-full flex items-center justify-center",
-                                        updateStatus === 'ready' ? "bg-green-500/20 text-green-500" :
-                                            updateStatus === 'error' ? "bg-red-500/20 text-red-500" :
-                                                "bg-primary/10 text-primary"
-                                    )}>
-                                        {updateStatus === 'checking' || updateStatus === 'downloading' ? <RefreshCw className="w-5 h-5 animate-spin" /> :
-                                            updateStatus === 'ready' ? <Check className="w-5 h-5" /> :
-                                                updateStatus === 'error' ? <AlertCircle className="w-5 h-5" /> :
-                                                    <Cloud className="w-5 h-5" />}
-                                    </div>
-                                    <div>
-                                        <h4 className="font-medium text-sm">{t('settings.softwareUpdate.statusTitle')}</h4>
-                                        <p className="text-xs text-muted-foreground">
-                                            {updateStatus === 'idle' && `${t('settings.softwareUpdate.currentVersion')}: v${version}`}
-                                            {updateStatus === 'checking' && t('settings.softwareUpdate.checking')}
-                                            {updateStatus === 'available' && t('settings.softwareUpdate.available')}
-                                            {updateStatus === 'not-available' && `${t('settings.softwareUpdate.upToDate')} (v${version})`}
-                                            {updateStatus === 'downloading' && `${t('settings.softwareUpdate.downloading')}: ${Math.round(updateProgress)}%`}
-                                            {updateStatus === 'ready' && t('settings.softwareUpdate.ready')}
-                                            {updateStatus === 'error' && t('settings.softwareUpdate.failed')}
-                                        </p>
-                                    </div>
-                                </div>
-
-                                {updateStatus === 'idle' || updateStatus === 'not-available' || updateStatus === 'error' ? (
-                                    <Button variant="outline" size="sm" onClick={checkForUpdates}>
-                                        {t('settings.softwareUpdate.checkForUpdates')}
-                                    </Button>
-                                ) : updateStatus === 'ready' ? (
-                                    <Button size="sm" onClick={quitAndInstall}>
-                                        {t('settings.softwareUpdate.restartAndInstall')}
-                                    </Button>
-                                ) : null}
-                            </div>
-
-                            {updateStatus === 'downloading' && (
-                                <div className="w-full bg-muted/50 rounded-full h-1.5 overflow-hidden">
-                                    <div
-                                        className="bg-primary h-full transition-all duration-300 ease-out"
-                                        style={{ width: `${updateProgress}%` }}
-                                    />
-                                </div>
-                            )}
-
-                            {updateStatus === 'error' && updateError && (
-                                <div className="text-xs text-destructive mt-2 bg-destructive/10 p-2 rounded">
-                                    Error: {updateError}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <GeneralTab
+                settings={settings}
+                onSaveSettings={onSaveSettings}
+                updateStatus={updateStatus}
+                updateProgress={updateProgress}
+                updateError={updateError}
+                checkForUpdates={checkForUpdates}
+                quitAndInstall={quitAndInstall}
+            />
         );
     };
 
@@ -1180,106 +868,158 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                         <Separator className="bg-border/60" />
                                     </div>
 
-                                    <div id="settings-theme" className="space-y-4">
-                                        <h5 className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">{t('settings.theme')}</h5>
-                                        <div className="grid grid-cols-3 gap-4">
-                                            <ThemeCard
-                                                active={theme === 'light'}
-                                                onClick={() => {
-                                                    setTheme('light');
-                                                    onSaveSettings({ ...settings, mainTheme: 'light' });
-                                                }}
-                                                icon={<Sun className="w-6 h-6" />}
-                                                label={t('settings.light')}
-                                            />
-                                            <ThemeCard
-                                                active={theme === 'dark'}
-                                                onClick={() => {
-                                                    setTheme('dark');
-                                                    onSaveSettings({ ...settings, mainTheme: 'dark' });
-                                                }}
-                                                icon={<Moon className="w-6 h-6" />}
-                                                label={t('settings.dark')}
-                                            />
-                                            <ThemeCard
-                                                active={theme === 'system'}
-                                                onClick={() => {
-                                                    setTheme('system');
-                                                    onSaveSettings({ ...settings, mainTheme: 'system' });
-                                                }}
-                                                icon={<Monitor className="w-6 h-6" />}
-                                                label={t('settings.system')}
-                                            />
+                                    {/* Main Window Style Section */}
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <div className="p-1.5 rounded-md bg-primary/10 text-primary">
+                                                <LayoutTemplate className="w-4 h-4" />
+                                            </div>
+                                            <h5 className="text-sm font-bold text-foreground">{t('settings.appearance.main') || "Main Window"}</h5>
                                         </div>
+
+                                        <div className="pl-1 border-l-2 border-border/40 ml-2 space-y-6">
+                                            {/* Main Theme Cards */}
+                                            <div className="space-y-3 pl-4">
+                                                <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.theme')}</h6>
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    {(['light', 'dark', 'system'] as const).map((tKey) => (
+                                                        <ThemeCard
+                                                            key={tKey}
+                                                            active={(settings.mainTheme || 'system') === tKey}
+                                                            onClick={() => {
+                                                                setTheme(tKey);
+                                                                onSaveSettings({ ...settings, mainTheme: tKey });
+                                                            }}
+                                                            icon={
+                                                                tKey === 'light' ? <Sun className="w-5 h-5" /> :
+                                                                    tKey === 'dark' ? <Moon className="w-5 h-5" /> :
+                                                                        <Monitor className="w-5 h-5" />
+                                                            }
+                                                            label={t(`settings.${tKey}`)}
+                                                        />
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* Main Color Preset */}
+                                            <div className="space-y-3 pl-4">
+                                                <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <Select
+                                                        value={settings.themePreset || 'standard'}
+                                                        onValueChange={(val) => onSaveSettings({ ...settings, themePreset: val as any })}
+                                                    >
+                                                        <SelectTrigger className="w-full">
+                                                            <SelectValue placeholder="Select Color Theme" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {Object.entries(themes).map(([key, config]) => (
+                                                                <SelectItem key={key} value={key}>
+                                                                    {config.name}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <div className="flex items-center text-xs text-muted-foreground">
+                                                        {themes[settings.themePreset || 'standard']?.description}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="my-6"><Separator /></div>
+
+                                    {/* Widget Style Section */}
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-1.5 rounded-md bg-secondary text-secondary-foreground">
+                                                    <Activity className="w-4 h-4" />
+                                                </div>
+                                                <div className="space-y-0.5">
+                                                    <h5 className="text-sm font-bold text-foreground">{t('settings.appearance.widget') || "Widget"}</h5>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Label htmlFor="separate-widget-theme" className="text-xs text-muted-foreground font-normal">
+                                                    {t('settings.appearance.separateWidgetTheme') || "Use separate style"}
+                                                </Label>
+                                                <Switch
+                                                    id="separate-widget-theme"
+                                                    checked={settings.separateWidgetTheme || false}
+                                                    onCheckedChange={(checked) => {
+                                                        const updates: any = { separateWidgetTheme: checked };
+                                                        if (checked) {
+                                                            // Initialize widget settings if empty
+                                                            if (!settings.widgetTheme) updates.widgetTheme = settings.mainTheme || 'dark';
+                                                            if (!settings.widgetThemePreset) updates.widgetThemePreset = settings.themePreset || 'standard';
+                                                        }
+                                                        onSaveSettings({ ...settings, ...updates });
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {settings.separateWidgetTheme && (
+                                            <div className="pl-1 border-l-2 border-border/40 ml-2 space-y-6 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                {/* Widget Theme Cards */}
+                                                <div className="space-y-3 pl-4">
+                                                    <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.theme')}</h6>
+                                                    <div className="grid grid-cols-3 gap-3">
+                                                        {(['light', 'dark', 'system'] as const).map((tKey) => (
+                                                            <ThemeCard
+                                                                key={tKey}
+                                                                active={(settings.widgetTheme || 'dark') === tKey}
+                                                                onClick={() => onSaveSettings({ ...settings, widgetTheme: tKey })}
+                                                                icon={
+                                                                    tKey === 'light' ? <Sun className="w-5 h-5" /> :
+                                                                        tKey === 'dark' ? <Moon className="w-5 h-5" /> :
+                                                                            <Monitor className="w-5 h-5" />
+                                                                }
+                                                                label={t(`settings.${tKey}`)}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Widget Color Preset */}
+                                                <div className="space-y-3 pl-4">
+                                                    <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <Select
+                                                            value={settings.widgetThemePreset || settings.themePreset || 'standard'}
+                                                            onValueChange={(val) => onSaveSettings({ ...settings, widgetThemePreset: val as any })}
+                                                        >
+                                                            <SelectTrigger className="w-full">
+                                                                <SelectValue placeholder="Select Widget Color Theme" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {Object.entries(themes).map(([key, config]) => (
+                                                                    <SelectItem key={key} value={key}>
+                                                                        {config.name}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <div className="flex items-center text-xs text-muted-foreground">
+                                                            {themes[settings.widgetThemePreset || settings.themePreset || 'standard']?.description}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {!settings.separateWidgetTheme && (
+                                            <div className="pl-7 text-xs text-muted-foreground italic">
+                                                {t('settings.appearance.widgetFollowsMain') || "Widget is currently using the Main Window style."}
+                                            </div>
+                                        )}
                                     </div>
 
                                     <Separator className="bg-border/30" />
 
-                                    <div id="settings-color-theme" className="space-y-4">
-                                        <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.appearance.colorTheme') || "Color Theme"}</h5>
-                                        <div className="flex flex-col gap-4 bg-muted/30 p-4 rounded-lg">
-                                            <div className="flex items-center gap-4">
-                                                <Select
-                                                    value={settings.themePreset || 'default'}
-                                                    onValueChange={(val: any) => {
-                                                        // Check if it's a saved theme ID
-                                                        const savedTheme = settings.customThemes?.find(t => t.id === val);
-                                                        if (savedTheme) {
-                                                            // Maintain the selected ID but sync the CSS to customCSS property for the editor if they choose to edit later
-                                                            onSaveSettings({
-                                                                ...settings,
-                                                                themePreset: val,
-                                                                customCSS: savedTheme.css
-                                                            });
-                                                        } else {
-                                                            onSaveSettings({ ...settings, themePreset: val });
-                                                        }
-                                                    }}
-                                                >
-                                                    <SelectTrigger className="w-[200px] bg-background border-none">
-                                                        {/* Display name logic including handling saved themes visually if needed, though they switch to custom */}
-                                                        <SelectValue placeholder="Select Theme" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="default">Default</SelectItem>
-                                                        <SelectItem value="discord">Discord (Gamer)</SelectItem>
-                                                        <SelectItem value="midnight">Midnight (OLED)</SelectItem>
-                                                        <SelectItem value="sunset">Sunset (Warm)</SelectItem>
-                                                        <SelectItem value="ocean">Ocean (Cool)</SelectItem>
-                                                        <SelectItem value="forest">Forest (Natural)</SelectItem>
 
-                                                        {settings.customThemes && settings.customThemes.length > 0 && (
-                                                            <>
-                                                                <Separator className="my-1 opacity-50" />
-                                                                <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">{t('settings.appearance.myThemes')}</div>
-                                                                {settings.customThemes.map(theme => (
-                                                                    <SelectItem key={theme.id} value={theme.id}>
-                                                                        {theme.name}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </>
-                                                        )}
-
-
-                                                    </SelectContent>
-                                                </Select>
-                                                <div className="flex flex-col gap-2">
-                                                    <span className="text-sm font-medium text-foreground">
-                                                        {settings.themePreset === 'discord' ? "Gamer Style" :
-                                                            settings.themePreset === 'midnight' ? "Pure Black" :
-
-                                                                settings.customThemes?.some(t => t.id === settings.themePreset) ?
-                                                                    (settings.customThemes?.find(t => t.id === settings.themePreset)?.name || "User Theme") :
-                                                                    "Standard"}
-                                                    </span>
-
-                                                    {/* Edit Button Removed */}
-                                                </div>
-                                            </div>
-
-
-                                        </div>
-                                    </div>
 
                                     <div id="settings-widgets" className="space-y-4">
                                         <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.widgetSettings')}</h5>
@@ -1341,268 +1081,27 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                 </div>
                             )}
 
-                            {activeTab === 'timeline' && (
-                                <TimelineTab
+                            {activeTab === 'timetable' && (
+                                <TimetableTab
                                     settings={settings}
                                     onSaveSettings={onSaveSettings}
                                     runningApps={allApps}
                                 />
                             )}
 
+                            {activeTab === 'timeline' && (
+                                <TimelineViewTab
+                                    settings={settings}
+                                    onSaveSettings={onSaveSettings}
+                                />
+                            )}
+
                             {activeTab === 'tracking' && (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.tracking.title')}</h3>
-                                        <Separator className="bg-border/60" />
-                                    </div>
-
-                                    <div className="space-y-6">
-                                        <div id="settings-screenshot-enable" className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                                            <div className="space-y-0.5">
-                                                <Label className="text-base font-semibold">{t('settings.tracking.enableScreenshots')}</Label>
-                                                <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.enableScreenshotsDesc')}</p>
-                                            </div>
-                                            <Switch
-                                                checked={settings.enableScreenshots !== false}
-                                                onCheckedChange={(checked: boolean) => onSaveSettings({ ...settings, enableScreenshots: checked })}
-                                            />
-                                        </div>
-
-
-
-                                        <div id="settings-screenshot-interval" className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                                            <div className="space-y-0.5">
-                                                <Label className="text-base font-semibold">{t('settings.tracking.screenshotInterval')}</Label>
-                                                <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.screenshotIntervalDesc')}</p>
-                                            </div>
-                                            <Select
-                                                value={String(settings.screenshotIntervalSeconds)}
-                                                onValueChange={(val) => onSaveSettings({ ...settings, screenshotIntervalSeconds: parseInt(val) })}
-                                            >
-                                                <SelectTrigger className="w-[180px] bg-background border-none">
-                                                    <SelectValue placeholder={t('settings.tracking.selectInterval')} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="10">{t('settings.tracking.secondsTest')}</SelectItem>
-                                                    <SelectItem value="300">{t('settings.tracking.minutes5')}</SelectItem>
-                                                    <SelectItem value="900">{t('settings.tracking.minutes15')}</SelectItem>
-                                                    <SelectItem value="1800">{t('settings.tracking.minutes30')}</SelectItem>
-                                                    <SelectItem value="3600">{t('settings.tracking.hour1')}</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div id="settings-timelapse" className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-                                            <div className="space-y-0.5">
-                                                <Label className="text-base font-semibold">{t('settings.tracking.timelapseSpeed')}</Label>
-                                                <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.timelapseSpeedDesc')}</p>
-                                            </div>
-                                            <Select
-                                                value={String(settings.timelapseDurationSeconds)}
-                                                onValueChange={(val) => onSaveSettings({ ...settings, timelapseDurationSeconds: parseInt(val) })}
-                                            >
-                                                <SelectTrigger className="w-[180px] bg-background border-none">
-                                                    <SelectValue placeholder={t('settings.tracking.selectDuration')} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="3">{t('settings.tracking.seconds3')}</SelectItem>
-                                                    <SelectItem value="5">{t('settings.tracking.seconds5')}</SelectItem>
-                                                    <SelectItem value="10">{t('settings.tracking.seconds10')}</SelectItem>
-                                                    <SelectItem value="30">{t('settings.tracking.seconds30')}</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        <div id="settings-screenshot-mode" className="space-y-6 p-4 bg-muted/30 rounded-lg">
-                                            <div className="flex items-center justify-between">
-                                                <div className="space-y-0.5">
-                                                    <Label className="text-base font-semibold">{t('settings.tracking.screenshotMode')}</Label>
-                                                    <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.screenshotModeDesc')}</p>
-                                                </div>
-                                                <Select
-                                                    value={settings.screenshotMode || 'window'}
-                                                    onValueChange={(val: 'window' | 'screen' | 'process') => onSaveSettings({ ...settings, screenshotMode: val })}
-                                                >
-                                                    <SelectTrigger className="w-[180px] bg-background border-none">
-                                                        <SelectValue placeholder="Select Mode" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="active-app">{t('settings.tracking.activeApp')}</SelectItem>
-                                                        <SelectItem value="window">{t('settings.tracking.activeWindow')}</SelectItem>
-                                                        <SelectItem value="process">{t('settings.tracking.specificApp')}</SelectItem>
-                                                        <SelectItem value="screen">{t('settings.tracking.monitor')}</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-
-                                            {settings.screenshotMode === 'active-app' && (
-                                                <div className="flex flex-col gap-2 p-3 bg-muted/40 rounded-md border border-border/50 animate-in fade-in slide-in-from-top-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <Info className="w-4 h-4 text-primary" />
-                                                        <span className="text-sm font-medium">{t('settings.tracking.capturesFocused')}</span>
-                                                    </div>
-                                                    <p className="text-xs text-muted-foreground ml-6">
-                                                        {t('settings.tracking.capturesFocusedDesc')}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {settings.screenshotMode === 'window' && (
-                                                <div className="flex flex-col gap-2 p-3 bg-muted/40 rounded-md border border-border/50 animate-in fade-in slide-in-from-top-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <Info className="w-4 h-4 text-primary" />
-                                                        <span className="text-sm font-medium">{t('settings.tracking.capturesWindow')}</span>
-                                                    </div>
-                                                    <p className="text-xs text-muted-foreground ml-6">
-                                                        {t('settings.tracking.capturesWindowDesc')}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {settings.screenshotMode === 'process' && (
-                                                <div className="flex flex-col gap-3 animate-in fade-in slide-in-from-top-2 bg-muted/20 p-3 rounded-lg border border-border/50">
-                                                    <div className="flex items-center justify-between">
-                                                        <div className="space-y-0.5">
-                                                            <Label className="text-base font-semibold">{t('settings.tracking.selectApp')}</Label>
-                                                            <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.selectAppDesc')}</p>
-                                                        </div>
-                                                        <Select
-                                                            value={settings.screenshotTargetProcess || ''}
-                                                            onValueChange={(val) => onSaveSettings({ ...settings, screenshotTargetProcess: val })}
-                                                        >
-                                                            <SelectTrigger className="w-[200px] bg-background border-none">
-                                                                <SelectValue placeholder={t('settings.tracking.selectProcess')} />
-                                                            </SelectTrigger>
-                                                            <SelectContent className="max-h-[300px]">
-                                                                {settings.targetProcessPatterns && settings.targetProcessPatterns.length > 0 ? (
-                                                                    settings.targetProcessPatterns
-                                                                        .sort()
-                                                                        .map((p, idx) => (
-                                                                            <SelectItem key={`${p}-${idx}`} value={p}>
-                                                                                {p}
-                                                                            </SelectItem>
-                                                                        ))
-                                                                ) : (
-                                                                    <div className="p-2 text-xs text-center text-muted-foreground">{t('settings.tracking.noMonitoredApps')}</div>
-                                                                )}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-
-                                                    <div className="flex gap-2">
-                                                        <Input
-                                                            placeholder={t('settings.runningApps.placeholder')}
-                                                            className="flex-1 h-8 text-sm"
-                                                            onKeyDown={(e) => {
-                                                                if (e.key === 'Enter') {
-                                                                    const val = (e.currentTarget as HTMLInputElement).value?.trim();
-                                                                    if (val && !settings.targetProcessPatterns?.includes(val)) {
-                                                                        onSaveSettings({
-                                                                            ...settings,
-                                                                            targetProcessPatterns: [...(settings.targetProcessPatterns || []), val],
-                                                                            screenshotTargetProcess: val // Auto-select new
-                                                                        });
-                                                                        (e.currentTarget as HTMLInputElement).value = '';
-                                                                    }
-                                                                }
-                                                            }}
-                                                        />
-                                                        <Button
-                                                            size="sm"
-                                                            className="h-8"
-                                                            variant="secondary"
-                                                            onClick={(e) => {
-                                                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
-                                                                const val = input.value?.trim();
-                                                                if (val && !settings.targetProcessPatterns?.includes(val)) {
-                                                                    onSaveSettings({
-                                                                        ...settings,
-                                                                        targetProcessPatterns: [...(settings.targetProcessPatterns || []), val],
-                                                                        screenshotTargetProcess: val
-                                                                    });
-                                                                    input.value = '';
-                                                                }
-                                                            }}
-                                                        >
-                                                            Add
-                                                        </Button>
-                                                    </div>
-
-                                                    <div className="flex items-center justify-between pt-2 px-1">
-                                                        <Label className="text-xs text-muted-foreground">{t('settings.screenshotOnlyActive')}</Label>
-                                                        <Switch
-                                                            checked={settings.screenshotOnlyWhenActive !== false}
-                                                            onCheckedChange={(c) => onSaveSettings({ ...settings, screenshotOnlyWhenActive: c })}
-                                                            className="scale-90"
-                                                        />
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {settings.screenshotMode === 'screen' && (
-                                                <div className="flex items-center justify-between animate-in fade-in slide-in-from-top-2">
-                                                    <div className="space-y-0.5">
-                                                        <Label className="text-base font-semibold">{t('settings.tracking.selectDisplay')}</Label>
-                                                        <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.selectDisplayDesc')}</p>
-                                                    </div>
-                                                    <Select
-                                                        value={settings.screenshotDisplayId || ''}
-                                                        onValueChange={(val) => onSaveSettings({ ...settings, screenshotDisplayId: val })}
-                                                    >
-                                                        <SelectTrigger className="w-[250px] bg-background border-none">
-                                                            <SelectValue placeholder={screenSources.length > 0 ? "Select Monitor" : "Loading Monitors..."} />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {screenSources.length > 0 ? (
-                                                                screenSources.map(s => (
-                                                                    <SelectItem key={s.id} value={s.id}>
-                                                                        <div className="flex items-center gap-2">
-                                                                            {s.thumbnail && <img src={s.thumbnail} className="w-8 h-8 rounded object-cover border" alt="Screen" />}
-                                                                            <span className="truncate max-w-[150px]">{s.name}</span>
-                                                                        </div>
-                                                                    </SelectItem>
-                                                                ))
-                                                            ) : (
-                                                                <div className="p-2 text-xs text-center text-muted-foreground">No displays found</div>
-                                                            )}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-                                            )}
-
-                                            <Separator className="bg-border/20" />
-
-                                            <div className="flex items-center justify-between">
-                                                <div className="space-y-0.5">
-                                                    <Label className="text-base font-semibold">{t('settings.tracking.screenshotLocation')}</Label>
-                                                    <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.screenshotLocationDesc')}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-2 pt-1">
-                                                <Input
-                                                    readOnly
-                                                    value={settings.screenshotPath || t('settings.tracking.defaultAppData')}
-                                                    className="flex-1 font-mono text-xs bg-background border-none opacity-80"
-                                                />
-                                                <Button
-                                                    variant="secondary"
-                                                    size="sm"
-                                                    onClick={async () => {
-                                                        if ((window as any).ipcRenderer) {
-                                                            const path = await (window as any).ipcRenderer.invoke('dialog:openDirectory');
-                                                            if (path) onSaveSettings({ ...settings, screenshotPath: path });
-                                                        }
-                                                    }}
-                                                >
-                                                    {t('settings.tracking.change')}
-                                                </Button>
-                                            </div>
-                                            <p className="text-xs text-muted-foreground pt-1">
-                                                {t('settings.tracking.oldScreenshotsDesc')}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
+                                <TrackingTab
+                                    settings={settings}
+                                    onSaveSettings={onSaveSettings}
+                                    screenSources={screenSources}
+                                />
                             )}
 
                             {activeTab === 'integrations' && (
@@ -1652,6 +1151,89 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                     {t('settings.backup.import')}
                                                 </Button>
                                             </div>
+                                            <div className="flex gap-4 mt-2">
+                                                <Button
+                                                    variant="secondary"
+                                                    disabled={isRecovering}
+                                                    onClick={async () => {
+                                                        if ((window as any).ipcRenderer) {
+                                                            setIsRecovering(true);
+                                                            try {
+                                                                const result = await (window as any).ipcRenderer.invoke('recover-from-screenshots');
+                                                                setRecoveryResult(result);
+                                                            } catch (error) {
+                                                                console.error("Recovery failed", error);
+                                                                setRecoveryResult({ success: false, count: 0, error: String(error) });
+                                                            } finally {
+                                                                setIsRecovering(false);
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="flex-1 gap-2"
+                                                >
+                                                    {isRecovering ? (
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                    ) : (
+                                                        <RefreshCw className="w-4 h-4" />
+                                                    )}
+                                                    {isRecovering ? 'Recovering...' : t('settings.backup.importScreenshots')}
+                                                </Button>
+                                            </div>
+
+                                            {/* Recovery Result Dialog */}
+                                            <Dialog open={!!recoveryResult} onOpenChange={(open) => {
+                                                if (!open) setRecoveryResult(null);
+                                            }}>
+                                                <DialogContent>
+                                                    <DialogHeader>
+                                                        <DialogTitle>
+                                                            {recoveryResult?.success ? 'Recovery Complete' : 'Recovery Failed'}
+                                                        </DialogTitle>
+                                                        <DialogDescription className="space-y-2 pt-2">
+                                                            {recoveryResult?.success ? (
+                                                                <div className="flex flex-col gap-2">
+                                                                    <div className="text-sm">
+                                                                        Successfully processed data from previous screenshots.
+                                                                    </div>
+                                                                    {recoveryResult.stats && (
+                                                                        <div className="bg-muted p-3 rounded-md text-sm space-y-1">
+                                                                            <div className="flex justify-between">
+                                                                                <span className="text-muted-foreground">Days Processed:</span>
+                                                                                <span className="font-medium">{recoveryResult.stats.days}</span>
+                                                                            </div>
+                                                                            <div className="flex justify-between">
+                                                                                <span className="text-muted-foreground">Screenshots Found:</span>
+                                                                                <span className="font-medium">{recoveryResult.stats.images}</span>
+                                                                            </div>
+                                                                            <div className="flex justify-between">
+                                                                                <span className="text-muted-foreground">Sessions Recovered:</span>
+                                                                                <span className="font-medium">{recoveryResult.stats.sessions}</span>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="text-xs text-muted-foreground mt-2">
+                                                                        The app needs to reload to apply these changes.
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-destructive">
+                                                                    {recoveryResult?.error || 'An unknown error occurred during recovery.'}
+                                                                </div>
+                                                            )}
+                                                        </DialogDescription>
+                                                    </DialogHeader>
+                                                    <DialogFooter>
+                                                        <Button variant="outline" onClick={() => setRecoveryResult(null)}>
+                                                            Close
+                                                        </Button>
+                                                        {recoveryResult?.success && (
+                                                            <Button onClick={() => window.location.reload()}>
+                                                                Reload App
+                                                            </Button>
+                                                        )}
+                                                    </DialogFooter>
+                                                </DialogContent>
+                                            </Dialog>
                                         </div>
                                         {/* Notion Card */}
                                         <div className="p-4 bg-muted/30 rounded-lg flex flex-col gap-4 border border-border/50">

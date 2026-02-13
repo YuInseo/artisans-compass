@@ -54,29 +54,7 @@ export function TrackingTab({ settings, onSaveSettings, screenSources }: Trackin
                     {settings.enableScreenshots !== false && (
                         <div className="flex flex-col border-t border-border/50 animate-in slide-in-from-top-2 fade-in duration-200">
 
-                            {/* Idle Time */}
-                            <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors" id="settings-idle">
-                                <div className="space-y-0.5">
-                                    <Label className="text-sm font-medium">{t('settings.tracking.detectIdleTime')}</Label>
-                                    <p className="text-xs text-muted-foreground opacity-80">{t('settings.tracking.detectIdleTimeDesc')}</p>
-                                </div>
-                                <Select
-                                    value={String(settings.idleThresholdSeconds || 10)}
-                                    onValueChange={(val) => onSaveSettings({ ...settings, idleThresholdSeconds: parseInt(val) })}
-                                >
-                                    <SelectTrigger className="w-[180px] bg-background border-input">
-                                        <SelectValue placeholder={t('settings.tracking.selectDuration')} />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="5">{t('settings.tracking.seconds5')}</SelectItem>
-                                        <SelectItem value="10">{t('settings.tracking.seconds10')} (Default)</SelectItem>
-                                        <SelectItem value="30">{t('settings.tracking.seconds30')}</SelectItem>
-                                        <SelectItem value="60">{t('settings.tracking.hour1').replace('1 Hour', '1 Minute').replace('1시간', '1분')}</SelectItem>
-                                        <SelectItem value="300">{t('settings.tracking.minutes5')}</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                            <Separator className="bg-border/40" />
+
 
                             {/* Screenshot Interval */}
                             <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors" id="settings-interval">

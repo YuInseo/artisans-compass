@@ -278,7 +278,8 @@ export const TodoItem = React.memo<TodoItemProps>(({
                             "bg-transparent resize-none outline-none leading-normal overflow-hidden min-h-[1.5rem] pt-0 placeholder:text-muted-foreground/30 font-medium block h-auto",
                             "w-full max-w-full select-text break-all",
                             todo.completed ? "line-through text-muted-foreground/60" : "text-foreground focus:text-foreground",
-                            isLocked && "cursor-default"
+                            isLocked && "cursor-default",
+                            isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
                         )}
                     />
                 ) : (
@@ -287,7 +288,8 @@ export const TodoItem = React.memo<TodoItemProps>(({
                             "bg-transparent leading-normal min-h-[1.5rem] pt-0 font-medium block h-auto whitespace-pre-wrap break-words break-all",
                             "w-fit max-w-full cursor-text", // Changed w-full to w-fit
                             todo.completed ? "line-through text-muted-foreground/60" : "text-foreground",
-                            isLocked && "cursor-default"
+                            isLocked && "cursor-default",
+                            isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
                         )}
                         data-editable-text
                         onClick={(e) => {

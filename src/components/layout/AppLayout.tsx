@@ -2,7 +2,7 @@ import { ReactNode, useState, useCallback, useEffect } from 'react';
 import { FocusGoalsSection } from "../dashboard/FocusGoalsSection";
 import { Button } from "@/components/ui/button";
 import { UpdateChecker } from "./UpdateChecker";
-import { Settings, Minus, Square, X, Plus, Eye, Search, Lock, Loader2, Bell } from "lucide-react";
+import { Settings, Minus, Square, X, Plus, GanttChart, Eye, Search, Lock, Loader2, Bell } from "lucide-react";
 import { toast } from "@/lib/toast";
 import { useNotificationStore } from "@/hooks/useNotificationStore";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -130,14 +130,6 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
     // If viewMode === 'list': Show ProjectList 
     // timeline={viewMode === 'list' ? <ProjectList ... /> : <TimelineSection ... />}
 
-    const [_, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
-
-    useEffect(() => {
-        const handleResize = () => setWindowWidth(window.innerWidth);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
-
     // Show Focus Goals when sidebar is closed in timeline mode (regardless of screen size)
     const showFocusGoals = !isSidebarOpen && viewMode === 'timeline';
 
@@ -156,7 +148,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
                             style={{ WebkitAppRegion: 'no-drag' } as any}
                         >
-                            <Eye className="w-4 h-4" />
+                            {isSidebarOpen ? <GanttChart className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </Button>
                         <span className="text-xs font-bold text-muted-foreground tracking-widest uppercase ml-2">Artisan's Compass</span>
                     </div>
@@ -564,7 +556,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                 )}
 
                 {/* Right: Interactive Daily Panel */}
-                <div className={cn("flex-1 relative bg-muted/40 text-foreground", isWidgetMode ? "p-0" : "p-4")}>
+                <div className={cn("flex-1 relative text-foreground", !isWidgetMode ? "bg-muted/40 p-4" : "p-0")}>
 
                     {dailyPanel}
                 </div>
