@@ -92,8 +92,9 @@ export function GeneralTab({
                 <Separator className="bg-border/60 mb-6" />
 
                 <div className="space-y-4 mb-8">
-                    <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.language')}</h5>
-                    <div className="flex flex-col gap-3" id="settings-language">
+                    <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.general')}</h5>
+                    <div className="flex flex-col gap-3" id="settings-preferences">
+                        {/* Language */}
                         <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.language')}</Label>
                         <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
                             <Select
@@ -111,10 +112,27 @@ export function GeneralTab({
                             </Select>
                             <span className="text-sm text-foreground">{t('settings.languageDesc')}</span>
                         </div>
+
+                        {/* Display Mode */}
+                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2">{t('settings.runningApps.displayMode')}</Label>
+                        <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
+                            <Select
+                                value={settings.runningAppsDisplayMode || 'both'}
+                                onValueChange={(val: 'title' | 'process' | 'both') => onSaveSettings({ ...settings, runningAppsDisplayMode: val })}
+                            >
+                                <SelectTrigger className="w-[180px] bg-background border-none">
+                                    <SelectValue placeholder={t('settings.runningApps.selectDisplayMode')} />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="both">{t('settings.runningApps.displayBoth')}</SelectItem>
+                                    <SelectItem value="title">{t('settings.runningApps.displayTitle')}</SelectItem>
+                                    <SelectItem value="process">{t('settings.runningApps.displayProcess')}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <span className="text-sm text-foreground">{t('settings.runningApps.displayModeDesc')}</span>
+                        </div>
                     </div>
                 </div>
-                <Separator className="bg-border/30 mb-8" />
-
                 <div className="space-y-4 mb-8" id="settings-schedule">
                     <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.weeklySchedule')}</h5>
                     <div className="flex flex-col gap-3">
@@ -125,24 +143,25 @@ export function GeneralTab({
                                 onValueChange={(val: any) => onSaveSettings({ ...settings, startOfWeek: val })}
                             >
                                 <SelectTrigger className="w-[180px] bg-background border-none">
-                                    <SelectValue placeholder="Select Day" />
+                                    <SelectValue placeholder={t('settings.daysOfWeek.sunday')} />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="sunday">Sunday</SelectItem>
-                                    <SelectItem value="monday">Monday</SelectItem>
-                                    <SelectItem value="tuesday">Tuesday</SelectItem>
-                                    <SelectItem value="wednesday">Wednesday</SelectItem>
-                                    <SelectItem value="thursday">Thursday</SelectItem>
-                                    <SelectItem value="friday">Friday</SelectItem>
-                                    <SelectItem value="saturday">Saturday</SelectItem>
+                                    <SelectItem value="sunday">{t('settings.daysOfWeek.sunday')}</SelectItem>
+                                    <SelectItem value="monday">{t('settings.daysOfWeek.monday')}</SelectItem>
+                                    <SelectItem value="tuesday">{t('settings.daysOfWeek.tuesday')}</SelectItem>
+                                    <SelectItem value="wednesday">{t('settings.daysOfWeek.wednesday')}</SelectItem>
+                                    <SelectItem value="thursday">{t('settings.daysOfWeek.thursday')}</SelectItem>
+                                    <SelectItem value="friday">{t('settings.daysOfWeek.friday')}</SelectItem>
+                                    <SelectItem value="saturday">{t('settings.daysOfWeek.saturday')}</SelectItem>
                                 </SelectContent>
                             </Select>
                             <span className="text-sm text-foreground">{t('settings.weeklyResetDesc')}</span>
                         </div>
                     </div>
                 </div>
-                <Separator className="bg-border/30 mb-8" />
             </div>
+            <Separator className="bg-border/30 mb-8" />
+
 
             {/* Tracked Apps Section (Collapsible) */}
             <div className="flex flex-col bg-muted/30 rounded-lg border border-border/50 overflow-hidden" id="settings-tracked-apps-card">
@@ -305,8 +324,15 @@ export function GeneralTab({
                                                         className="flex items-center justify-between p-2 rounded hover:bg-muted/50 group"
                                                     >
                                                         <div className="flex flex-col min-w-0">
-                                                            <span className="text-sm font-medium truncate">{app.name}</span>
-                                                            <span className="text-xs text-muted-foreground truncate opacity-70">{app.process}</span>
+                                                            {(settings.runningAppsDisplayMode === 'both' || settings.runningAppsDisplayMode === 'title' || !settings.runningAppsDisplayMode) && (
+                                                                <span className="text-sm font-medium truncate">{app.name}</span>
+                                                            )}
+                                                            {(settings.runningAppsDisplayMode === 'both' || settings.runningAppsDisplayMode === 'process' || !settings.runningAppsDisplayMode) && (
+                                                                <span className={cn(
+                                                                    "truncate",
+                                                                    settings.runningAppsDisplayMode === 'process' ? "text-sm font-medium" : "text-xs text-muted-foreground opacity-70"
+                                                                )}>{app.process}</span>
+                                                            )}
                                                         </div>
                                                         <Button
                                                             variant="ghost"
@@ -489,6 +515,6 @@ export function GeneralTab({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     )
 }

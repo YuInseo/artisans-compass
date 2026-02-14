@@ -439,9 +439,16 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                                         </div>
                                                         <div className="flex-1 space-y-1 min-w-0">
                                                             <div className="flex items-start justify-between gap-2">
-                                                                <p className={cn("text-xs font-semibold leading-none", !n.read ? "text-foreground" : "text-muted-foreground")}>
-                                                                    {n.title}
-                                                                </p>
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className={cn("text-xs font-semibold leading-none", !n.read ? "text-foreground" : "text-muted-foreground")}>
+                                                                        {n.title}
+                                                                    </p>
+                                                                    {n.count && n.count > 1 && (
+                                                                        <span className="text-[10px] bg-muted-foreground/20 text-muted-foreground px-1.5 py-0.5 rounded-full font-medium">
+                                                                            x{n.count}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                                 <span className="text-[10px] text-muted-foreground/60 whitespace-nowrap">
                                                                     {format(n.timestamp, 'HH:mm')}
                                                                 </span>

@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect } from 'react';
-import { differenceInMinutes, differenceInSeconds, getHours, getMinutes, format, isSameDay } from 'date-fns';
+import { format, differenceInSeconds, differenceInMinutes, getHours, isSameDay } from "date-fns";
 import { AppSettings, Session, Project } from '@/types';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -70,10 +70,76 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
         return () => clearInterval(interval);
     }, [liveSession, allLiveSession]);
 
-    // Fit to view: 24h = 100% height
+    // Helper to check for valid dates
+    const isValidDate = (d: any) => {
+        return d instanceof Date && !isNaN(d.getTime());
+    };
 
-    // Calculate total minutes in a day
-    const TOTAL_MINUTES = 24 * 60;
+    // Fit to view: 24h = 100% height OR Dynamic if sessions exceed 24h
+    // We determine the maximum end time of all sessions to set the scale.
+    const { maxSessionMins, eventsWithRelativeTime } = useMemo(() => {
+        const allSessions = liveSession ? [...sessions, liveSession] : sessions;
+        if (allSessions.length === 0) return { maxSessionMins: 24 * 60, eventsWithRelativeTime: [] };
+
+        const dayStart = date ? new Date(date) : new Date(now);
+        // Safety check for dayStart
+        if (!isValidDate(dayStart)) {
+            // Fallback to current time safely if date is invalid
+            const safeNow = new Date();
+            safeNow.setHours(0, 0, 0, 0);
+            // If dayStart was invalid, we can't reliably calculate relative times for the requested day
+            // But we can try to recover by using safeNow.
+            // However, it's better to just return empty if critical reference is missing.
+            // Let's assume a safe fallback to today 00:00
+            dayStart.setTime(safeNow.getTime());
+        } else {
+            dayStart.setHours(0, 0, 0, 0);
+        }
+
+        let maxEnd = 24 * 60; // Default 24h
+
+        const mapped = allSessions.map(session => {
+            const s = new Date(session.start);
+            const e = (session === liveSession) ? now : new Date(session.end);
+
+            // Filter invalid sessions immediately
+            if (!isValidDate(s) || !isValidDate(e)) {
+                return null;
+            }
+
+            // Calculate minutes relative to the START of the day (00:00)
+            // efficient logic: (s - dayStart) in minutes
+            let startMins = differenceInMinutes(s, dayStart);
+            let endMins = differenceInMinutes(e, dayStart);
+            let durationMins = endMins - startMins;
+
+            // Sanity check for negative start (shouldn't happen with correct data, but safe guard)
+            if (startMins < 0) {
+                // partial overlap or wrong day? Clamp to 0 if purely display
+                // But if it's "Yesterday's" session shown on today, it might be weird.
+                // Assuming sessions passed here belong to this logical day.
+                // If data is messy, we might see negative.
+            }
+
+            if (endMins > maxEnd) maxEnd = endMins;
+
+            return {
+                ...session,
+                s, e, startMins, endMins, durationMins
+            };
+        }).filter(Boolean) as any[]; // Filter out nulls
+
+        // Add some padding at the bottom if we exceed 24h, or just fit tight?
+        // Let's ceil to nearest hour if > 24h
+        if (maxEnd > 24 * 60) {
+            maxEnd = Math.ceil(maxEnd / 60) * 60;
+        }
+
+        return { maxSessionMins: maxEnd, eventsWithRelativeTime: mapped };
+    }, [sessions, liveSession, date, now]);
+
+    const TOTAL_MINUTES = maxSessionMins;
+    const TOTAL_HOURS = TOTAL_MINUTES / 60;
 
     // Helper interface for the layout logic
     interface RenderEvent {
@@ -93,22 +159,19 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
     }
 
     const sessionBlocks = useMemo(() => {
-        // 1. Pre-process: Filter & Sort
-        const allSessions = liveSession ? [...sessions, liveSession] : sessions;
+        // 1. Pre-process: Filter & Sort (Using pre-calculated relative times)
+        // We reuse the mapping from above but need to shape it for the merge logic
 
-        const rawEvents = allSessions
-            .filter(session => {
-                const s = new Date(session.start);
-                const e = new Date(session.end);
-                return !isNaN(s.getTime()) && !isNaN(e.getTime());
-            })
+        const rawEvents = eventsWithRelativeTime
             .map(session => {
-                const isLive = session === liveSession;
                 return {
-                    start: new Date(session.start),
-                    end: isLive ? now : new Date(session.end),
+                    start: session.s,
+                    end: session.e,
                     title: session.process || t('calendar.focusSession'),
-                    original: session
+                    original: session,
+                    // Pass pre-calculated mins to avoid re-calc issues with 'getHours' wrapping
+                    _startMins: session.startMins,
+                    _endMins: session.endMins
                 };
             })
             .sort((a, b) => a.start.getTime() - b.start.getTime());
@@ -129,6 +192,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             }
 
             const last = preMergedEvents[preMergedEvents.length - 1];
+            // Use time diff on Date objects for accuracy in gap check
             const timeDiff = differenceInSeconds(evt.start, last.end);
 
             // Pass 1: Pre-Merge SAME APP sessions (gap <= 5m)
@@ -137,6 +201,9 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             if (timeDiff <= 300 && isSameApp) {
                 // Merge same app
                 last.end = new Date(Math.max(last.end.getTime(), evt.end.getTime()));
+                // Update cached endMins
+                last._endMins = Math.max(last._endMins, evt._endMins);
+
                 last.appDistribution[evt.title] = (last.appDistribution[evt.title] || 0) + currentDuration;
             } else {
                 preMergedEvents.push({
@@ -182,6 +249,8 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
 
             if (shouldMerge) {
                 last.end = new Date(Math.max(last.end.getTime(), evt.end.getTime()));
+                last._endMins = Math.max(last._endMins, evt._endMins);
+
                 // Merge app distribution
                 Object.entries(evt.appDistribution).forEach(([app, dur]) => {
                     last.appDistribution[app] = (last.appDistribution[app] || 0) + (dur as number);
@@ -193,9 +262,10 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
 
         // 3. Convert to RenderEvents & Determine Dominant Title for each merged block
         const events: RenderEvent[] = mergedEvents.map(session => {
-            const startMins = getHours(session.start) * 60 + getMinutes(session.start);
-            const durationMins = Math.max(differenceInMinutes(session.end, session.start), 5); // Minimum 5 mins
-            const endMins = startMins + durationMins;
+            // Use the preserved relative minutes!
+            const startMins = session._startMins;
+            const endMins = session._endMins;
+            const durationMins = Math.max(endMins - startMins, 5); // Minimum 5 mins
 
             // Find the dominant app within this merged block for its title
             let maxDuration = 0;
@@ -234,7 +304,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                 durationMins,
                 appDistribution: session.appDistribution,
                 type: projectType,
-                startHour: getHours(session.start),
+                startHour: getHours(session.start), // Still useful for Night Mode color logic (0-24 cycle)
                 color: isIgnored ? ignoredColor : matchedProject?.color,
                 isIgnored
             };
@@ -540,16 +610,20 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                         {/* GRAPH CONTENT */}
                         <div className="flex-1 relative mx-2 my-3">
                             {/* Subtle Grid Lines & Labels */}
-                            {Array.from({ length: 13 }, (_, i) => i * 2).map(h => (
+                            {Array.from({ length: Math.ceil(TOTAL_HOURS / 2) + 1 }, (_, i) => i * 2).map(h => (
                                 <div
                                     key={h}
                                     className="absolute w-full flex items-center group pointer-events-none"
-                                    style={{ top: `${(h / 24) * 100}%`, transform: 'translateY(-50%)' }}
+                                    style={{ top: `${(h / TOTAL_HOURS) * 100}%`, transform: 'translateY(-50%)' }}
                                 >
                                     {/* Time Label */}
                                     <div className="w-8 text-right pr-1">
                                         <span className="text-[10px] text-muted-foreground/40 font-mono tabular-nums block">
-                                            {h === 24 ? '00:00' : `${h.toString().padStart(2, '0')}:00`}
+                                            {h === 0 ? '00:00' : (
+                                                h < 24
+                                                    ? `${h.toString().padStart(2, '0')}:00`
+                                                    : `+${(h - 24).toString().padStart(2, '0')}:00` // Show +01:00 for extended time
+                                            )}
                                         </span>
                                     </div>
                                     {/* Line */}
@@ -562,11 +636,15 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                             <div className="absolute top-0 bottom-0 left-8 border-l border-border/20 h-full pointer-events-none"></div>
 
                             {/* Current Time Indicator */}
-                            {(settings?.showCurrentTimeIndicator !== false) && (!date || isSameDay(date, now)) && (
+                            {(settings?.showCurrentTimeIndicator !== false) && (!date || isSameDay(date, now) || (settings?.dailyRecordMode === 'dynamic' && differenceInMinutes(now, date!) < TOTAL_MINUTES)) && (
                                 <div
                                     className="absolute left-8 right-0 border-t-2 border-red-500/50 border-dashed z-20 pointer-events-none flex items-center"
                                     style={{
-                                        top: `${((getHours(now) * 60 + getMinutes(now)) / (24 * 60)) * 100}%`,
+                                        top: `${(differenceInMinutes(now, (() => {
+                                            const d = date ? new Date(date) : new Date(now);
+                                            d.setHours(0, 0, 0, 0);
+                                            return d;
+                                        })()) / TOTAL_MINUTES) * 100}%`,
                                         transform: 'translateY(-50%)' // Center the line on the exact time
                                     }}
                                 >

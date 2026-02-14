@@ -17,6 +17,7 @@ export default defineConfig({
     // Inject environment variables at build time
     'process.env.CLIENT_ID': JSON.stringify(process.env.CLIENT_ID || ''),
     'process.env.CLIENT_SECRET': JSON.stringify(process.env.CLIENT_SECRET || ''),
+    'import.meta.env.PACKAGE_VERSION': JSON.stringify(process.env.npm_package_version),
   },
   resolve: {
     alias: {

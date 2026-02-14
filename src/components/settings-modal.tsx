@@ -184,7 +184,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                     );
 
                     // Pre-validate candidates to filter out missing files (404/HTML fallback)
-                    const lang = i18n.language || 'en';
+                    const lang = (i18n.language || 'en').split('-')[0];
                     const validatedUpdates = [];
 
                     for (const update of candidates) {
@@ -287,7 +287,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     };
 
     const handleSelectUpdate = (version: string, file: string) => {
-        const lang = i18n.language || 'en';
+        const lang = (i18n.language || 'en').split('-')[0];
         // Try localized path first: /updates/{lang}/{version}.md
         // Note: The file argument from index.json is typically "vX.X.X.md", so we might need just the version or strip 'v' if needed.
         // But our workflow creates /updates/ko/0.0.82.md. 

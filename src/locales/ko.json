@@ -93,6 +93,15 @@
         },
         "weeklySchedule": "주간 일정",
         "startOfWeek": "한 주의 시작",
+        "daysOfWeek": {
+            "sunday": "일요일",
+            "monday": "월요일",
+            "tuesday": "화요일",
+            "wednesday": "수요일",
+            "thursday": "목요일",
+            "friday": "금요일",
+            "saturday": "토요일"
+        },
         "advanced": "고급 설정",
         "language": "언어",
         "languageDesc": "선호하는 언어를 선택하세요",
@@ -130,6 +139,10 @@
         "daysForNew": "일 (새 프로젝트용)",
         "timeline": {
             "title": "타임라인",
+            "dailyRecordMode": "일일 기록 모드",
+            "dailyRecordModeDesc": "하루의 기록을 마감하는 방식을 선택하세요.",
+            "modeFixed": "고정 (00:00 - 24:00)",
+            "modeDynamic": "동적 (앱 종료 시까지)",
             "nightTimeStart": "야간 시간 시작",
             "nightTimeStartDesc": "이 시간 이후의 집중 세션은 야간 활동으로 강조 표시됩니다.",
             "dragPreview": "드래그 미리보기 표시",
@@ -174,6 +187,7 @@
             "title": "소프트웨어 업데이트",
             "statusTitle": "업데이트 상태",
             "currentVersion": "현재 버전",
+            "currentVersionLabel": "(현재 버전)",
             "checking": "업데이트 확인 중...",
             "available": "업데이트 가능. 다운로드 중...",
             "upToDate": "최신 버전을 사용 중입니다",
@@ -189,7 +203,13 @@
             "added": "추가됨",
             "scanning": "스캔 중...",
             "noAppsConfigured": "구성된 앱이 없습니다",
-            "placeholder": "프로세스 이름 추가 (예: Code.exe)..."
+            "placeholder": "프로세스 이름 추가 (예: Code.exe)...",
+            "displayMode": "표시 모드",
+            "selectDisplayMode": "표시 모드 선택",
+            "displayModeDesc": "실행 중인 앱 목록의 표시 방식을 선택합니다.",
+            "displayBoth": "모두 표시 (기본)",
+            "displayTitle": "앱 제목만 표시",
+            "displayProcess": "프로세스 이름만 표시"
         },
         "backup": {
             "title": "백업 및 데이터",

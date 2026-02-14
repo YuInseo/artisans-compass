@@ -35,8 +35,10 @@ import {
     DialogContent,
     DialogTitle,
     DialogDescription,
+
     DialogFooter
 } from "@/components/ui/dialog"
+
 
 interface TimelineViewTabProps {
     settings: AppSettings;
@@ -396,6 +398,7 @@ export function TimelineViewTab({ settings, onSaveSettings }: TimelineViewTabPro
                 </div>
 
                 <div className="space-y-4 mt-8">
+
 
 
                     {/* Drag Preview Toggle */}

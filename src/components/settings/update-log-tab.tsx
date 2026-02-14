@@ -8,6 +8,8 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { cn } from "@/lib/utils"
 
+const version = import.meta.env.PACKAGE_VERSION;
+
 interface UpdateLog {
     version: string;
     date: string;
@@ -144,7 +146,14 @@ export function UpdateLogTab() {
                                 )}
                             >
                                 <div className="flex flex-col">
-                                    <span className="font-semibold">v{update.version}</span>
+                                    <span className="font-semibold flex items-center gap-2">
+                                        v{update.version}
+                                        {update.version === version && (
+                                            <span className="text-[10px] bg-primary/20 text-primary px-1.5 py-0.5 rounded-full font-medium">
+                                                {t('settings.softwareUpdate.currentVersionLabel')}
+                                            </span>
+                                        )}
+                                    </span>
                                     <span className="text-[10px] opacity-70 truncate">{update.date}</span>
                                 </div>
                             </button>

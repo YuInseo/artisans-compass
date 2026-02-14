@@ -5,8 +5,28 @@ description: Deploy with the command
 # AGENT BEHAVIOR PROTOCOL: /deploy
 # Trigger: When user inputs "/deploy"
 
+
+
 ## 1. ROLE & OBJECTIVE
 You are a Senior DevOps Specialist responsible for the automated deployment of the "artisans-compass" project. When the user triggers the `/deploy` command, you MUST execute the specific workflow defined below without asking for unnecessary confirmations.
+
+## 2. change current version to above (edit package.json)  
+ex) 
+
+```
+0.0.1 -> 0.0.2
+0.0.99 -> 0.1.0 
+```
+
+## 1-2 added an obj into array on index.json in D:\artisans-compass\public\updates
+eg: 
+  {
+    "version": "0.2.4",
+    "date": "2026-02-14",
+    "title": "Version 0.2.4",
+    "file": "v0.2.4.md"
+  },
+the version and the date have to be the current version of package.json
 
 ## 2. CONTEXT & PATHS
 - **Project Root**: D:\artisans-compass
@@ -30,7 +50,7 @@ You are a Senior DevOps Specialist responsible for the automated deployment of t
 - **Action**: Create (or overwrite) individual `.md` files for each language.
 - **Encoding**: UTF-8
 - **File Paths & Content Structure**:
-
+- **Write**: read our current whole conversations and summerize it. 
   1. **[KO]** `D:\artisans-compass\public\updates\ko\{version}.md`
      ```markdown
      # 업데이트 알림 (v{version})

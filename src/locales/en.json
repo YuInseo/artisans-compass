@@ -87,6 +87,15 @@
         },
         "weeklySchedule": "Weekly Schedule",
         "startOfWeek": "Start Of Week",
+        "daysOfWeek": {
+            "sunday": "Sunday",
+            "monday": "Monday",
+            "tuesday": "Tuesday",
+            "wednesday": "Wednesday",
+            "thursday": "Thursday",
+            "friday": "Friday",
+            "saturday": "Saturday"
+        },
         "advanced": "Advanced",
         "language": "Language",
         "languageDesc": "Select your preferred language",
@@ -120,6 +129,10 @@
         "daysForNew": "Days (for new projects)",
         "timeline": {
             "title": "Timeline Settings",
+            "dailyRecordMode": "Daily Archive Mode",
+            "dailyRecordModeDesc": "Choose how the day is defined for archiving.",
+            "modeFixed": "Fixed (00:00 - 24:00)",
+            "modeDynamic": "Dynamic (Until App Close)",
             "nightTimeStart": "Night Time Start",
             "nightTimeStartDesc": "Focus sessions after this time will be visually highlighted as late-night activity.",
             "dragPreview": "Show Drag Preview",
@@ -160,6 +173,7 @@
             "title": "Software Update",
             "statusTitle": "Update Status",
             "currentVersion": "Current Version",
+            "currentVersionLabel": "(Current Version)",
             "checking": "Checking for updates...",
             "available": "Update available. Downloading...",
             "upToDate": "You are up to date",
@@ -175,7 +189,13 @@
             "added": "Added",
             "scanning": "Scanning...",
             "noAppsConfigured": "No apps configured",
-            "placeholder": "Add Process Name (e.g. Code.exe)..."
+            "placeholder": "Add Process Name (e.g. Code.exe)...",
+            "displayMode": "Display Mode",
+            "displayBoth": "Display Both (Default)",
+            "displayTitle": "App Title Only",
+            "displayProcess": "Process Name Only",
+            "selectDisplayMode": "Select Display Mode",
+            "displayModeDesc": "Choose how running applications are displayed in the list."
         },
         "backup": {
             "title": "Backup & Data",

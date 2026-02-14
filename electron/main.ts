@@ -724,6 +724,11 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(menu);
 
   const { getTrackerState } = await import('./tracking/tracker');
+
+  ipcMain.handle('get-logical-date', () => {
+    return getTrackerState().logicalDate;
+  });
+
   setupStorageHandlers(getTrackerState);
   setupGoogleAuth();
   setupNotionAuth();

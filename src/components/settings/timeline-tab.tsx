@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select"
 import { X, ChevronDown, ChevronUp } from "lucide-react";
 import { AppSettings, AppInfo } from "@/types"
-import { useState, useEffect, useRef, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { cn } from "@/lib/utils"
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -112,7 +112,7 @@ function NightTimeSlider({ value, onChange, onCommit, snapInterval = 30 }: { val
 
 export function TimetableTab({ settings, onSaveSettings, runningApps }: TimelineTabProps) {
     const { t } = useTranslation();
-    const { previewSettings } = useDataStore();
+    const { } = useDataStore();
     const [runningAppsSearch, setRunningAppsSearch] = useState("");
     const [ignoredAppsSearch, setIgnoredAppsSearch] = useState("");
     const [isIgnoredAppsOpen, setIsIgnoredAppsOpen] = useState(false);
@@ -120,18 +120,11 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
 
     // Local state for Night Time Start preview
     const [previewTime, setPreviewTime] = useState(settings.nightTimeStart || 22);
-    const lastPreviewUpdate = useRef(0);
+
 
     const handlePreviewChange = useCallback((val: number) => {
-        setPreviewTime(val); // Local update (instant)
-
-        const now = Date.now();
-        // Throttle preview updates to ~30fps (32ms) to avoid lagging the UI
-        if (now - lastPreviewUpdate.current > 32) {
-            previewSettings({ nightTimeStart: val });
-            lastPreviewUpdate.current = now;
-        }
-    }, [previewSettings]);
+        setPreviewTime(val); // Local update only (instant)
+    }, []);
 
     useEffect(() => {
         setPreviewTime(settings.nightTimeStart || 22);
@@ -145,6 +138,32 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
                 <Separator className="bg-border/60" />
 
 
+            </div>
+
+            {/* Daily Archive Mode */}
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-4">
+                <div className="space-y-0.5">
+                    <Label className="text-base font-semibold">{t('settings.timeline.dailyRecordMode') || "Daily Archive Mode"}</Label>
+                    <p className="text-xs text-muted-foreground opacity-80">
+                        {t('settings.timeline.dailyRecordModeDesc') || "Choose how the day is defined for archiving."}
+                    </p>
+                </div>
+                <Select
+                    value={settings.dailyRecordMode || 'fixed'}
+                    onValueChange={(val: 'fixed' | 'dynamic') => onSaveSettings({ ...settings, dailyRecordMode: val })}
+                >
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Select mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="fixed">
+                            {t('settings.timeline.modeFixed') || "Fixed (00:00)"}
+                        </SelectItem>
+                        <SelectItem value="dynamic">
+                            {t('settings.timeline.modeDynamic') || "Dynamic (App Close)"}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
 
 

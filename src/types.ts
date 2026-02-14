@@ -79,6 +79,8 @@ export interface AppSettings {
     timelineShowDetail?: boolean; // default: false
     showCurrentTimeIndicator?: boolean; // default: true
     nightTimeStartSnapInterval?: number; // default: 30 (minutes)
+    dailyRecordMode?: 'fixed' | 'dynamic'; // 'fixed' = 00:00 rollover, 'dynamic' = until app close
+    runningAppsDisplayMode?: 'title' | 'process' | 'both'; // default: 'both'
 }
 
 export interface Project {

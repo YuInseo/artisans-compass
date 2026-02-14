@@ -55,6 +55,7 @@ export interface AppSettings {
     themePreset?: 'default' | 'discord' | 'midnight' | 'custom';
     customCSS?: string;
     customThemes?: { id: string; name: string; css: string }[];
+    dailyRecordMode?: 'fixed' | 'dynamic'; // 'fixed' = 00:00 rollover, 'dynamic' = until app close
 }
 
 export interface Session {
@@ -108,7 +109,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     autoUpdate: false,
     enableSpellCheck: false,
     customThemes: [],
-    customCSS: ""
+    customCSS: "",
+    dailyRecordMode: 'fixed'
 };
 
 // --- Storage Paths ---

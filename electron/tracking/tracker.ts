@@ -19,6 +19,7 @@ interface TrackingState {
     lastScreenshotTime: number;
     activeWindowId: number;
     mainWindow: BrowserWindow | null; // Added
+    logicalDate: string; // New: For Dynamic Daily Archive
 }
 
 const STATE: TrackingState = {
@@ -30,14 +31,15 @@ const STATE: TrackingState = {
     settings: DEFAULT_SETTINGS,
     lastScreenshotTime: 0,
     activeWindowId: 0,
-    mainWindow: null // Added
+    mainWindow: null, // Added
+    logicalDate: format(new Date(), 'yyyy-MM-dd') // Init to today
 };
 
 // Reload settings helper
 function reloadSettings() {
     const loaded = readJson(getSettingsPath(), DEFAULT_SETTINGS);
     STATE.settings = { ...DEFAULT_SETTINGS, ...loaded };
-    console.log(`[Tracker] Settings Reloaded. Idle Threshold: ${STATE.settings.idleThresholdSeconds}s, Mode: ${STATE.settings.screenshotMode}`);
+    console.log(`[Tracker] Settings Reloaded. Idle Threshold: ${STATE.settings.idleThresholdSeconds}s, Mode: ${STATE.settings.screenshotMode}, RecordMode: ${STATE.settings.dailyRecordMode}`);
 }
 
 export function setupTracker(win: BrowserWindow) {
@@ -45,6 +47,11 @@ export function setupTracker(win: BrowserWindow) {
     // Initial load
     console.log("!!! VERSION: TRACKER V2 ACTIVE !!!");
     reloadSettings();
+
+    // Set logical date on startup
+    STATE.logicalDate = format(new Date(), 'yyyy-MM-dd');
+    console.log(`[Tracker] Logical Date initialized to: ${STATE.logicalDate}`);
+
     // Handler moved to bottom to include screenshot reschedule
 
     // Poll Active Window using active-win
@@ -208,8 +215,18 @@ function processSessionLogic() {
 function closeAndSaveSession(session: Session) {
     if (session.duration < 5) return; // Ignore micro-sessions (<5s)
 
-    const sessionDate = new Date(session.start);
-    const dateKey = format(sessionDate, 'yyyy-MM-dd');
+    // DETERMINISTIC DATE KEY SELECTION
+    let dateKey: string;
+    if (STATE.settings.dailyRecordMode === 'dynamic') {
+        // In Dynamic Mode, we ALWAYS use the logical date (app start date)
+        // regardless of the actual wall-clock time.
+        dateKey = STATE.logicalDate;
+    } else {
+        // In Fixed Mode (Default), we use the session START time.
+        // This handles sessions crossing midnight naturally (start determines the day).
+        const sessionDate = new Date(session.start);
+        dateKey = format(sessionDate, 'yyyy-MM-dd');
+    }
 
     // Notify Frontend immediately to prevent UI 'drop' (race condition with tracking-update)
     if (STATE.mainWindow && !STATE.mainWindow.isDestroyed()) {
@@ -221,7 +238,7 @@ function closeAndSaveSession(session: Session) {
         mod.appendSession(dateKey, session);
     });
 
-    console.log(`Saved session: ${session.process} (${session.duration}s) to ${dateKey}`);
+    console.log(`Saved session: ${session.process} (${session.duration}s) to ${dateKey} (Mode: ${STATE.settings.dailyRecordMode})`);
 }
 
 
@@ -518,9 +535,16 @@ async function captureSmartScreenshot() {
 }
 
 function updateDailyLog(fullPath: string, now: Date) {
-    const yearMonth = format(now, 'yyyy-MM');
+    // Determine Date Key based on Mode
+    let dateStr = format(now, 'yyyy-MM-dd');
+    let yearMonth = format(now, 'yyyy-MM');
+
+    if (STATE.settings.dailyRecordMode === 'dynamic') {
+        dateStr = STATE.logicalDate;
+        yearMonth = dateStr.slice(0, 7); // Use logical month too
+    }
+
     const logPath = getDailyLogPath(yearMonth);
-    const dateStr = format(now, 'yyyy-MM-dd');
 
     setImmediate(() => {
         try {
