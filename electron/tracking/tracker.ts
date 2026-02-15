@@ -99,11 +99,13 @@ export function setupTracker(win: BrowserWindow) {
         await pollActiveWindow();
 
         // 3. Send update to renderer
-        win.webContents.send('tracking-update', {
-            isIdle: STATE.isIdle,
-            activeProcess: STATE.activeProcess,
-            currentSession: STATE.currentSession
-        });
+        if (!win.isDestroyed()) {
+            win.webContents.send('tracking-update', {
+                isIdle: STATE.isIdle,
+                activeProcess: STATE.activeProcess,
+                currentSession: STATE.currentSession
+            });
+        }
     }, 1000);
 
     // Heartbeat for Session Logic

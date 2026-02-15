@@ -113,6 +113,11 @@
             "checkForUpdates": "アップデートを確認",
             "restartAndInstall": "再起動してインストール"
         },
+        "developerOptions": "開発者オプション",
+        "developerMode": "開発者モード",
+        "developerModeDesc": "F12キーで開発者ツールを切り替えます。",
+        "debuggerMode": "デバッグオーバーレイ (ベータ)",
+        "debuggerModeDesc": "画面にログオーバーレイを表示します。",
         "startupBehavior": "起動動作",
         "autoLaunch": "起動時に自動実行",
         "autoLaunchDesc": "ログイン時にArtisans Compassを自動的に起動します。",

@@ -429,6 +429,17 @@ export function GeneralTab({
                         onCheckedChange={(checked) => onSaveSettings({ ...settings, developerMode: checked })}
                     />
                 </div>
+
+                <div className="flex items-center justify-between mt-4">
+                    <div className="space-y-0.5">
+                        <Label className="text-sm font-medium">{t('settings.debuggerMode') || "Debugger Overlay"}</Label>
+                        <p className="text-xs text-muted-foreground">{t('settings.debuggerModeDesc') || "Show floating debug info on screen."}</p>
+                    </div>
+                    <Switch
+                        checked={settings.debuggerMode || false}
+                        onCheckedChange={(checked) => onSaveSettings({ ...settings, debuggerMode: checked })}
+                    />
+                </div>
             </div>
 
             {/* Update Section */}

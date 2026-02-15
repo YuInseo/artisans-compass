@@ -194,6 +194,10 @@ function createWindow() {
     }
   }
 
+  if (win) {
+    setupTracker(win);
+  }
+
   win.on('closed', () => {
     win = null;
     app.quit();
@@ -762,9 +766,7 @@ app.whenReady().then(async () => {
   }
 
 
-  if (win) {
-    setupTracker(win);
-  }
+
 });
 
 ipcMain.handle('open-external', async (_, url: string) => {

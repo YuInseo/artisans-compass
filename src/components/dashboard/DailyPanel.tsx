@@ -679,7 +679,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
 
                                     {/* Custom Widget Header Content */}
                                     {
-                                        settings?.widgetDisplayMode === 'quote' && (
+                                        isWidgetMode && settings?.widgetDisplayMode === 'quote' && (
                                             <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
                                                 <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center relative hover:bg-muted/50 transition-colors">
                                                     {isEditingQuote ? (
@@ -790,7 +790,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                     }
 
                                     {
-                                        settings?.widgetDisplayMode === 'goals' && (
+                                        isWidgetMode && settings?.widgetDisplayMode === 'goals' && (
                                             <div className="mb-4 px-1 grid grid-cols-2 gap-2 animate-in fade-in slide-in-from-top-2 group relative">
                                                 <div className="p-2 bg-blue-500/5 border border-blue-500/20 rounded-lg">
                                                     <div className={cn("text-[10px] font-bold text-blue-600/70 uppercase tracking-wider mb-0.5", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}>{t('dashboard.monthly')}</div>
@@ -819,7 +819,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                     }
 
                                     {
-                                        settings?.widgetDisplayMode === 'timer' && (
+                                        isWidgetMode && settings?.widgetDisplayMode === 'timer' && (
                                             <TimerWidget
                                                 isWidgetMode={isWidgetMode}
                                                 liveSession={liveSession}
