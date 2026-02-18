@@ -1,7 +1,7 @@
 {
   "name": "artisans-compass",
   "private": true,
-  "version": "0.2.11",
+  "version": "0.3.0",
   "description": "Artisans Compass Application",
   "author": "YuInseo",
   "type": "module",
