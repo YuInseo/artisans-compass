@@ -1097,6 +1097,11 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                                 {uniqueGeneralTodos.filter(t => !t.completed).length}
                                                             </span>
                                                         )}
+                                                        {uniqueGeneralTodos.length > 0 && (
+                                                            <span className="text-xs font-semibold text-muted-foreground ml-auto mr-3 font-mono">
+                                                                {Math.round(uniqueGeneralCompletion)}%
+                                                            </span>
+                                                        )}
                                                     </div>
 
                                                     {/* Mini Progress Bar */}

@@ -146,6 +146,7 @@ export function UpdateChecker() {
                         style={{ width: `${progress}%` }}
                     />
                 </div>
+                <span className="text-[10px] sm:text-xs font-mono text-muted-foreground/80 tabular-nums">{Math.round(progress)}%</span>
             </div>
         );
     }

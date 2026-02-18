@@ -39,8 +39,10 @@ import { QuoteManager } from "./settings/QuoteManager";
 import { ReminderManager } from "./settings/ReminderManager";
 import { version } from "../../package.json";
 import { themes } from "@/config/themes";
-export type SettingsTab = 'general' | 'appearance' | 'quotes' | 'reminders' | 'timetable' | 'timeline' | 'tracking' | 'integrations' | 'updatelog';
+export type SettingsTab = 'general' | 'appearance' | 'quotes' | 'reminders' | 'timetable' | 'timeline' | 'calendar' | 'tracking' | 'integrations' | 'updatelog';
+import { CalendarViewTab } from "./settings/calendar-view-tab";
 
+// ... inside renderSidebar ...
 interface SettingsModalProps {
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
@@ -878,6 +880,22 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                             <div className="max-w-[700px] pb-20">
                                 {/* Tab Content */}
                                 {activeTab === 'general' && renderGeneralTab()}
+
+                                {activeTab === 'calendar' && (
+                                    <div className="space-y-6 animate-in fade-in duration-300">
+                                        <div>
+                                            <h3 className="text-xl font-bold text-foreground">Calendar Settings</h3>
+                                            <p className="text-sm text-muted-foreground">
+                                                Manage what appears on your weekly calendar view.
+                                            </p>
+                                            <Separator className="bg-border/60 mt-2" />
+                                        </div>
+                                        <CalendarViewTab
+                                            settings={settings}
+                                            updateSettings={(updates) => onSaveSettings({ ...settings, ...updates })}
+                                        />
+                                    </div>
+                                )}
 
                                 {activeTab === 'appearance' && (
                                     <>

@@ -34,8 +34,7 @@ export function ThemeProvider({
     const { settings } = useDataStore();
 
     useEffect(() => {
-        const root = window.document.documentElement
-        root.classList.remove("light", "dark")
+        const root = window.document.documentElement;
 
         let effectiveThemeName = theme;
 
@@ -43,18 +42,17 @@ export function ThemeProvider({
             const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
                 .matches
                 ? "dark"
-                : "light"
+                : "light";
             effectiveThemeName = systemTheme;
         }
 
         const isDark = effectiveThemeName !== 'light';
-        root.classList.add(isDark ? 'dark' : 'light');
 
-        // Apply CSS Variables
-        // If dark mode, use the preset from settings, otherwise default to 'default' (dark)
-        // If light mode, use 'light'
+        // 1. Disable transitions to prevent flash
+        root.classList.add('no-transitions');
+
+        // 2. Apply CSS Variables FIRST
         let themeKey = effectiveThemeName;
-
         if (isDark) {
             themeKey = settings?.themePreset || 'default';
         }
@@ -68,7 +66,31 @@ export function ThemeProvider({
             });
         }
 
-    }, [theme, settings?.themePreset])
+        // 3. Atomically update classes
+        if (isDark) {
+            root.classList.remove('light');
+            root.classList.add('dark');
+        } else {
+            root.classList.remove('dark');
+            root.classList.add('light');
+        }
+
+        // 4. Re-enable transitions after a frame
+        // Force reflow
+        // void root.offsetWidth; 
+        // requestAnimationFrame(() => root.classList.remove('no-transitions'));
+
+        // Actually, for "White Flash", it's usually because the background color is white by default.
+        // If we set the color scheme property, browsers handle it better.
+        root.style.colorScheme = isDark ? 'dark' : 'light';
+
+        const timer = setTimeout(() => {
+            root.classList.remove('no-transitions');
+        }, 0);
+
+        return () => clearTimeout(timer);
+
+    }, [theme, settings?.themePreset]);
 
     const value = {
         theme,

@@ -823,15 +823,19 @@ export function TimeTableGraph({
     };
 
     // Helper to open modal with specific mode (reusing existing state logic for ease)
-    const openModal = (mode: 'ignored' | 'work', block: any) => {
-        const apps = Object.entries(block.appDistribution)
-            .sort(([, a], [, b]) => (b as number) - (a as number))
-            .map(([name, duration]) => ({ name, duration: duration as number }));
+    const openModal = (mode: 'ignored' | 'work', block?: any) => {
+        if (block) {
+            const apps = Object.entries(block.appDistribution)
+                .sort(([, a], [, b]) => (b as number) - (a as number))
+                .map(([name, duration]) => ({ name, duration: duration as number }));
 
-        if (apps.length === 0) {
-            setAppsToConfigure([{ name: block.title, duration: block.durationMins * 60 }]);
+            if (apps.length === 0) {
+                setAppsToConfigure([{ name: block.title, duration: block.durationMins * 60 }]);
+            } else {
+                setAppsToConfigure(apps);
+            }
         } else {
-            setAppsToConfigure(apps);
+            setAppsToConfigure([]);
         }
         setModalMode(mode);
         setIsIgnoredAppsModalOpen(true);
@@ -850,257 +854,291 @@ export function TimeTableGraph({
                 <TabsContent value="timetable" className="flex-1 min-h-[200px] relative outline-none data-[state=inactive]:hidden mt-0 flex flex-col bg-transparent">
                     <div className="flex-1 mx-2 bg-card/30 rounded-xl overflow-hidden border border-border/40 relative select-none flex flex-col mb-2">
                         {/* GRAPH CONTENT */}
-                        <div className="flex-1 relative mx-2 my-3">
-                            {/* Subtle Grid Lines & Labels */}
-                            {Array.from({ length: Math.ceil(TOTAL_HOURS / 2) + 1 }, (_, i) => i * 2).map(h => (
-                                <div
-                                    key={h}
-                                    className="absolute w-full flex items-center group pointer-events-none"
-                                    style={{ top: `${(h / TOTAL_HOURS) * 100}%`, transform: 'translateY(-50%)' }}
-                                >
-                                    {/* Time Label */}
-                                    <div className="w-8 text-right pr-1">
-                                        <span className="text-[10px] text-muted-foreground/40 font-mono tabular-nums block">
-                                            {h === 0 ? '00:00' : (
-                                                h < 24
-                                                    ? `${h.toString().padStart(2, '0')}:00`
-                                                    : `+${(h - 24).toString().padStart(2, '0')}:00` // Show +01:00 for extended time
-                                            )}
-                                        </span>
-                                    </div>
-                                    {/* Line */}
-                                    <div className="flex-1 border-t border-border/20 w-full" />
-                                </div>
-                            ))}
-
-
-                            {/* Vertical Divider Line */}
-                            <div className="absolute top-0 bottom-0 left-8 border-l border-border/20 h-full pointer-events-none"></div>
-
-                            {/* Current Time Indicator */}
-                            {/* Current Time Indicator */}
-                            {(() => {
-                                if (settings?.showCurrentTimeIndicator === false) return null;
-
-                                const d = date ? new Date(date) : new Date(now);
-                                d.setHours(0, 0, 0, 0);
-                                const diffMins = differenceInMinutes(now, d);
-                                const isNextDay = diffMins >= TOTAL_MINUTES;
-
-                                // Condition: Show if within 24h OR (Dynamic Mode AND within 48h)
-                                const shouldShow = diffMins >= 0 && (
-                                    diffMins < TOTAL_MINUTES ||
-                                    (settings?.dailyRecordMode === 'dynamic' && renderMode === 'dynamic' && diffMins < TOTAL_MINUTES * 2)
-                                );
-
-                                if (!shouldShow) return null;
-
-                                const displayMins = isNextDay ? diffMins - TOTAL_MINUTES : diffMins;
-                                const topPct = (displayMins / TOTAL_MINUTES) * 100;
-
-                                return (
+                        <ContextMenu>
+                            <ContextMenuTrigger className="flex-1 relative mx-2 my-3 block">
+                                {/* Subtle Grid Lines & Labels */}
+                                {Array.from({ length: Math.ceil(TOTAL_HOURS / 2) + 1 }, (_, i) => i * 2).map(h => (
                                     <div
-                                        className="absolute left-8 right-0 border-t-2 border-red-500/50 border-dashed z-20 pointer-events-none flex items-center"
-                                        style={{
-                                            top: `${topPct}%`,
-                                            transform: 'translateY(-50%)'
-                                        }}
+                                        key={h}
+                                        className="absolute w-full flex items-center group pointer-events-none"
+                                        style={{ top: `${(h / TOTAL_HOURS) * 100}%`, transform: 'translateY(-50%)' }}
                                     >
-                                        <div className="absolute -left-1 w-2 h-2 bg-red-500 rounded-full -translate-x-1/2" />
+                                        {/* Time Label */}
+                                        <div className="w-8 text-right pr-1">
+                                            <span className="text-[10px] text-muted-foreground/40 font-mono tabular-nums block">
+                                                {h === 0 ? '00:00' : (
+                                                    h < 24
+                                                        ? `${h.toString().padStart(2, '0')}:00`
+                                                        : `+${(h - 24).toString().padStart(2, '0')}:00` // Show +01:00 for extended time
+                                                )}
+                                            </span>
+                                        </div>
+                                        {/* Line */}
+                                        <div className="flex-1 border-t border-border/20 w-full" />
                                     </div>
-                                );
-                            })()}
+                                ))}
 
-                            {/* Events Layer */}
-                            {/* GHOST LAYER (Routine + Planned) */}
-                            <div className="absolute top-0 bottom-0 left-8 right-0 pointer-events-none z-0">
+
+                                {/* Vertical Divider Line */}
+                                <div className="absolute top-0 bottom-0 left-8 border-l border-border/20 h-full pointer-events-none"></div>
+
+                                {/* Current Time Indicator */}
+                                {/* Current Time Indicator */}
                                 {(() => {
-                                    // 1. Combine Routine & Planned
-                                    const ghostBlocks: {
-                                        startMins: number;
-                                        durationMins: number;
-                                        title: string;
-                                        color?: string;
-                                        source: 'routine' | 'plan';
-                                    }[] = [];
+                                    if (settings?.showCurrentTimeIndicator === false) return null;
 
-                                    // A. Routine (from settings)
-                                    // Only show routine if we have a valid date to check the day of week
-                                    if (settings?.weeklyRoutine && date) {
-                                        const currentDay = getDay(date); // 0-6
-                                        settings.weeklyRoutine
-                                            .filter(r => r.dayOfWeek === currentDay)
-                                            .forEach(r => {
+                                    const d = date ? new Date(date) : new Date(now);
+                                    d.setHours(0, 0, 0, 0);
+                                    const diffMins = differenceInMinutes(now, d);
+                                    const isNextDay = diffMins >= TOTAL_MINUTES;
+
+                                    // Condition: Show if within 24h OR (Dynamic Mode AND within 48h)
+                                    const shouldShow = diffMins >= 0 && (
+                                        diffMins < TOTAL_MINUTES ||
+                                        (settings?.dailyRecordMode === 'dynamic' && renderMode === 'dynamic' && diffMins < TOTAL_MINUTES * 2)
+                                    );
+
+                                    if (!shouldShow) return null;
+
+                                    const displayMins = isNextDay ? diffMins - TOTAL_MINUTES : diffMins;
+                                    const topPct = (displayMins / TOTAL_MINUTES) * 100;
+
+                                    return (
+                                        <div
+                                            className="absolute left-8 right-0 border-t-2 border-red-500/50 border-dashed z-20 pointer-events-none flex items-center"
+                                            style={{
+                                                top: `${topPct}%`,
+                                                transform: 'translateY(-50%)'
+                                            }}
+                                        >
+                                            <div className="absolute -left-1 w-2 h-2 bg-red-500 rounded-full -translate-x-1/2" />
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Events Layer */}
+                                {/* GHOST LAYER (Routine + Planned) */}
+                                <div className="absolute top-0 bottom-0 left-8 right-0 pointer-events-none z-0">
+                                    {(() => {
+                                        // 1. Combine Routine & Planned
+                                        const ghostBlocks: {
+                                            startMins: number;
+                                            durationMins: number;
+                                            title: string;
+                                            color?: string;
+                                            source: 'routine' | 'plan';
+                                        }[] = [];
+
+                                        // A. Routine (from settings)
+                                        // Only show routine if we have a valid date to check the day of week
+                                        if (settings?.weeklyRoutine && date) {
+                                            const currentDay = getDay(date); // 0-6
+                                            settings.weeklyRoutine
+                                                .filter(r => r.dayOfWeek === currentDay)
+                                                .forEach(r => {
+                                                    ghostBlocks.push({
+                                                        startMins: Math.floor(r.startSeconds / 60),
+                                                        durationMins: Math.floor(r.durationSeconds / 60),
+                                                        title: r.title,
+                                                        color: r.color,
+                                                        source: 'routine'
+                                                    });
+                                                });
+                                        }
+
+                                        // B. Planned Sessions (from props)
+                                        // These override routine (visually, we might want to show both or prioritize plan)
+                                        // For now, let's just render them.
+                                        if (plannedSessions) {
+                                            plannedSessions.forEach(p => {
+                                                const d = new Date(p.start);
+                                                // Ensure it matches the view date (though props should probably filter this)
+                                                if (date && !isSameDay(d, date)) return;
+
+                                                const startMins = d.getHours() * 60 + d.getMinutes();
                                                 ghostBlocks.push({
-                                                    startMins: Math.floor(r.startSeconds / 60),
-                                                    durationMins: Math.floor(r.durationSeconds / 60),
-                                                    title: r.title,
-                                                    color: r.color,
-                                                    source: 'routine'
+                                                    startMins,
+                                                    durationMins: Math.floor(p.duration / 60),
+                                                    title: p.title,
+                                                    color: p.color,
+                                                    source: 'plan'
                                                 });
                                             });
-                                    }
+                                        }
 
-                                    // B. Planned Sessions (from props)
-                                    // These override routine (visually, we might want to show both or prioritize plan)
-                                    // For now, let's just render them.
-                                    if (plannedSessions) {
-                                        plannedSessions.forEach(p => {
-                                            const d = new Date(p.start);
-                                            // Ensure it matches the view date (though props should probably filter this)
-                                            if (date && !isSameDay(d, date)) return;
+                                        return ghostBlocks.map((block, i) => {
+                                            // Calculate Position
+                                            const startPercentage = (block.startMins / TOTAL_MINUTES) * 100;
+                                            const endPercentage = ((block.startMins + block.durationMins) / TOTAL_MINUTES) * 100;
+                                            const heightPercentage = endPercentage - startPercentage;
 
-                                            const startMins = d.getHours() * 60 + d.getMinutes();
-                                            ghostBlocks.push({
-                                                startMins,
-                                                durationMins: Math.floor(p.duration / 60),
-                                                title: p.title,
-                                                color: p.color,
-                                                source: 'plan'
-                                            });
-                                        });
-                                    }
+                                            // Skip if out of bounds (though dynamic mode usually expands)
+                                            if (startPercentage > 100) return null;
 
-                                    return ghostBlocks.map((block, i) => {
-                                        // Calculate Position
-                                        const startPercentage = (block.startMins / TOTAL_MINUTES) * 100;
-                                        const endPercentage = ((block.startMins + block.durationMins) / TOTAL_MINUTES) * 100;
-                                        const heightPercentage = endPercentage - startPercentage;
+                                            // Split View Logic: Planned on LEFT
+                                            const isSplitView = renderMode === 'dynamic' && plannedSessions && plannedSessions.length > 0;
+                                            const widthStyle = isSplitView ? '50%' : undefined;
+                                            const rightStyle = isSplitView ? undefined : '1rem'; // Default right-4 is 1rem
 
-                                        // Skip if out of bounds (though dynamic mode usually expands)
-                                        if (startPercentage > 100) return null;
-
-                                        // Split View Logic: Planned on LEFT
-                                        const isSplitView = renderMode === 'dynamic' && plannedSessions && plannedSessions.length > 0;
-                                        const widthStyle = isSplitView ? '50%' : undefined;
-                                        const rightStyle = isSplitView ? undefined : '1rem'; // Default right-4 is 1rem
-
-                                        return (
-                                            <div
-                                                key={`ghost-${i}`}
-                                                className={cn(
-                                                    "absolute left-0 rounded-sm border-2 border-dashed flex flex-col justify-center px-2 overflow-hidden opacity-30",
-                                                    // Color Logic
-                                                    !block.color && "bg-muted border-foreground/20 text-foreground",
-                                                    block.color === 'blue' && "bg-blue-500/20 border-blue-500/50 text-blue-700 dark:text-blue-300",
-                                                    block.color === 'green' && "bg-green-500/20 border-green-500/50 text-green-700 dark:text-green-300",
-                                                    block.color === 'orange' && "bg-orange-500/20 border-orange-500/50 text-orange-700 dark:text-orange-300",
-                                                    block.color === 'purple' && "bg-purple-500/20 border-purple-500/50 text-purple-700 dark:text-purple-300",
-                                                )}
-                                                style={{
-                                                    top: `${startPercentage}%`,
-                                                    height: `${heightPercentage}%`,
-                                                    width: widthStyle,
-                                                    right: rightStyle
-                                                }}
-                                            >
-                                                <div className="font-semibold text-[10px] truncate opacity-100 flex items-center gap-1">
-                                                    {block.source === 'routine' && <span className="text-[8px] uppercase tracking-tighter opacity-70">[R]</span>}
-                                                    {block.source === 'plan' && <span className="text-[8px] uppercase tracking-tighter opacity-70">[P]</span>}
-                                                    {block.title}
-                                                </div>
-                                            </div>
-                                        );
-                                    });
-                                })()}
-                            </div>
-
-                            <div className="absolute top-0 bottom-0 left-8 right-0">
-                                <TooltipProvider delayDuration={0}>
-                                    {sessionBlocks.map((block, i) => (
-                                        <ContextMenu key={i}>
-                                            <ContextMenuTrigger>
-                                                <Tooltip>
-                                                    <TooltipTrigger asChild>
-                                                        <div
-                                                            className={cn(
-                                                                "absolute rounded-sm transition-colors cursor-pointer z-10 flex flex-col justify-center px-2 overflow-hidden",
-                                                                !block.color && !block.isNightTime && "bg-primary/80 text-primary-foreground", // Fallback class
-                                                                block.isNightTime && "bg-yellow-500/90 dark:bg-yellow-600/90 text-yellow-950 dark:text-yellow-100" // Night time style
-                                                            )}
-                                                            style={{
-                                                                top: block.top,
-                                                                height: block.height,
-                                                                left: block.left,
-                                                                width: block.width,
-                                                                backgroundColor: block.isNightTime ? undefined : (block.color || undefined)
-                                                            }}
-                                                        >
-                                                            {block.isNightTime && (
-                                                                <div className="absolute top-1 right-1 z-20 opacity-100 drop-shadow-md">
-                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-yellow-950 dark:text-yellow-100"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent side="right" className="flex flex-col gap-0.5 bg-background/95 backdrop-blur border-border p-3 shadow-xl z-50 min-w-[180px]">
-                                                        <p className="font-bold text-sm text-foreground mb-1">{block.title}</p>
-                                                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
-                                                            <span className="font-mono">{block.timeRange}</span>
-                                                            <span>•</span>
-                                                            <span>{block.duration}</span>
-                                                        </div>
-
-                                                        {/* App Breakdown for Merged Blocks */}
-                                                        {Object.keys(block.appDistribution).length > 0 && (
-                                                            <div className="flex flex-col gap-1 border-t border-border/50 pt-2 mt-1">
-                                                                <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Apps in this block</span>
-                                                                {Object.entries(block.appDistribution)
-                                                                    .sort(([, a], [, b]) => (b as number) - (a as number))
-                                                                    .map(([appName, duration]) => {
-                                                                        const d = duration as number;
-                                                                        const m = Math.floor(d / 60);
-                                                                        const s = d % 60;
-                                                                        const durStr = m > 0 ? `${m}m` : `${s}s`;
-                                                                        return (
-                                                                            <div key={appName} className="flex justify-between items-center text-xs">
-                                                                                <span className="truncate max-w-[120px] text-muted-foreground/80" title={appName}>{appName}</span>
-                                                                                <span className="font-mono text-[10px] opacity-70 ml-2">{durStr}</span>
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                            </div>
-                                                        )}
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </ContextMenuTrigger>
-                                            <ContextMenuContent className="w-64">
-                                                <ContextMenuCheckboxItem
-                                                    checked={!settings?.timelineGridMode || settings?.timelineGridMode === '15min'}
-                                                    onCheckedChange={(checked) => {
-                                                        onUpdateSettings?.({ ...settings!, timelineGridMode: checked ? '15min' : 'continuous' });
+                                            return (
+                                                <div
+                                                    key={`ghost-${i}`}
+                                                    className={cn(
+                                                        "absolute left-0 rounded-sm border-2 border-dashed flex flex-col justify-center px-2 overflow-hidden opacity-30",
+                                                        // Color Logic
+                                                        !block.color && "bg-muted border-foreground/20 text-foreground",
+                                                        block.color === 'blue' && "bg-blue-500/20 border-blue-500/50 text-blue-700 dark:text-blue-300",
+                                                        block.color === 'green' && "bg-green-500/20 border-green-500/50 text-green-700 dark:text-green-300",
+                                                        block.color === 'orange' && "bg-orange-500/20 border-orange-500/50 text-orange-700 dark:text-orange-300",
+                                                        block.color === 'purple' && "bg-purple-500/20 border-purple-500/50 text-purple-700 dark:text-purple-300",
+                                                    )}
+                                                    style={{
+                                                        top: `${startPercentage}%`,
+                                                        height: `${heightPercentage}%`,
+                                                        width: widthStyle,
+                                                        right: rightStyle
                                                     }}
                                                 >
-                                                    {t('settings.timeline.gridMode')}
-                                                </ContextMenuCheckboxItem>
-                                                <ContextMenuSeparator />
-                                                <ContextMenuCheckboxItem
-                                                    checked={settings?.filterTimelineByWorkApps}
-                                                    onCheckedChange={toggleWorkFilter}
-                                                >
-                                                    {t('settings.timeline.filterWorkApps')}
-                                                </ContextMenuCheckboxItem>
-                                                <ContextMenuSeparator />
-                                                <ContextMenuItem
-                                                    onSelect={() => openModal('work', block)}
-                                                    className="gap-2 cursor-pointer"
-                                                >
-                                                    <Briefcase className="w-4 h-4" />
-                                                    {t('settings.timeline.configureWorkApps')}
-                                                </ContextMenuItem>
-                                                <ContextMenuItem
-                                                    onSelect={() => openModal('ignored', block)}
-                                                    className="gap-2 cursor-pointer"
-                                                >
-                                                    <Settings2 className="w-4 h-4" />
-                                                    {t('settings.timeline.configureIgnoredApps')}
-                                                </ContextMenuItem>
-                                            </ContextMenuContent>
-                                        </ContextMenu>
-                                    ))}
-                                </TooltipProvider>
-                            </div>
-                        </div>
+                                                    <div className="font-semibold text-[10px] truncate opacity-100 flex items-center gap-1">
+                                                        {block.source === 'routine' && <span className="text-[8px] uppercase tracking-tighter opacity-70">[R]</span>}
+                                                        {block.source === 'plan' && <span className="text-[8px] uppercase tracking-tighter opacity-70">[P]</span>}
+                                                        {block.title}
+                                                    </div>
+                                                </div>
+                                            );
+                                        });
+                                    })()}
+                                </div>
+
+                                <div className="absolute top-0 bottom-0 left-8 right-0">
+                                    <TooltipProvider delayDuration={0}>
+                                        {sessionBlocks.map((block, i) => (
+                                            <ContextMenu key={i}>
+                                                <ContextMenuTrigger>
+                                                    <Tooltip>
+                                                        <TooltipTrigger asChild>
+                                                            <div
+                                                                className={cn(
+                                                                    "absolute rounded-sm transition-colors cursor-pointer z-10 flex flex-col justify-center px-2 overflow-hidden",
+                                                                    !block.color && !block.isNightTime && "bg-primary/80 text-primary-foreground", // Fallback class
+                                                                    block.isNightTime && "bg-yellow-500/90 dark:bg-yellow-600/90 text-yellow-950 dark:text-yellow-100" // Night time style
+                                                                )}
+                                                                style={{
+                                                                    top: block.top,
+                                                                    height: block.height,
+                                                                    left: block.left,
+                                                                    width: block.width,
+                                                                    backgroundColor: block.isNightTime ? undefined : (block.color || undefined)
+                                                                }}
+                                                            >
+                                                                {block.isNightTime && (
+                                                                    <div className="absolute top-1 right-1 z-20 opacity-100 drop-shadow-md">
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" className="text-yellow-950 dark:text-yellow-100"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" /></svg>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent side="right" className="flex flex-col gap-0.5 bg-background/95 backdrop-blur border-border p-3 shadow-xl z-50 min-w-[180px]">
+                                                            <p className="font-bold text-sm text-foreground mb-1">{block.title}</p>
+                                                            <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2">
+                                                                <span className="font-mono">{block.timeRange}</span>
+                                                                <span>•</span>
+                                                                <span>{block.duration}</span>
+                                                            </div>
+
+                                                            {/* App Breakdown for Merged Blocks */}
+                                                            {Object.keys(block.appDistribution).length > 0 && (
+                                                                <div className="flex flex-col gap-1 border-t border-border/50 pt-2 mt-1">
+                                                                    <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Apps in this block</span>
+                                                                    {Object.entries(block.appDistribution)
+                                                                        .sort(([, a], [, b]) => (b as number) - (a as number))
+                                                                        .map(([appName, duration]) => {
+                                                                            const d = duration as number;
+                                                                            const m = Math.floor(d / 60);
+                                                                            const s = d % 60;
+                                                                            const durStr = m > 0 ? `${m}m` : `${s}s`;
+                                                                            return (
+                                                                                <div key={appName} className="flex justify-between items-center text-xs">
+                                                                                    <span className="truncate max-w-[120px] text-muted-foreground/80" title={appName}>{appName}</span>
+                                                                                    <span className="font-mono text-[10px] opacity-70 ml-2">{durStr}</span>
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                </div>
+                                                            )}
+                                                        </TooltipContent>
+                                                    </Tooltip>
+                                                </ContextMenuTrigger>
+                                                <ContextMenuContent className="w-64">
+                                                    <ContextMenuCheckboxItem
+                                                        checked={!settings?.timelineGridMode || settings?.timelineGridMode === '15min'}
+                                                        onCheckedChange={(checked) => {
+                                                            onUpdateSettings?.({ ...settings!, timelineGridMode: checked ? '15min' : 'continuous' });
+                                                        }}
+                                                    >
+                                                        {t('settings.timeline.gridMode')}
+                                                    </ContextMenuCheckboxItem>
+                                                    <ContextMenuSeparator />
+                                                    <ContextMenuCheckboxItem
+                                                        checked={settings?.filterTimelineByWorkApps}
+                                                        onCheckedChange={toggleWorkFilter}
+                                                    >
+                                                        {t('settings.timeline.filterWorkApps')}
+                                                    </ContextMenuCheckboxItem>
+                                                    <ContextMenuSeparator />
+                                                    <ContextMenuItem
+                                                        onSelect={() => openModal('work', block)}
+                                                        className="gap-2 cursor-pointer"
+                                                    >
+                                                        <Briefcase className="w-4 h-4" />
+                                                        {t('settings.timeline.configureWorkApps')}
+                                                    </ContextMenuItem>
+                                                    <ContextMenuItem
+                                                        onSelect={() => openModal('ignored', block)}
+                                                        className="gap-2 cursor-pointer"
+                                                    >
+                                                        <Settings2 className="w-4 h-4" />
+                                                        {t('settings.timeline.configureIgnoredApps')}
+                                                    </ContextMenuItem>
+                                                </ContextMenuContent>
+                                            </ContextMenu>
+                                        ))}
+                                    </TooltipProvider>
+                                </div>
+                            </ContextMenuTrigger>
+                            <ContextMenuContent className="w-64">
+                                <ContextMenuCheckboxItem
+                                    checked={!settings?.timelineGridMode || settings?.timelineGridMode === '15min'}
+                                    onCheckedChange={(checked) => {
+                                        onUpdateSettings?.({ ...settings!, timelineGridMode: checked ? '15min' : 'continuous' });
+                                    }}
+                                >
+                                    {t('settings.timeline.gridMode')}
+                                </ContextMenuCheckboxItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuCheckboxItem
+                                    checked={settings?.filterTimelineByWorkApps}
+                                    onCheckedChange={toggleWorkFilter}
+                                >
+                                    {t('settings.timeline.filterWorkApps')}
+                                </ContextMenuCheckboxItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem
+                                    onSelect={() => openModal('work')}
+                                    className="gap-2 cursor-pointer"
+                                >
+                                    <Briefcase className="w-4 h-4" />
+                                    {t('settings.timeline.configureWorkApps')}
+                                </ContextMenuItem>
+                                <ContextMenuItem
+                                    onSelect={() => openModal('ignored')}
+                                    className="gap-2 cursor-pointer"
+                                >
+                                    <Settings2 className="w-4 h-4" />
+                                    {t('settings.timeline.configureIgnoredApps')}
+                                </ContextMenuItem>
+                            </ContextMenuContent>
+                        </ContextMenu>
                     </div>
                     {/* FOOTER FOR TIMETABLE: ONLY TOTAL FOCUS TIME */}
                     {TimelineFooter}

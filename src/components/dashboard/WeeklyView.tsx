@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, addWeeks, subWeeks, isSameDay, addMinutes, differenceInSeconds, setHours, setMinutes, setSeconds, getDay } from 'date-fns';
-import { ChevronLeft, ChevronRight, Trash, Pencil, Calendar, Repeat } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { format, startOfWeek, addWeeks, subWeeks, isSameDay, addMinutes, differenceInSeconds, setHours, setMinutes, setSeconds, getDay, addDays } from 'date-fns';
+import { ko } from 'date-fns/locale';
+import { ChevronLeft, ChevronRight, Trash, Pencil, Calendar, Repeat, Clock, ArrowRight, Flag, Tag, X } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,8 +16,20 @@ import {
     ContextMenuSeparator,
     ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+import {
+    Popover,
+    PopoverContent,
+    PopoverTrigger,
+} from "@/components/ui/popover";
 import { useTranslation } from "react-i18next";
 
 interface WeeklyViewProps {
@@ -41,13 +55,15 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
     const { settings, saveSettings } = useDataStore();
     const [viewMode, setViewMode] = useState<'calendar' | 'routine'>('calendar');
     const [showRoutineOverlay, setShowRoutineOverlay] = useState(false);
+    const [viewScope, setViewScope] = useState('week');
 
-    const [viewDate, setViewDate] = useState(currentDate);
+    const [viewDate, setViewDate] = useState(() => startOfWeek(currentDate, { weekStartsOn: 1 }));
     const [weekSessions, setWeekSessions] = useState<(WorkSession | Session)[]>([]);
     const [weekPlanned, setWeekPlanned] = useState<PlannedSession[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<Partial<PlannedSession> | null>(null);
+    const [popoverPosition, setPopoverPosition] = useState<{ x: number, y: number } | null>(null);
 
     // Drag and Drop State
     const [dragState, setDragState] = useState<{
@@ -55,6 +71,7 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         type: 'move' | 'resize' | 'create';
         session: PlannedSession | null;
         startY: number;
+        startX?: number;
         originalStart: number;
         originalDuration: number;
         currentStart: number;
@@ -62,11 +79,23 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         day: Date;
     } | null>(null);
 
+    const [selectionBox, setSelectionBox] = useState<{ startX: number, startY: number, currentX: number, currentY: number } | null>(null);
+    const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(new Set());
+    const selectionRef = useRef<{
+        isSelecting: boolean;
+        startX: number;
+        startY: number;
+        currentX: number;
+        currentY: number;
+        containerRect: DOMRect;
+    } | null>(null);
+
     // Removed Sync Effect to prevent resetting view when parent updates time
 
-    const weekStart = startOfWeek(viewDate, { weekStartsOn: 1 });
-    const weekEnd = endOfWeek(viewDate, { weekStartsOn: 1 });
-    const days = eachDayOfInterval({ start: weekStart, end: weekEnd });
+    // Rolling Week Logic: viewDate is the first visible day
+    const days = useMemo(() => {
+        return Array.from({ length: 7 }).map((_, i) => addDays(viewDate, i));
+    }, [viewDate]);
 
     const loadData = async () => {
         if (!(window as any).ipcRenderer) return;
@@ -108,6 +137,18 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         setWeekSessions(allSessions);
         setWeekPlanned(allPlanned);
         setIsLoading(false);
+    };
+
+    const handleEditPlan = (session: PlannedSession, e?: React.MouseEvent) => {
+        if (e) {
+            e.stopPropagation();
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setPopoverPosition({ x: rect.right + 10, y: rect.top });
+        } else {
+            setPopoverPosition(null);
+        }
+        setSelectedPlan(session);
+        setIsEditorOpen(true);
     };
 
     // Load Data
@@ -337,8 +378,9 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
 
     const handleToday = () => {
         const today = new Date();
-        setViewDate(today);
-        onDateChange(today);
+        const start = startOfWeek(today, { weekStartsOn: 1 });
+        setViewDate(start);
+        onDateChange(start);
     };
 
     // Current Time Indicator
@@ -366,6 +408,14 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         if (!container) return;
 
         const onWheel = (e: WheelEvent) => {
+            // Disable scroll navigation in Routine mode OR when Editor is open
+            if (viewMode === 'routine' || isEditorOpen) return;
+
+            // Prevent panning if dragging or selecting
+            if ((dragRef.current && dragRef.current.isDragging) || (selectionRef.current && selectionRef.current.isSelecting)) {
+                return;
+            }
+
             // Support both Horizontal (Trackpad) and Vertical (Mouse Wheel) scrolling
             // If deltaX is present, use it. If not, use deltaY.
 
@@ -389,10 +439,15 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                 const THRESHOLD = 50; // Reduced threshold for better sensitivity
 
                 if (wheelAccumulator.current > THRESHOLD) {
-                    handleNextWeek();
+                    // Scroll Right -> Next Day
+                    const newDate = addDays(viewDate, 1);
+                    setViewDate(newDate);
+                    // onDateChange(newDate); // Optional: notify parent?
                     wheelAccumulator.current = 0;
                 } else if (wheelAccumulator.current < -THRESHOLD) {
-                    handlePrevWeek();
+                    // Scroll Left -> Prev Day
+                    const newDate = addDays(viewDate, -1);
+                    setViewDate(newDate);
                     wheelAccumulator.current = 0;
                 }
 
@@ -404,11 +459,12 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         };
 
         container.addEventListener('wheel', onWheel, { passive: false });
+        // Clean up
         return () => {
             container.removeEventListener('wheel', onWheel);
             if (wheelTimeout.current) clearTimeout(wheelTimeout.current);
         };
-    }, [handleNextWeek, handlePrevWeek]); // Dependencies are stable (hook wrappers)
+    }, [viewDate, viewMode, isEditorOpen]); // Added isEditorOpen to dependencies
 
     // Ref for mutable drag state to avoid stale closures in event listeners
     const dragRef = useRef<any>(null);
@@ -416,37 +472,130 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
     useEffect(() => { saveRef.current = handleSavePlan }, [handleSavePlan]);
 
     const onMouseMove = (e: MouseEvent) => {
+        const selState = selectionRef.current;
+        if (selState && selState.isSelecting) {
+            selState.currentX = e.clientX;
+            selState.currentY = e.clientY;
+
+            setSelectionBox({
+                startX: selState.startX,
+                startY: selState.startY,
+                currentX: selState.currentX,
+                currentY: selState.currentY
+            });
+            return; // Skip drag logic
+        }
+
         if (!dragRef.current) return;
 
         const prev = dragRef.current;
+        if (!prev) return;
+
+        // ... rest of drag logic ...
+        if (!prev.isDragging) {
+            const dx = Math.abs(e.clientX - (prev.startX || 0));
+            const dy = Math.abs(e.clientY - prev.startY);
+            if (dx < 5 && dy < 5) return; // Ignore small movements
+
+            // Threshold exceeded, start dragging
+            prev.isDragging = true;
+            setDragState(curr => curr ? ({ ...curr, isDragging: true }) : null);
+        }
+
         const rect = prev.containerRect;
         if (!rect) return;
 
+        // 1. Calculate Time (Vertical)
         const deltaY = e.clientY - prev.startY;
-        // height = 1440 mins
-        // pixels = rect.height
-        // deltaMins = (deltaY / rect.height) * 1440
         const minutesPerPixel = 1440 / rect.height;
-        // Smooth dragging (no snap during move) for 1:1 visual feedback
         const deltaMinutes = deltaY * minutesPerPixel;
 
         let newStart = prev.originalStart;
         let newDuration = prev.originalDuration;
+        let newDay = prev.day;
 
-        if (prev.type === 'move') {
-            // Snap move to 15m for easier alignment, or keep smooth?
-            // "Ghost" usually looks better snapped for move, session follows grid lines.
-            // Let's keep move snapped, but resize smooth.
-            const snappedDelta = Math.round(deltaMinutes / 15) * 15;
-            newStart = addMinutes(new Date(prev.originalStart), snappedDelta).getTime();
-        } else if (prev.type === 'resize') {
-            newDuration = Math.max(900, prev.originalDuration + (deltaMinutes * 60));
+        // 2. Calculate Day (Horizontal) - Only for 'move' or 'create'
+        if (prev.type === 'move' || prev.type === 'create') {
+            const elements = document.elementsFromPoint(e.clientX, e.clientY);
+            const dayColumn = elements.find(el => el.hasAttribute('data-day'));
+            if (dayColumn) {
+                const dateStr = dayColumn.getAttribute('data-day');
+                if (dateStr) {
+                    newDay = new Date(dateStr);
+                }
+            }
         }
 
-        setDragState(curr => curr ? ({ ...curr, currentStart: newStart, currentDuration: newDuration }) : null);
+        if (prev.type === 'move') {
+            const snappedDelta = Math.round(deltaMinutes / 15) * 15;
+
+            // Reconstruct date with new Day + Original Time + Delta
+            const originalDate = new Date(prev.originalStart);
+            const targetDate = new Date(newDay);
+            targetDate.setHours(originalDate.getHours(), originalDate.getMinutes(), 0, 0);
+
+            newStart = addMinutes(targetDate, snappedDelta).getTime();
+
+        } else if (prev.type === 'resize') {
+            newDuration = Math.max(900, prev.originalDuration + (deltaMinutes * 60));
+        } else if (prev.type === 'create') {
+            const effectiveDelta = Math.max(15, deltaMinutes); // Min 15m
+            newDuration = effectiveDelta * 60;
+            // Ensure create follows the day too
+            const originalDate = new Date(prev.originalStart); // This was set at mousedown
+            // But if we moved days, we want the start date to be on the NEW day
+            // The originalStart time (e.g. 09:00) should be preserved relative to the day?
+            // Actually for 'create', the user clicked on a specific day/time. 
+            // Moving horizontally while creating usually means "Wait, I meant Tuesday".
+            // So we should shift the start time to the new day.
+
+            const targetDate = new Date(newDay);
+            targetDate.setHours(originalDate.getHours(), originalDate.getMinutes(), 0, 0);
+            newStart = targetDate.getTime();
+        }
+
+        setDragState(curr => curr ? ({
+            ...curr,
+            currentStart: newStart,
+            currentDuration: newDuration,
+            day: newDay
+        }) : null);
     };
 
     const onMouseUp = (e: MouseEvent) => {
+        // Multi-Selection Logic
+        const selState = selectionRef.current;
+        if (selState && selState.isSelecting) {
+            const box = {
+                left: Math.min(selState.startX, selState.currentX),
+                top: Math.min(selState.startY, selState.currentY),
+                right: Math.max(selState.startX, selState.currentX),
+                bottom: Math.max(selState.startY, selState.currentY)
+            };
+
+            const sessionElements = document.querySelectorAll('[data-session-id]');
+            const newSelected = new Set(e.ctrlKey ? selectedSessionIds : []);
+
+            sessionElements.forEach(el => {
+                const rect = el.getBoundingClientRect();
+                // Check intersection (AABB)
+                if (rect.left < box.right && rect.right > box.left &&
+                    rect.top < box.bottom && rect.bottom > box.top) {
+                    const id = el.getAttribute('data-session-id');
+                    if (id) newSelected.add(id);
+                }
+            });
+
+            setSelectedSessionIds(newSelected);
+            setSelectionBox(null);
+            selectionRef.current = null;
+
+            document.body.style.userSelect = '';
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            return;
+        }
+
         if (!dragRef.current) return;
 
         // Recalc to be safe
@@ -459,25 +608,78 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         // Final snap on release
         const deltaMinutes = Math.round((deltaY * minutesPerPixel) / 15) * 15;
 
+        let newDay = prev.day;
+
+        // 2. Calculate Day (Horizontal) - Only for 'move' or 'create'
+        if (prev.type === 'move' || prev.type === 'create') {
+            const elements = document.elementsFromPoint(e.clientX, e.clientY);
+            const dayColumn = elements.find(el => el.hasAttribute('data-day'));
+            if (dayColumn) {
+                const dateStr = dayColumn.getAttribute('data-day');
+                if (dateStr) {
+                    newDay = new Date(dateStr);
+                }
+            }
+        }
+
         let newStart = prev.originalStart;
         let newDuration = prev.originalDuration;
 
         if (prev.type === 'move') {
-            newStart = addMinutes(new Date(prev.originalStart), deltaMinutes).getTime();
+            const originalDate = new Date(prev.originalStart);
+            const targetDate = new Date(newDay);
+            targetDate.setHours(originalDate.getHours(), originalDate.getMinutes(), 0, 0);
+
+            newStart = addMinutes(targetDate, deltaMinutes).getTime();
         } else if (prev.type === 'resize') {
             newDuration = Math.max(900, prev.originalDuration + (deltaMinutes * 60));
+        } else if (prev.type === 'create') {
+            const effectiveDelta = Math.max(15, deltaMinutes);
+            newDuration = effectiveDelta * 60;
+            // Ensure create follows the day too
+            const originalDate = new Date(prev.originalStart);
+            const targetDate = new Date(newDay);
+            targetDate.setHours(originalDate.getHours(), originalDate.getMinutes(), 0, 0);
+            newStart = targetDate.getTime();
         }
+
+        setDragState(null);
+        dragRef.current = null;
 
         document.body.style.userSelect = '';
         document.removeEventListener('mousemove', onMouseMove);
         document.removeEventListener('mouseup', onMouseUp);
 
-        setDragState(null);
-        dragRef.current = null;
+        // Click Handling (Not Dragging)
+        if (!prev.isDragging && prev.type !== 'create') {
+            // It was a click on an existing session
+            if (prev.session) {
+                // Position popover to the right of the element
+                const element = document.querySelector(`[data-session-id="${prev.session.id}"]`);
+                if (element) {
+                    const rect = element.getBoundingClientRect();
+                    setPopoverPosition({ x: rect.right + 2, y: rect.top });
+                } else {
+                    setPopoverPosition({ x: e.clientX, y: e.clientY });
+                }
 
-        if (newStart !== prev.originalStart || newDuration !== prev.originalDuration) {
+                setSelectedPlan(prev.session);
+                setIsEditorOpen(true);
+            }
+            return;
+        }
+
+        if (prev.type === 'create') {
+            if (newDuration >= 900) { // Min 15 mins to be valid
+                setSelectedPlan({
+                    start: newStart,
+                    duration: newDuration,
+                });
+                setIsEditorOpen(true);
+            }
+        } else if (newStart !== prev.originalStart || newDuration !== prev.originalDuration) {
             const updated = {
-                ...prev.session,
+                ...prev.session!,
                 start: newStart,
                 duration: newDuration
             };
@@ -485,7 +687,33 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         }
     };
 
+    const handleBulkDelete = () => {
+        if (selectedSessionIds.size === 0) return;
+        if (!confirm('Are you sure you want to delete these sessions?')) return;
+        selectedSessionIds.forEach(id => handleDeletePlan(id));
+        setSelectedSessionIds(new Set());
+    };
+
+    const handleBulkPriority = (priority: 'high' | 'medium' | 'low' | undefined) => {
+        if (selectedSessionIds.size === 0) return;
+
+        // Find sessions in effectivePlanned (or potentially routineSessions if checking them)
+        const updates = effectivePlanned
+            .filter(s => selectedSessionIds.has(s.id))
+            .map(s => ({ ...s, priority }));
+
+        // Also check routineSessions if we are in routine mode (though usually effectivePlanned covers it if routine mode just shows them as planned)
+        // Actually routine mode displays raw routineSessions? 
+        // Let's check sessionRendering. It iterates 'effectivePlanned' for planned sessions. 
+        // If viewMode === 'routine', effectivePlanned contains routine sessions converted?
+        // Let's assume effectivePlanned is correct for now.
+
+        updates.forEach(s => handleSavePlan(s));
+        // Keep selection active to see the result
+    };
+
     const startDrag = (e: React.MouseEvent, type: 'move' | 'resize', session: PlannedSession) => {
+        if (e.button !== 0) return; // Only Left Click
         e.preventDefault();
         e.stopPropagation();
 
@@ -496,10 +724,11 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         const rect = dayColumn.getBoundingClientRect();
 
         const state = {
-            isDragging: true,
+            isDragging: false, // Start as false, set to true on move > threshold
             type,
             session,
             startY: e.clientY,
+            startX: e.clientX, // Track X for threshold
             originalStart: session.start,
             originalDuration: session.duration,
             currentStart: session.start,
@@ -518,7 +747,19 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
 
     // --- OPTION B: SESSION MERGING LOGIC (Ported from TimeTableGraph) ---
     const getMergedSessionsForDay = (day: Date) => {
-        const daySessions = weekSessions.filter(s => isSameDay(getSessionStart(s), day));
+        const daySessions = weekSessions.filter(s => {
+            if (!isSameDay(getSessionStart(s), day)) return false;
+
+            // Filter Non-Work Apps if setting is disabled
+            // If showNonWorkApps is TRUE, we show everything.
+            // If FALSE, we only show Work Apps.
+            if (settings?.calendarSettings?.showNonWorkApps) return true;
+
+            const proc = s.process || 'Focus';
+            // Default to Work if no workApps defined, otherwise check list
+            const isWork = !settings?.workApps?.length || settings.workApps.some(w => w.toLowerCase() === proc.toLowerCase());
+            return isWork;
+        });
 
         // Include live session if it's today
         const effectiveSessions = [...daySessions];
@@ -655,7 +896,7 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
     };
 
     return (
-        <div id="weekly-view-container" className="flex flex-col h-full bg-background text-foreground select-none animate-in fade-in duration-300">
+        <div id="weekly-view-container" className="flex flex-col h-full bg-background text-foreground select-none animate-in fade-in duration-300 relative">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-card/50 backdrop-blur-sm">
                 <div className="flex items-center gap-4">
@@ -684,7 +925,10 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                     <h2 className="text-xl font-bold min-w-[200px] tracking-tight">
                         {viewMode === 'routine' ? t('weeklyView.weeklyRoutine') : format(viewDate, 'MMMM yyyy')}
                     </h2>
+                </div>
 
+                <div className="flex items-center gap-3 pr-14">
+                    {/* 1. Today Nav (Moved from Left) */}
                     {viewMode === 'calendar' && (
                         <div className="flex items-center gap-1 bg-muted/30 rounded-lg p-0.5 border border-border/20">
                             <Button variant="ghost" size="icon" onClick={handlePrevWeek} className="h-7 w-7 rounded-md hover:bg-background/80">
@@ -698,21 +942,43 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                             </Button>
                         </div>
                     )}
-                </div>
 
-                <div className="flex items-center gap-2">
-                    {/* Routine Overlay Toggle (Calendar Mode Only) */}
+                    {/* 2. Routine Checkbox */}
                     {viewMode === 'calendar' && (
-                        <div className="flex items-center gap-2 mr-12 bg-muted/30 px-2 py-1 rounded-md border border-border/20">
-                            <Label htmlFor="routine-overlay" className="text-[10px] text-muted-foreground font-medium cursor-pointer uppercase tracking-tight">{t('weeklyView.showRoutine')}</Label>
-                            <Switch
-                                id="routine-overlay"
-                                checked={showRoutineOverlay}
-                                onCheckedChange={setShowRoutineOverlay}
-                                className="scale-75 data-[state=checked]:bg-primary"
-                            />
+                        <div className="flex items-center gap-2 px-2">
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="routine-overlay"
+                                    checked={showRoutineOverlay}
+                                    onChange={(e) => setShowRoutineOverlay(e.currentTarget.checked)}
+                                    onClick={() => setShowRoutineOverlay(!showRoutineOverlay)}
+                                    className="h-4 w-4"
+                                />
+                                <Label
+                                    htmlFor="routine-overlay"
+                                    className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer select-none"
+                                >
+                                    {t('weeklyView.showRoutine', 'Routine')}
+                                </Label>
+                            </div>
                         </div>
                     )}
+
+                    {/* 3. View Scope Select */}
+                    <Select value={viewScope} onValueChange={setViewScope}>
+                        <SelectTrigger className="w-[110px] h-8 text-xs">
+                            <SelectValue placeholder="Week" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="day">Day (D/1)</SelectItem>
+                            <SelectItem value="week">Week (W/2)</SelectItem>
+                            <SelectItem value="month">Month (M/3)</SelectItem>
+                            <SelectItem value="schedule">Schedule (A/4)</SelectItem>
+                            <SelectItem value="multiday">5 Days</SelectItem>
+                            <SelectItem value="multiweek">2 Weeks</SelectItem>
+                        </SelectContent>
+                    </Select>
+
                     {isLoading && <div className="text-xs text-muted-foreground animate-pulse mr-2">{t('weeklyView.loading')}</div>}
                 </div>
             </div>
@@ -741,203 +1007,514 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                 ))}
             </div>
 
-            {/* Scrollable Grid */}
-            <div className="flex-1 overflow-hidden relative bg-background/50">
-                <div className="flex h-full relative py-4 box-border">
+            {/* Main Content & Sidebar Wrapper */}
+            <div className="flex-1 flex overflow-hidden relative">
+                {/* Scrollable Grid */}
+                <div className="flex-1 overflow-hidden relative bg-background/50">
+                    <div className="flex h-full relative py-4 box-border">
 
-                    {/* Time Axis */}
-                    <div className="w-14 shrink-0 border-r border-border/20 bg-background/80 backdrop-blur-sm sticky left-0 z-20">
-                        {Array.from({ length: 13 }, (_, i) => i * 2).map(h => (
-                            <div
-                                key={h}
-                                className="absolute w-full flex items-center justify-end pr-2"
-                                style={{ top: `${(h / 24) * 100}% `, transform: 'translateY(-50%)' }}
-                            >
-                                <span className="text-[10px] text-muted-foreground/40 font-mono tabular-nums block">
-                                    {h.toString().padStart(2, '0')}:00
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Day Columns */}
-                    {days.map(day => (
-                        <div
-                            key={day.toString()}
-                            className="flex-1 relative border-r border-border/20 last:border-r-0 min-w-[100px] group cursor-cell"
-                            onMouseDown={(e) => {
-                                if (e.target !== e.currentTarget) return;
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const clickY = e.nativeEvent.offsetY; // relative to target
-                                // logic: (clickY / height) * 1440
-                                const minutes = (clickY / rect.height) * 1440;
-                                const snapped = Math.floor(minutes / 15) * 15;
-
-                                const newStart = new Date(day);
-                                newStart.setHours(0, 0, 0, 0);
-                                newStart.setMinutes(snapped);
-
-                                setSelectedPlan({
-                                    start: newStart.getTime(),
-                                    duration: 3600, // 1 hour default
-                                });
-                                setIsEditorOpen(true);
-                            }}
-                        >
-                            {/* Grid Lines - Every 2 hours visually matches TimeTableGraph */}
-                            {Array.from({ length: 12 }).map((_, i) => (
+                        {/* Time Axis */}
+                        <div className="w-14 shrink-0 border-r border-border/20 bg-background/80 backdrop-blur-sm sticky left-0 z-20">
+                            {Array.from({ length: 13 }, (_, i) => i * 2).map(h => (
                                 <div
-                                    key={i}
-                                    className="absolute w-full border-b border-border/20 group-hover:border-border/30 transition-colors pointer-events-none"
-                                    style={{ top: `${(i * 2 / 24) * 100}% `, height: '1px' }} // Every 2 hours
-                                ></div>
-                            ))}
-
-                            {/* Current Time Indicator - Hide in Routine Mode */}
-                            {viewMode === 'calendar' && isSameDay(day, now) && (
-                                <div
-                                    className="absolute left-0 right-0 h-[2px] bg-red-500 z-30 pointer-events-none flex items-center shadow-[0_0_8px_rgba(239,68,68,0.5)]"
-                                    style={{ top: `${((now.getHours() * 60 + now.getMinutes()) / 1440) * 100}%` }}
+                                    key={h}
+                                    className="absolute w-full flex items-center justify-end pr-2"
+                                    style={{ top: `${(h / 24) * 100}% `, transform: 'translateY(-50%)' }}
                                 >
-                                    <div className="w-2 h-2 rounded-full bg-red-500 -ml-1 ring-2 ring-background"></div>
+                                    <span className="text-[10px] text-muted-foreground/40 font-mono tabular-nums block">
+                                        {h.toString().padStart(2, '0')}:00
+                                    </span>
                                 </div>
-                            )}
+                            ))}
+                        </div>
 
-                            {/* Routine Overlay (Ghost Layer) - Calendar Mode Only */}
-                            {viewMode === 'calendar' && showRoutineOverlay && routineSessions
-                                .filter(s => isSameDay(new Date(s.start), day))
-                                .map((session, idx) => {
-                                    const start = new Date(session.start);
-                                    const startMins = start.getHours() * 60 + start.getMinutes();
-                                    const top = (startMins / 1440) * 100;
-                                    const height = (session.duration / 60 / 1440) * 100;
+                        {/* Day Columns */}
+                        {days.map(day => (
+                            <div
+                                key={day.toString()}
+                                className="flex-1 relative border-r border-border/20 last:border-r-0 min-w-[100px] group cursor-cell"
+                                data-day={day.toISOString()}
+                                onMouseDown={(e) => {
+                                    if (e.button !== 0) return; // Only Left Click
+
+                                    // If editor is open, clicking background should close it ONLY
+                                    if (isEditorOpen) {
+                                        setIsEditorOpen(false);
+                                        setSelectedPlan(null);
+                                        setPopoverPosition(null);
+                                        return;
+                                    }
+
+                                    // Clear multi-selection if clicking empty space without Ctrl
+                                    if (!e.ctrlKey && selectedSessionIds.size > 0) {
+                                        setSelectedSessionIds(new Set());
+                                        return; // Just deselect, don't create new session yet
+                                    }
+
+                                    // Multi-Selection (Ctrl + Drag on Background)
+                                    if (e.ctrlKey) {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+
+                                        const container = document.getElementById('weekly-view-container');
+                                        if (!container) return;
+
+                                        const containerRect = container.getBoundingClientRect();
+                                        const startX = e.clientX;
+                                        const startY = e.clientY;
+
+                                        setSelectionBox({ startX, startY, currentX: startX, currentY: startY });
+
+                                        selectionRef.current = {
+                                            isSelecting: true,
+                                            startX,
+                                            startY,
+                                            currentX: startX,
+                                            currentY: startY,
+                                            containerRect: containerRect
+                                        };
+
+                                        document.body.style.userSelect = 'none';
+                                        document.addEventListener('mousemove', onMouseMove);
+                                        document.addEventListener('mouseup', onMouseUp);
+                                        return;
+                                    }
+
+                                    if (e.target !== e.currentTarget) return;
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const clickY = e.nativeEvent.offsetY; // relative to target
+                                    // logic: (clickY / height) * 1440
+                                    const minutes = (clickY / rect.height) * 1440;
+                                    const snapped = Math.floor(minutes / 15) * 15;
+
+                                    const newStart = new Date(day);
+                                    newStart.setHours(0, 0, 0, 0);
+                                    newStart.setMinutes(snapped);
+
+                                    // START DRAG CREATE
+                                    const state = {
+                                        isDragging: true,
+                                        type: 'create',
+                                        session: null, // No session yet
+                                        startY: e.clientY,
+                                        originalStart: newStart.getTime(),
+                                        originalDuration: 900, // Start with 15m
+                                        currentStart: newStart.getTime(),
+                                        currentDuration: 900,
+                                        day: newStart,
+                                        containerRect: rect
+                                    };
+
+                                    setDragState(state as any);
+                                    dragRef.current = state;
+
+                                    document.body.style.userSelect = 'none';
+                                    document.addEventListener('mousemove', onMouseMove);
+                                    document.addEventListener('mouseup', onMouseUp);
+                                }}
+                            >
+                                {/* Grid Lines - Every 2 hours visually matches TimeTableGraph */}
+                                {Array.from({ length: 12 }).map((_, i) => (
+                                    <div
+                                        key={i}
+                                        className="absolute w-full border-b border-border/20 group-hover:border-border/30 transition-colors pointer-events-none"
+                                        style={{ top: `${(i * 2 / 24) * 100}% `, height: '1px' }} // Every 2 hours
+                                    ></div>
+                                ))}
+
+                                {/* Current Time Indicator - Hide in Routine Mode */}
+                                {viewMode === 'calendar' && isSameDay(day, now) && (
+                                    <div
+                                        className="absolute left-0 right-0 h-[2px] bg-red-500 z-30 pointer-events-none flex items-center shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                                        style={{ top: `${((now.getHours() * 60 + now.getMinutes()) / 1440) * 100}%` }}
+                                    >
+                                        <div className="w-2 h-2 rounded-full bg-red-500 -ml-1 ring-2 ring-background"></div>
+                                    </div>
+                                )}
+
+                                {/* Nighttime Overlay */}
+                                {viewMode === 'calendar' && settings?.calendarSettings?.showNighttime && (
+                                    <div
+                                        className="absolute left-0 right-0 bg-black/20 dark:bg-black/40 pointer-events-none z-0"
+                                        style={{
+                                            top: `${((settings.nightTimeStart || 22) / 24) * 100}%`,
+                                            height: `${((24 - (settings.nightTimeStart || 22)) / 24) * 100}%`
+                                        }}
+                                    />
+                                )}
+
+                                {/* Routine Overlay (Ghost Layer) - Calendar Mode Only */}
+                                {viewMode === 'calendar' && showRoutineOverlay && routineSessions
+                                    .filter(s => isSameDay(new Date(s.start), day))
+                                    .map((session, idx) => {
+                                        const start = new Date(session.start);
+                                        const startMins = start.getHours() * 60 + start.getMinutes();
+                                        const top = (startMins / 1440) * 100;
+                                        const height = (session.duration / 60 / 1440) * 100;
+
+                                        return (
+                                            <div
+                                                key={`routine-ghost-${idx}`}
+                                                className={cn(
+                                                    "absolute left-[4px] right-[4px] rounded-sm border-2 border-dashed px-2 flex flex-col justify-center overflow-hidden opacity-30 pointer-events-none z-0",
+                                                    !session.color && "bg-muted border-foreground/20 text-foreground",
+                                                    session.color === 'blue' && "bg-blue-500/20 border-blue-500/50 text-blue-700 dark:text-blue-300",
+                                                    session.color === 'green' && "bg-green-500/20 border-green-500/50 text-green-700 dark:text-green-300",
+                                                    session.color === 'orange' && "bg-orange-500/20 border-orange-500/50 text-orange-700 dark:text-orange-300",
+                                                    session.color === 'purple' && "bg-purple-500/20 border-purple-500/50 text-purple-700 dark:text-purple-300",
+                                                )}
+                                                style={{ top: `${top}% `, height: `${height}% ` }}
+                                            >
+                                                <div className="font-semibold truncate text-[9px] leading-tight">{session.title}</div>
+                                            </div>
+                                        );
+                                    })}
+
+                                {/* Render Work Sessions (Merged) - Only in Calendar Mode */}
+                                {viewMode === 'calendar' && getMergedSessionsForDay(day).map((block, idx) => {
+                                    const top = (block.startMins / 1440) * 100;
+                                    const height = (block.durationMins / 1440) * 100;
+
+                                    const isNonWork = settings?.workApps?.length && !settings.workApps.some(w => w.toLowerCase() === block.title.toLowerCase());
 
                                     return (
                                         <div
-                                            key={`routine-ghost-${idx}`}
+                                            key={`merged-${idx}`}
                                             className={cn(
-                                                "absolute left-[4px] right-[4px] rounded-sm border-2 border-dashed px-2 flex flex-col justify-center overflow-hidden opacity-30 pointer-events-none z-0",
-                                                !session.color && "bg-muted border-foreground/20 text-foreground",
-                                                session.color === 'blue' && "bg-blue-500/20 border-blue-500/50 text-blue-700 dark:text-blue-300",
-                                                session.color === 'green' && "bg-green-500/20 border-green-500/50 text-green-700 dark:text-green-300",
-                                                session.color === 'orange' && "bg-orange-500/20 border-orange-500/50 text-orange-700 dark:text-orange-300",
-                                                session.color === 'purple' && "bg-purple-500/20 border-purple-500/50 text-purple-700 dark:text-purple-300",
+                                                "absolute left-[2px] right-[2px] rounded-sm text-[10px] px-2 flex flex-col justify-center overflow-hidden hover:z-40 hover:opacity-100 hover:shadow-lg transition-all cursor-default group/session pointer-events-none",
+                                                isNonWork
+                                                    ? (settings?.calendarSettings?.nonWorkColor
+                                                        ? `bg-[${settings.calendarSettings.nonWorkColor}] text-foreground`
+                                                        : "bg-slate-200/50 dark:bg-slate-800/50 text-muted-foreground border border-slate-300 dark:border-slate-700")
+                                                    : "bg-primary/80 text-primary-foreground"
                                             )}
-                                            style={{ top: `${top}% `, height: `${height}% ` }}
+                                            style={{ top: `${top}%`, height: `${height}%` }}
                                         >
-                                            <div className="font-semibold truncate text-[9px] leading-tight">{session.title}</div>
+                                            <div className="font-semibold truncate group-hover/session:whitespace-normal leading-tight flex items-center gap-1">
+                                                {block.priority === 'high' && <Flag className="w-3 h-3 text-red-500 fill-red-500 flex-shrink-0" />}
+                                                {block.priority === 'medium' && <Flag className="w-3 h-3 text-orange-500 fill-orange-500 flex-shrink-0" />}
+                                                {block.priority === 'low' && <Flag className="w-3 h-3 text-blue-500 fill-blue-500 flex-shrink-0" />}
+                                                <span className="truncate">{block.title}</span>
+                                            </div>
+                                            <div className="truncate opacity-75 text-[9px] mt-0.5 font-mono">
+                                                {Math.floor(block.durationMins / 60)}h {block.durationMins % 60}m
+                                            </div>
                                         </div>
                                     );
                                 })}
 
-                            {/* Render Work Sessions (Merged) - Only in Calendar Mode */}
-                            {viewMode === 'calendar' && getMergedSessionsForDay(day).map((block, idx) => {
-                                const top = (block.startMins / 1440) * 100;
-                                const height = (block.durationMins / 1440) * 100;
-
-                                return (
+                                {/* Drag Ghost */}
+                                {dragState && dragState.isDragging && isSameDay(dragState.day, day) && (
                                     <div
-                                        key={`merged-${idx}`}
-                                        className="absolute left-[2px] right-[2px] rounded-sm bg-primary/80 text-primary-foreground text-[10px] px-2 flex flex-col justify-center overflow-hidden hover:z-40 hover:opacity-100 hover:shadow-lg transition-all cursor-default group/session pointer-events-none"
-                                        style={{ top: `${top}%`, height: `${height}%` }}
+                                        className="absolute left-[4px] right-[4px] rounded-md bg-blue-500 text-white z-50 pointer-events-none flex flex-col px-2 py-1 shadow-lg opacity-90"
+                                        style={{
+                                            top: `${((new Date(dragState.currentStart).getHours() * 60 + new Date(dragState.currentStart).getMinutes()) / 1440) * 100}%`,
+                                            height: `${(dragState.currentDuration / 60 / 1440) * 100}%`
+                                        }}
                                     >
-                                        <div className="font-semibold truncate group-hover/session:whitespace-normal leading-tight">{block.title}</div>
-                                        <div className="truncate opacity-75 text-[9px] mt-0.5 font-mono">
-                                            {Math.floor(block.durationMins / 60)}h {block.durationMins % 60}m
+                                        <div className="text-xs font-medium">
+                                            {format(new Date(dragState.currentStart), 'a h:mm', { locale: ko })} - {format(addMinutes(new Date(dragState.currentStart), dragState.currentDuration / 60), 'a h:mm', { locale: ko })}
                                         </div>
                                     </div>
-                                );
-                            })}
+                                )}
+                                {/* Render Planned Sessions (or Routine Sessions in Routine Mode) */}
+                                {(() => {
+                                    // Group and Layout Logic
+                                    const daySessions = effectivePlanned
+                                        .filter(s => isSameDay(new Date(s.start), day))
+                                        .filter(s => !dragState?.isDragging || s.id !== dragState.session?.id);
 
-                            {/* Drag Ghost */}
-                            {dragState && dragState.isDragging && isSameDay(dragState.day, day) && (
-                                <div
-                                    className="absolute left-[4px] right-[4px] rounded-sm bg-primary/30 border border-primary z-50 pointer-events-none backdrop-blur-sm"
-                                    style={{
-                                        top: `${((new Date(dragState.currentStart).getHours() * 60 + new Date(dragState.currentStart).getMinutes()) / 1440) * 100}% `,
-                                        height: `${(dragState.currentDuration / 60 / 1440) * 100}% `
-                                    }}
-                                >
-                                    <div className="text-[10px] p-1 font-semibold text-primary-foreground">{dragState.session?.title}</div>
-                                </div>
-                            )}
-                            {/* Render Planned Sessions (or Routine Sessions in Routine Mode) */}
-                            {effectivePlanned
-                                .filter(s => isSameDay(new Date(s.start), day))
-                                .filter(s => !dragState?.isDragging || s.id !== dragState.session?.id) // Hide original when dragging
-                                .map((session) => {
-                                    const start = new Date(session.start);
-                                    const startMins = start.getHours() * 60 + start.getMinutes();
-                                    const top = (startMins / 1440) * 100;
-                                    const height = (session.duration / 60 / 1440) * 100;
+                                    // Use object reference for layout map to potential ID collisions
+                                    const layoutMap = new Map<any, { left: number, width: number }>();
 
-                                    return (
-                                        <ContextMenu key={`planned - ${session.id} `}>
-                                            <ContextMenuTrigger>
-                                                <div
-                                                    className={cn(
-                                                        "absolute left-[4px] right-[4px] rounded-sm text-[10px] px-2 flex flex-col justify-center overflow-hidden transition-all cursor-pointer z-10 backdrop-blur-[1px] group/plan select-none border",
-                                                        session.isCompleted ? "opacity-60 bg-muted/40 border-muted" : "",
-                                                        // Color variants
-                                                        !session.isCompleted && (!session.color || session.color === 'blue') && "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 hover:border-blue-500/40",
-                                                        !session.isCompleted && session.color === 'green' && "bg-green-500/10 border-green-500/20 text-green-700 dark:text-green-300 hover:bg-green-500/20 hover:border-green-500/40",
-                                                        !session.isCompleted && session.color === 'orange' && "bg-orange-500/10 border-orange-500/20 text-orange-700 dark:text-orange-300 hover:bg-orange-500/20 hover:border-orange-500/40",
-                                                        !session.isCompleted && session.color === 'purple' && "bg-purple-500/10 border-purple-500/20 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 hover:border-purple-500/40",
-                                                    )}
-                                                    style={{ top: `${top}% `, height: `${height}% ` }}
-                                                    onMouseDown={(e) => startDrag(e, 'move', session)}
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        // Only open if not dragging (simple check handled by logic flow usually, but explicit check helps)
-                                                        setSelectedPlan(session);
-                                                        setIsEditorOpen(true);
-                                                    }}
-                                                >
-                                                    <div className="font-semibold truncate text-foreground group-hover/plan:whitespace-normal leading-tight select-none">{session.title}</div>
-                                                    <div className="truncate opacity-70 text-foreground/70 text-[9px] mt-0.5 select-none">{format(start, 'HH:mm')} · {Math.round(session.duration / 60)}m</div>
+                                    if (daySessions.length > 0) {
+                                        // 1. Sort by start time, then duration desc
+                                        const sorted = [...daySessions].sort((a, b) => {
+                                            const startA = new Date(a.start).getTime();
+                                            const startB = new Date(b.start).getTime();
+                                            if (startA !== startB) return startA - startB;
+                                            return b.duration - a.duration;
+                                        });
 
-                                                    {/* Resize Handle */}
+                                        const processed = new Set<any>();
+
+                                        sorted.forEach(s => {
+                                            if (processed.has(s)) return;
+
+                                            // Find connected component (transitive closure)
+                                            const group: any[] = [s];
+                                            const queue = [s];
+                                            processed.add(s);
+
+                                            let qIdx = 0;
+                                            while (qIdx < queue.length) {
+                                                const current = queue[qIdx++];
+                                                const curStart = new Date(current.start).getTime();
+                                                const curEnd = curStart + (current.duration * 1000);
+
+                                                // Check all sorted items for any overlap with ANY group member
+                                                for (const other of sorted) {
+                                                    if (processed.has(other)) continue;
+
+                                                    const otherStart = new Date(other.start).getTime();
+                                                    const otherEnd = otherStart + (other.duration * 1000);
+
+                                                    // Strict overlap check
+                                                    if (curStart < otherEnd && curEnd > otherStart) {
+                                                        group.push(other);
+                                                        queue.push(other);
+                                                        processed.add(other);
+                                                    }
+                                                }
+                                            }
+
+                                            // Layout the group
+                                            // Simple greedy column assignment
+                                            const groupCols: any[][] = [];
+                                            group.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+
+                                            group.forEach(gs => {
+                                                let placedCol = -1;
+                                                for (let i = 0; i < groupCols.length; i++) {
+                                                    const last = groupCols[i][groupCols[i].length - 1];
+                                                    const lastEnd = new Date(last.start).getTime() + (last.duration * 1000);
+                                                    if (new Date(gs.start).getTime() >= lastEnd) {
+                                                        groupCols[i].push(gs);
+                                                        placedCol = i;
+                                                        break;
+                                                    }
+                                                }
+                                                if (placedCol === -1) {
+                                                    groupCols.push([gs]);
+                                                    placedCol = groupCols.length - 1;
+                                                }
+                                            });
+
+                                            const width = 100 / groupCols.length;
+                                            groupCols.forEach((col, colIdx) => {
+                                                col.forEach(item => {
+                                                    layoutMap.set(item, {
+                                                        left: colIdx * width,
+                                                        width: width
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    }
+
+
+
+                                    return daySessions.map((session) => {
+                                        const start = new Date(session.start);
+                                        const startMins = start.getHours() * 60 + start.getMinutes();
+                                        const top = (startMins / 1440) * 100;
+                                        const heightStr = `${(session.duration / 60 / 1440) * 100}%`;
+
+                                        const layout = layoutMap.get(session) || { left: 0, width: 100 };
+
+                                        return (
+                                            <ContextMenu key={`planned - ${session.id} `}>
+                                                <ContextMenuTrigger>
                                                     <div
-                                                        className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-primary/40 transition-colors bg-transparent"
-                                                        onMouseDown={(e) => startDrag(e, 'resize', session)}
-                                                    />
-                                                </div>
-                                            </ContextMenuTrigger>
-                                            <ContextMenuContent className="w-40">
-                                                <ContextMenuItem
-                                                    onSelect={() => {
-                                                        setSelectedPlan(session);
-                                                        setIsEditorOpen(true);
-                                                    }}
-                                                >
-                                                    <Pencil className="mr-2 h-3.5 w-3.5" />
-                                                    Edit
-                                                </ContextMenuItem>
-                                                <ContextMenuSeparator />
-                                                <ContextMenuItem
-                                                    className="text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20"
-                                                    onSelect={() => handleDeletePlan(session.id!)}
-                                                >
-                                                    <Trash className="mr-2 h-3.5 w-3.5" />
-                                                    Delete
-                                                </ContextMenuItem>
-                                            </ContextMenuContent>
-                                        </ContextMenu>
-                                    );
-                                })}
-                        </div>
-                    ))}
+                                                        data-session-id={session.id}
+                                                        className={cn(
+                                                            "absolute rounded-sm text-[10px] px-2 flex flex-col justify-center overflow-hidden transition-all cursor-pointer z-10 backdrop-blur-[1px] group/plan select-none border",
+                                                            session.isCompleted ? "opacity-60 bg-muted/40 border-muted" : "",
+                                                            // Selection Highlight
+                                                            selectedSessionIds.has(session.id!) && "ring-2 ring-primary ring-offset-1 z-20",
+                                                            // Active Editor Highlight
+                                                            selectedPlan?.id === session.id && "ring-2 ring-primary z-30 shadow-lg",
+                                                            // Color variants
+                                                            !session.isCompleted && (!session.color || session.color === 'blue') && "bg-blue-500/10 border-blue-500/20 text-blue-700 dark:text-blue-300 hover:bg-blue-500/20 hover:border-blue-500/40",
+                                                            !session.isCompleted && session.color === 'green' && "bg-green-500/10 border-green-500/20 text-green-700 dark:text-green-300 hover:bg-green-500/20 hover:border-green-500/40",
+                                                            !session.isCompleted && session.color === 'orange' && "bg-orange-500/10 border-orange-500/20 text-orange-700 dark:text-orange-300 hover:bg-orange-500/20 hover:border-orange-500/40",
+                                                            !session.isCompleted && session.color === 'purple' && "bg-purple-500/10 border-purple-500/20 text-purple-700 dark:text-purple-300 hover:bg-purple-500/20 hover:border-purple-500/40",
+                                                        )}
+                                                        style={{
+                                                            top: `${top}%`,
+                                                            height: heightStr,
+                                                            left: `${layout.left}%`,
+                                                            width: `${layout.width}%`,
+                                                            zIndex: 10 + Math.round(layout.left)
+                                                        }}
+                                                        onMouseDown={(e) => startDrag(e, 'move', session)}
+                                                    // onClick handled by mouseup logic in startDrag to distinguish move vs click
+                                                    >
+                                                        <div className="font-semibold truncate text-foreground group-hover/plan:whitespace-normal leading-tight select-none flex items-center gap-1">
+                                                            {session.priority === 'high' && <Flag className="w-3 h-3 text-red-500 fill-red-500 flex-shrink-0" />}
+                                                            {session.priority === 'medium' && <Flag className="w-3 h-3 text-orange-500 fill-orange-500 flex-shrink-0" />}
+                                                            {session.priority === 'low' && <Flag className="w-3 h-3 text-blue-500 fill-blue-500 flex-shrink-0" />}
+                                                            <span className="truncate">{session.title}</span>
+                                                        </div>
+                                                        {/* Show time based on height/space available - simple check: if height < 3%, hide detail? */}
+                                                        <div className="truncate opacity-70 text-foreground/70 text-[9px] mt-0.5 select-none font-mono">
+                                                            {format(start, 'HH:mm')} - {format(addMinutes(start, session.duration / 60), 'HH:mm')}
+                                                            {Math.round(layout.width) > 30 && (
+                                                                <span className="ml-1 opacity-70">
+                                                                    ({Math.floor(session.duration / 3600) > 0 ? `${Math.floor(session.duration / 3600)}h ` : ''}{Math.round((session.duration % 3600) / 60)}m)
+                                                                </span>
+                                                            )}
+                                                        </div>
 
+                                                        {/* Resize Handle */}
+                                                        <div
+                                                            className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize hover:bg-primary/40 transition-colors bg-transparent"
+                                                            onMouseDown={(e) => startDrag(e, 'resize', session)}
+                                                        />
+                                                    </div>
+                                                </ContextMenuTrigger>
+                                                <ContextMenuContent className="w-40">
+                                                    <ContextMenuItem
+                                                        onSelect={() => handleEditPlan(session)}
+                                                    >
+                                                        <Pencil className="mr-2 h-3.5 w-3.5" />
+                                                        Edit
+                                                    </ContextMenuItem>
+                                                    <ContextMenuSeparator />
+                                                    <ContextMenuItem
+                                                        className="text-red-500 focus:text-red-500 focus:bg-red-50 dark:focus:bg-red-950/20"
+                                                        onSelect={() => handleDeletePlan(session.id!)}
+                                                    >
+                                                        <Trash className="mr-2 h-3.5 w-3.5" />
+                                                        Delete
+                                                    </ContextMenuItem>
+                                                </ContextMenuContent>
+                                            </ContextMenu>
+                                        );
+                                    });
+                                })()}
+                            </div>
+                        ))}
+
+                    </div>
                 </div>
-            </div>
 
-            <PlanEditor
-                isOpen={isEditorOpen}
-                onClose={() => setIsEditorOpen(false)}
-                session={selectedPlan}
-                onSave={handleSavePlan}
-                onDelete={handleDeletePlan}
-            />
+                {/* Floating Editor Card */}
+                {isEditorOpen && popoverPosition && (
+                    <div
+                        className="fixed z-50 animate-in fade-in zoom-in-95 duration-200"
+                        style={{
+                            top: Math.min(popoverPosition.y, window.innerHeight - 400),
+                            left: Math.min(popoverPosition.x, window.innerWidth - 340),
+                        }}
+                    >
+                        <PlanEditor
+                            isOpen={isEditorOpen}
+                            onClose={() => setIsEditorOpen(false)}
+                            session={selectedPlan}
+                            onSave={handleSavePlan}
+                            onDelete={handleDeletePlan}
+                            mode="card"
+                            tags={settings?.projectTags || []}
+                        />
+                    </div>
+                )}
+
+                {/* Legacy/Fallback Dialog (if no position) */}
+                {isEditorOpen && !popoverPosition && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                        <div className="bg-background rounded-lg shadow-lg">
+                            <PlanEditor
+                                isOpen={isEditorOpen}
+                                onClose={() => setIsEditorOpen(false)}
+                                session={selectedPlan}
+                                onSave={handleSavePlan}
+                                onDelete={handleDeletePlan}
+                                mode="dialog"
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* Selection Box Overlay - Portaled to Body to avoid transform context issues */}
+                {selectionBox && createPortal(
+                    <div
+                        className="fixed border bg-blue-500/20 border-blue-500 z-[9999] pointer-events-none"
+                        style={{
+                            left: Math.min(selectionBox.startX, selectionBox.currentX),
+                            top: Math.min(selectionBox.startY, selectionBox.currentY),
+                            width: Math.abs(selectionBox.currentX - selectionBox.startX),
+                            height: Math.abs(selectionBox.currentY - selectionBox.startY)
+                        }}
+                    />,
+                    document.body
+                )}
+
+                {/* Bulk Action Toolbar */}
+                {selectedSessionIds.size > 0 && (
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-popover text-popover-foreground border shadow-lg rounded-xl p-1 flex items-center gap-1 z-50 animate-in slide-in-from-bottom-2 fade-in duration-200">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-accent rounded-lg" title="Change Date">
+                            <Calendar className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-accent rounded-lg" title="Reschedule">
+                            <Clock className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-accent rounded-lg" title="Move">
+                            <ArrowRight className="w-4 h-4" />
+                        </Button>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" size="icon" className={cn("h-8 w-8 hover:bg-accent rounded-lg",
+                                    (() => {
+                                        const selectedSessions = effectivePlanned.filter(s => selectedSessionIds.has(s.id));
+                                        const commonPriority = selectedSessions.length > 0 && selectedSessions.every(s => s.priority === selectedSessions[0].priority)
+                                            ? selectedSessions[0].priority
+                                            : undefined;
+                                        return commonPriority ? "text-foreground" : "text-muted-foreground";
+                                    })()
+                                )} title="Flag">
+                                    {(() => {
+                                        const selectedSessions = effectivePlanned.filter(s => selectedSessionIds.has(s.id));
+                                        const commonPriority = selectedSessions.length > 0 && selectedSessions.every(s => s.priority === selectedSessions[0].priority)
+                                            ? selectedSessions[0].priority
+                                            : undefined;
+
+                                        return (
+                                            <Flag className={cn("w-4 h-4",
+                                                commonPriority === 'high' && "fill-red-500 text-red-500",
+                                                commonPriority === 'medium' && "fill-orange-500 text-orange-500",
+                                                commonPriority === 'low' && "fill-blue-500 text-blue-500"
+                                            )} />
+                                        );
+                                    })()}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-32 p-1" side="top">
+                                <div className="flex flex-col gap-1">
+                                    <Button variant="ghost" size="sm" className="justify-start h-7 px-2 text-xs" onClick={() => handleBulkPriority('high')}>
+                                        <Flag className="w-3 h-3 mr-2 text-red-500 fill-red-500" />
+                                        높음
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="justify-start h-7 px-2 text-xs" onClick={() => handleBulkPriority('medium')}>
+                                        <Flag className="w-3 h-3 mr-2 text-orange-500 fill-orange-500" />
+                                        중간
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="justify-start h-7 px-2 text-xs" onClick={() => handleBulkPriority('low')}>
+                                        <Flag className="w-3 h-3 mr-2 text-blue-500 fill-blue-500" />
+                                        낮음
+                                    </Button>
+                                    <Button variant="ghost" size="sm" className="justify-start h-7 px-2 text-xs" onClick={() => handleBulkPriority(undefined)}>
+                                        <Flag className="w-3 h-3 mr-2 opacity-50" />
+                                        없음
+                                    </Button>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-accent rounded-lg" title="Tag">
+                            <Tag className="w-4 h-4" />
+                        </Button>
+                        <div className="w-[1px] h-4 bg-border mx-1" />
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-lg" onClick={handleBulkDelete} title="Delete">
+                            <Trash className="w-4 h-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-accent rounded-lg" onClick={() => setSelectedSessionIds(new Set())} title="Cancel Selection">
+                            <X className="w-4 h-4" />
+                        </Button>
+                    </div>
+                )}
+            </div>
         </div>
+
+
     );
 }

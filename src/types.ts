@@ -85,6 +85,12 @@ export interface AppSettings {
     timelineGridMode?: 'continuous' | '15min'; // default: '15min'
     reminders?: string[]; // User defined reminders
     weeklyRoutine?: RoutineSession[]; // Recurring weekly schedule
+    calendarSettings?: {
+        showNonWorkApps: boolean;
+        showNighttime: boolean;
+        nonWorkColor?: string;
+        nighttimeColor?: string;
+    };
 }
 
 export interface Project {
@@ -120,6 +126,8 @@ export interface PlannedSession {
     description?: string;
     isCompleted?: boolean;
     color?: string;
+    priority?: 'high' | 'medium' | 'low';
+    tag?: string;
 }
 
 export interface Todo {
@@ -157,6 +165,7 @@ export interface RoutineSession {
     title: string;
     description?: string;
     color?: string;
+    priority?: 'high' | 'medium' | 'low';
 }
 
 export interface MonitorInfo {

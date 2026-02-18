@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Disable transitions */
+.no-transitions * {
+  transition: none !important;
+}
+
 /* ... existing styles ... */
 
 @layer base {
