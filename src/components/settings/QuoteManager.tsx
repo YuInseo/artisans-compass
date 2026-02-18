@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, Plus, Quote } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export function QuoteManager() {
+    const { t } = useTranslation();
     const { settings, saveSettings } = useDataStore();
     const [newQuote, setNewQuote] = useState('');
 
@@ -28,14 +30,14 @@ export function QuoteManager() {
         <div className="space-y-4">
             <div className="flex gap-2">
                 <Input
-                    placeholder="Enter a new quote..."
+                    placeholder={t('settings.appearance.customQuotes.placeholder') || "Enter a new quote..."}
                     value={newQuote}
                     onChange={(e) => setNewQuote(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddQuote()}
                     className="flex-1"
                 />
                 <Button onClick={handleAddQuote} disabled={!newQuote.trim()}>
-                    <Plus className="w-4 h-4 mr-2" /> Add
+                    <Plus className="w-4 h-4 mr-2" /> {t('settings.appearance.customQuotes.add') || "Add"}
                 </Button>
             </div>
 
@@ -44,7 +46,7 @@ export function QuoteManager() {
                     {quotes.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-muted-foreground opacity-50 space-y-2 min-h-[100px]">
                             <Quote className="w-8 h-8" />
-                            <p>No custom quotes added yet.</p>
+                            <p>{t('settings.appearance.customQuotes.empty') || "No custom quotes added yet."}</p>
                         </div>
                     ) : (
                         <div className="space-y-2">
@@ -66,7 +68,7 @@ export function QuoteManager() {
                 </ScrollArea>
             </div>
             <p className="text-xs text-muted-foreground">
-                These quotes will appear randomly in the Inspiration Modal.
+                {t('settings.appearance.customQuotes.description') || "These quotes will appear randomly in the Inspiration Modal."}
             </p>
         </div>
     );

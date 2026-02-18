@@ -29,7 +29,20 @@
             "myThemes": "My Themes",
             "cssEditor": "CSS Editor",
             "cssEditorDesc": "* Click \"Load Default List\" to see all editable color variables.",
-            "customQuotes": "Custom Quotes",
+            "customQuotes": {
+                "title": "Custom Quotes",
+                "placeholder": "Enter a new quote...",
+                "add": "Add",
+                "empty": "No custom quotes added yet.",
+                "description": "These quotes will appear randomly in the Inspiration Modal."
+            },
+            "reminders": {
+                "title": "Reminders",
+                "placeholder": "Enter a new reminder...",
+                "add": "Add",
+                "empty": "No reminders added yet.",
+                "description": "These reminders will appear randomly in the Reminder Modal."
+            },
             "customQuotesDesc": "Add your own quotes to the daily rotation.",
             "addQuote": "Add Quote",
             "enterQuote": "Enter a quote...",
@@ -120,10 +133,21 @@
         "checkboxVisibility": "Checkbox Visibility",
         "indentationLines": "Indentation Lines",
         "projectTypes": "Project Types & Colors",
+        "projectTypeDefault": "(Default)",
+        "projectTypeNewPlaceholder": "New Type Name...",
+        "projectTypeDeleteTitle": "Delete Project Type",
+        "projectTypeDeleteDesc": "Are you sure you want to delete the project type \"{{tag}}\"?",
+        "timelineSettings": "Timeline Settings",
+        "timelineConfigDesc": "Configure display options.",
+        "snapToGrid": "Snap to 15m Grid",
+        "snapToGridDesc": "Round times to nearest 15m",
+        "showWorkOnly": "Show Work Apps Only",
+        "showWorkOnlyDesc": "When enabled, only projects with the 'Work' tag will be shown.",
+        "visibleRows": "Visible Project Rows",
+        "visibleRowsDesc": "Adjust the minimum height of the timeline view to fit this many rows.",
         "weeklyResetDesc": "Day when your weekly goals reset",
         "projectTagDesc": "The top-most project tag will be the default for new projects. Drag to reorder.",
         "allowCustomColors": "Allow custom colors per project",
-        "visibleRows": "Visible Project Rows",
         "rowsShown": "Rows shown before scrolling",
         "defaultDuration": "Default Project Duration",
         "daysForNew": "Days (for new projects)",
@@ -168,7 +192,10 @@
             "noAppsInList": "No apps in this list",
             "selectAppToAdd": "Select an app...",
             "allAppsAdded": "All apps are already added",
-            "gridMode": "15-Min Grid Mode"
+            "gridMode": "15-Min Grid Mode",
+            "gridModeDesc": "Snap blocks to 15m grid",
+            "workAppsOnly": "Work Apps Only",
+            "workAppsOnlyDesc": "Hide non-work apps"
         },
         "softwareUpdate": {
             "title": "Software Update",
@@ -251,6 +278,7 @@
         "confirm": "Confirm",
         "add": "Add",
         "search": "Search...",
+        "test": "Test",
         "done": "Done"
     },
     "sidebar": {

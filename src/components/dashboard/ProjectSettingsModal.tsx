@@ -21,11 +21,6 @@ const DEFAULT_COLORS = [
     "#22c55e", // Green (Sub)
     "#eab308", // Yellow (Practice)
     "#ef4444", // Red
-    "#8b5cf6", // Violet
-    "#ec4899", // Pink
-    "#f97316", // Orange
-    "#06b6d4", // Cyan
-    "#64748b", // Slate
 ];
 
 export function ProjectSettingsModal({ project, isOpen, onClose, onSave, onDelete, onManageTypes }: ProjectSettingsModalProps) {

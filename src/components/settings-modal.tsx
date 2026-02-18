@@ -697,14 +697,14 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
             <SidebarButton
                 active={activeTab === 'quotes'}
                 onClick={() => { setActiveTab('quotes'); setActiveSection(null); }}
-                label="Quotes"
+                label={t('settings.appearance.customQuotes.title')}
                 icon={<div className="w-4 h-4 mr-2 flex items-center justify-center font-serif text-xs font-bold">“</div>}
             />
 
             <SidebarButton
                 active={activeTab === 'reminders'}
                 onClick={() => { setActiveTab('reminders'); setActiveSection(null); }}
-                label="Reminders"
+                label={t('settings.appearance.reminders.title')}
                 icon={<div className="w-4 h-4 mr-2 flex items-center justify-center font-bold text-xs">!</div>}
             />
 
@@ -810,7 +810,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         return (
             <div className="flex-1 flex flex-col h-full overflow-hidden bg-background relative select-none">
                 {/* Close Button X (Floating Top Right) */}
-                <div className="absolute top-9 right-9 z-50 flex flex-col items-center gap-1 group cursor-pointer" onClick={() => onOpenChange?.(false)}>
+                <div className="absolute top-4 right-6 z-50 flex flex-col items-center gap-1 group cursor-pointer" onClick={() => onOpenChange?.(false)}>
                     <div className="w-9 h-9 border-2 border-muted-foreground/40 rounded-full flex items-center justify-center transition-colors group-hover:bg-muted-foreground/10 group-hover:border-foreground/60">
                         <X className="w-5 h-5 text-muted-foreground group-hover:text-foreground transition-colors" />
                     </div>
@@ -819,7 +819,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
 
                 {/* UpdateLog Tab - Separate Layout with Independent Scrolling */}
                 {activeTab === 'updatelog' && (
-                    <div className="flex-1 flex flex-col h-full overflow-hidden px-10 py-[60px]">
+                    <div className="flex-1 flex flex-col h-full overflow-hidden px-10 pt-6 pb-[60px]">
                         <div className="space-y-6 animate-in fade-in duration-300 h-full flex flex-col">
                             <div>
                                 <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.updateLog') || "패치 노트"}</h3>
@@ -868,678 +868,689 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                             </div>
                         </div>
                     </div>
-                )}
+                )
+                }
 
                 {/* Other Tabs - Normal ScrollArea */}
-                {activeTab !== 'updatelog' && (
-                    <ScrollArea className="h-full px-10 py-[60px]" onScroll={handleScroll}>
-                        <div className="max-w-[700px] pb-20">
-                            {/* Tab Content */}
-                            {activeTab === 'general' && renderGeneralTab()}
+                {
+                    activeTab !== 'updatelog' && (
+                        <ScrollArea className="h-full px-10 pt-6 pb-[60px]" onScroll={handleScroll}>
+                            <div className="max-w-[700px] pb-20">
+                                {/* Tab Content */}
+                                {activeTab === 'general' && renderGeneralTab()}
 
-                            {activeTab === 'appearance' && (
-                                <div className="space-y-8 animate-in fade-in duration-300">
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.appearance.title')}</h3>
-                                        <Separator className="bg-border/60" />
-                                    </div>
-
-                                    {/* Main Window Style Section */}
-                                    <div className="space-y-4">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <div className="p-1.5 rounded-md bg-primary/10 text-primary">
-                                                <LayoutTemplate className="w-4 h-4" />
-                                            </div>
-                                            <h5 className="text-sm font-bold text-foreground">{t('settings.appearance.main') || "Main Window"}</h5>
+                                {activeTab === 'appearance' && (
+                                    <>
+                                        <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-1 mb-4">
+                                            <h3 className="text-xl font-bold text-foreground">{t('settings.appearance.title')}</h3>
+                                            <Separator className="bg-border/60 mt-2" />
                                         </div>
+                                        <div className="space-y-8 animate-in fade-in duration-300">
 
-                                        <div className="pl-1 border-l-2 border-border/40 ml-2 space-y-6">
-                                            {/* Main Theme Cards */}
-                                            <div className="space-y-3 pl-4">
-                                                <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.theme')}</h6>
-                                                <div className="grid grid-cols-3 gap-3">
-                                                    {(['light', 'dark', 'system'] as const).map((tKey) => (
-                                                        <ThemeCard
-                                                            key={tKey}
-                                                            active={(settings.mainTheme || 'system') === tKey}
-                                                            onClick={() => {
-                                                                setTheme(tKey);
-                                                                onSaveSettings({ ...settings, mainTheme: tKey });
-                                                            }}
-                                                            icon={
-                                                                tKey === 'light' ? <Sun className="w-5 h-5" /> :
-                                                                    tKey === 'dark' ? <Moon className="w-5 h-5" /> :
-                                                                        <Monitor className="w-5 h-5" />
-                                                            }
-                                                            label={t(`settings.${tKey}`)}
-                                                        />
-                                                    ))}
+                                            {/* Main Window Style Section */}
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2 mb-2">
+                                                    <div className="p-1.5 rounded-md bg-primary/10 text-primary">
+                                                        <LayoutTemplate className="w-4 h-4" />
+                                                    </div>
+                                                    <h5 className="text-sm font-bold text-foreground">{t('settings.appearance.main') || "Main Window"}</h5>
                                                 </div>
-                                            </div>
 
-                                            {/* Main Color Preset */}
-                                            <div className="space-y-3 pl-4">
-                                                <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <Select
-                                                        value={settings.themePreset || 'standard'}
-                                                        onValueChange={(val) => onSaveSettings({ ...settings, themePreset: val as any })}
-                                                    >
-                                                        <SelectTrigger className="w-full">
-                                                            <SelectValue placeholder="Select Color Theme" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {Object.entries(themes).map(([key, config]) => (
-                                                                <SelectItem key={key} value={key}>
-                                                                    {config.name}
-                                                                </SelectItem>
+                                                <div className="pl-1 border-l-2 border-border/40 ml-2 space-y-6">
+                                                    {/* Main Theme Cards */}
+                                                    <div className="space-y-3 pl-4">
+                                                        <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.theme')}</h6>
+                                                        <div className="grid grid-cols-3 gap-3">
+                                                            {(['light', 'dark', 'system'] as const).map((tKey) => (
+                                                                <ThemeCard
+                                                                    key={tKey}
+                                                                    active={(settings.mainTheme || 'system') === tKey}
+                                                                    onClick={() => {
+                                                                        setTheme(tKey);
+                                                                        onSaveSettings({ ...settings!, mainTheme: tKey });
+                                                                    }}
+                                                                    icon={
+                                                                        tKey === 'light' ? <Sun className="w-5 h-5" /> :
+                                                                            tKey === 'dark' ? <Moon className="w-5 h-5" /> :
+                                                                                <Monitor className="w-5 h-5" />
+                                                                    }
+                                                                    label={t(`settings.${tKey}`)}
+                                                                />
                                                             ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <div className="flex items-center text-xs text-muted-foreground">
-                                                        {themes[settings.themePreset || 'standard']?.description}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Main Color Preset */}
+                                                    <div className="space-y-3 pl-4">
+                                                        <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <Select
+                                                                value={settings!.themePreset || 'standard'}
+                                                                onValueChange={(val) => onSaveSettings({ ...settings!, themePreset: val as any })}
+                                                            >
+                                                                <SelectTrigger className="w-full">
+                                                                    <SelectValue placeholder="Select Color Theme" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {Object.entries(themes).map(([key, config]) => (
+                                                                        <SelectItem key={key} value={key}>
+                                                                            {config.name}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <div className="flex items-center text-xs text-muted-foreground">
+                                                                {themes[settings!.themePreset || 'standard']?.description}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        </div>
-                                    </div>
 
-                                    <div className="my-6"><Separator /></div>
+                                            <div className="my-6"><Separator /></div>
 
-                                    {/* Widget Style Section */}
-                                    <div className="space-y-4">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <div className="p-1.5 rounded-md bg-secondary text-secondary-foreground">
-                                                    <Activity className="w-4 h-4" />
-                                                </div>
-                                                <div className="space-y-0.5">
-                                                    <h5 className="text-sm font-bold text-foreground">{t('settings.appearance.widget') || "Widget"}</h5>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <Label htmlFor="separate-widget-theme" className="text-xs text-muted-foreground font-normal">
-                                                    {t('settings.appearance.separateWidgetTheme') || "Use separate style"}
-                                                </Label>
-                                                <Switch
-                                                    id="separate-widget-theme"
-                                                    checked={settings.separateWidgetTheme || false}
-                                                    onCheckedChange={(checked) => {
-                                                        const updates: any = { separateWidgetTheme: checked };
-                                                        if (checked) {
-                                                            // Initialize widget settings if empty
-                                                            if (!settings.widgetTheme) updates.widgetTheme = settings.mainTheme || 'dark';
-                                                            if (!settings.widgetThemePreset) updates.widgetThemePreset = settings.themePreset || 'standard';
-                                                        }
-                                                        onSaveSettings({ ...settings, ...updates });
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        {settings.separateWidgetTheme && (
-                                            <div className="pl-1 border-l-2 border-border/40 ml-2 space-y-6 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                {/* Widget Theme Cards */}
-                                                <div className="space-y-3 pl-4">
-                                                    <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.theme')}</h6>
-                                                    <div className="grid grid-cols-3 gap-3">
-                                                        {(['light', 'dark', 'system'] as const).map((tKey) => (
-                                                            <ThemeCard
-                                                                key={tKey}
-                                                                active={(settings.widgetTheme || 'dark') === tKey}
-                                                                onClick={() => onSaveSettings({ ...settings, widgetTheme: tKey })}
-                                                                icon={
-                                                                    tKey === 'light' ? <Sun className="w-5 h-5" /> :
-                                                                        tKey === 'dark' ? <Moon className="w-5 h-5" /> :
-                                                                            <Monitor className="w-5 h-5" />
+                                            {/* Widget Style Section */}
+                                            <div className="space-y-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="p-1.5 rounded-md bg-secondary text-secondary-foreground">
+                                                            <Activity className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="space-y-0.5">
+                                                            <h5 className="text-sm font-bold text-foreground">{t('settings.appearance.widget') || "Widget"}</h5>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <Label htmlFor="separate-widget-theme" className="text-xs text-muted-foreground font-normal">
+                                                            {t('settings.appearance.separateWidgetTheme') || "Use separate style"}
+                                                        </Label>
+                                                        <Switch
+                                                            id="separate-widget-theme"
+                                                            checked={settings.separateWidgetTheme || false}
+                                                            onCheckedChange={(checked) => {
+                                                                const updates: any = { separateWidgetTheme: checked };
+                                                                if (checked) {
+                                                                    // Initialize widget settings if empty
+                                                                    if (!settings.widgetTheme) updates.widgetTheme = settings.mainTheme || 'dark';
+                                                                    if (!settings.widgetThemePreset) updates.widgetThemePreset = settings.themePreset || 'standard';
                                                                 }
-                                                                label={t(`settings.${tKey}`)}
-                                                            />
-                                                        ))}
+                                                                onSaveSettings({ ...settings!, ...updates });
+                                                            }}
+                                                        />
                                                     </div>
                                                 </div>
 
-                                                {/* Widget Color Preset */}
-                                                <div className="space-y-3 pl-4">
-                                                    <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
-                                                    <div className="grid grid-cols-2 gap-4">
+                                                {settings.separateWidgetTheme && (
+                                                    <div className="pl-1 border-l-2 border-border/40 ml-2 space-y-6 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                        {/* Widget Theme Cards */}
+                                                        <div className="space-y-3 pl-4">
+                                                            <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.theme')}</h6>
+                                                            <div className="grid grid-cols-3 gap-3">
+                                                                {(['light', 'dark', 'system'] as const).map((tKey) => (
+                                                                    <ThemeCard
+                                                                        key={tKey}
+                                                                        active={(settings!.widgetTheme || 'dark') === tKey}
+                                                                        onClick={() => onSaveSettings({ ...settings!, widgetTheme: tKey })}
+                                                                        icon={
+                                                                            tKey === 'light' ? <Sun className="w-5 h-5" /> :
+                                                                                tKey === 'dark' ? <Moon className="w-5 h-5" /> :
+                                                                                    <Monitor className="w-5 h-5" />
+                                                                        }
+                                                                        label={t(`settings.${tKey}`)}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Widget Color Preset */}
+                                                        <div className="space-y-3 pl-4">
+                                                            <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <Select
+                                                                    value={settings!.widgetThemePreset || settings!.themePreset || 'standard'}
+                                                                    onValueChange={(val) => onSaveSettings({ ...settings!, widgetThemePreset: val as any })}
+                                                                >
+                                                                    <SelectTrigger className="w-full">
+                                                                        <SelectValue placeholder="Select Widget Color Theme" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        {Object.entries(themes).map(([key, config]) => (
+                                                                            <SelectItem key={key} value={key}>
+                                                                                {config.name}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                                <div className="flex items-center text-xs text-muted-foreground">
+                                                                    {themes[settings!.widgetThemePreset || settings!.themePreset || 'standard']?.description}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+
+                                                {!settings.separateWidgetTheme && (
+                                                    <div className="pl-7 text-xs text-muted-foreground italic">
+                                                        {t('settings.appearance.widgetFollowsMain') || "Widget is currently using the Main Window style."}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <Separator className="bg-border/30" />
+
+
+
+                                            <div id="settings-widgets" className="space-y-4">
+                                                <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.widgetSettings')}</h5>
+
+                                                <div className="flex flex-col gap-3">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.appearance.widgetHeader')}</Label>
+                                                    <div className="flex items-center gap-4 bg-muted/30 p-4 rounded-lg">
                                                         <Select
-                                                            value={settings.widgetThemePreset || settings.themePreset || 'standard'}
-                                                            onValueChange={(val) => onSaveSettings({ ...settings, widgetThemePreset: val as any })}
+                                                            value={settings!.widgetDisplayMode || 'none'}
+                                                            onValueChange={(val: any) => onSaveSettings({ ...settings!, widgetDisplayMode: val })}
                                                         >
-                                                            <SelectTrigger className="w-full">
-                                                                <SelectValue placeholder="Select Widget Color Theme" />
+                                                            <SelectTrigger className="w-[180px] bg-background border-none">
+                                                                <SelectValue placeholder={t('settings.appearance.selectDisplay')} />
                                                             </SelectTrigger>
                                                             <SelectContent>
-                                                                {Object.entries(themes).map(([key, config]) => (
-                                                                    <SelectItem key={key} value={key}>
-                                                                        {config.name}
-                                                                    </SelectItem>
-                                                                ))}
+                                                                <SelectItem value="none">{t('settings.appearance.none')}</SelectItem>
+                                                                <SelectItem value="quote">{t('settings.appearance.dailyQuote')}</SelectItem>
+                                                                <SelectItem value="goals">{t('settings.appearance.focusGoals')}</SelectItem>
+                                                                <SelectItem value="timer">{t('dashboard.timer') || 'Focus Timer'}</SelectItem>
                                                             </SelectContent>
                                                         </Select>
-                                                        <div className="flex items-center text-xs text-muted-foreground">
-                                                            {themes[settings.widgetThemePreset || settings.themePreset || 'standard']?.description}
-                                                        </div>
+                                                        <span className="text-sm text-foreground">{t('settings.appearance.widgetHeaderDesc')}</span>
                                                     </div>
                                                 </div>
+
+
+
+
                                             </div>
-                                        )}
 
-                                        {!settings.separateWidgetTheme && (
-                                            <div className="pl-7 text-xs text-muted-foreground italic">
-                                                {t('settings.appearance.widgetFollowsMain') || "Widget is currently using the Main Window style."}
-                                            </div>
-                                        )}
-                                    </div>
+                                            <Separator className="bg-border/30" />
 
-                                    <Separator className="bg-border/30" />
+                                            <div id="settings-editor" className="space-y-4">
+                                                <div className="flex flex-col gap-4">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="space-y-0.5">
+                                                            <Label className="text-base font-medium">{t('settings.appearance.indentationLines')}</Label>
+                                                            <p className="text-sm text-muted-foreground">{t('settings.appearance.indentationLinesDesc')}</p>
+                                                        </div>
+                                                        <Switch
+                                                            checked={settings!.showIndentationGuides !== false}
+                                                            onCheckedChange={(checked) => onSaveSettings({ ...settings!, showIndentationGuides: checked })}
+                                                        />
+                                                    </div>
 
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="space-y-0.5">
+                                                            <Label className="text-base font-medium">{t('settings.appearance.spellCheck')}</Label>
+                                                            <p className="text-sm text-muted-foreground">{t('settings.appearance.spellCheckDesc')}</p>
+                                                        </div>
+                                                        <Switch
+                                                            checked={settings!.enableSpellCheck || false}
+                                                            onCheckedChange={(checked) => onSaveSettings({ ...settings!, enableSpellCheck: checked })}
+                                                        />
+                                                    </div>
+                                                </div>
 
-
-                                    <div id="settings-widgets" className="space-y-4">
-                                        <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.widgetSettings')}</h5>
-
-                                        <div className="flex flex-col gap-3">
-                                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.appearance.widgetHeader')}</Label>
-                                            <div className="flex items-center gap-4 bg-muted/30 p-4 rounded-lg">
-                                                <Select
-                                                    value={settings.widgetDisplayMode || 'none'}
-                                                    onValueChange={(val: any) => onSaveSettings({ ...settings, widgetDisplayMode: val })}
-                                                >
-                                                    <SelectTrigger className="w-[180px] bg-background border-none">
-                                                        <SelectValue placeholder={t('settings.appearance.selectDisplay')} />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        <SelectItem value="none">{t('settings.appearance.none')}</SelectItem>
-                                                        <SelectItem value="quote">{t('settings.appearance.dailyQuote')}</SelectItem>
-                                                        <SelectItem value="goals">{t('settings.appearance.focusGoals')}</SelectItem>
-                                                        <SelectItem value="timer">{t('dashboard.timer') || 'Focus Timer'}</SelectItem>
-                                                    </SelectContent>
-                                                </Select>
-                                                <span className="text-sm text-foreground">{t('settings.appearance.widgetHeaderDesc')}</span>
                                             </div>
                                         </div>
+                                    </>
+                                )}
 
+                                {activeTab === 'quotes' && (
+                                    <>
+                                        <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-1 mb-4">
+                                            <h3 className="text-xl font-bold text-foreground">Custom Quotes</h3>
+                                            <Separator className="bg-border/60 mt-2" />
+                                        </div>
+                                        <div className="space-y-6 animate-in fade-in duration-300">
+                                            <QuoteManager />
+                                        </div>
+                                    </>
+                                )}
 
+                                {activeTab === 'reminders' && (
+                                    <>
+                                        <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-1 mb-4">
+                                            <h3 className="text-xl font-bold text-foreground">Reminders</h3>
+                                            <Separator className="bg-border/60 mt-2" />
+                                        </div>
+                                        <div className="space-y-6 animate-in fade-in duration-300">
+                                            <ReminderManager />
+                                        </div>
+                                    </>
+                                )}
 
+                                {activeTab === 'timetable' && (
+                                    <TimetableTab
+                                        settings={settings!}
+                                        onSaveSettings={onSaveSettings}
+                                        runningApps={allApps}
+                                    />
+                                )}
 
-                                    </div>
+                                {activeTab === 'timeline' && (
+                                    <TimelineViewTab
+                                        settings={settings!}
+                                        onSaveSettings={onSaveSettings}
+                                    />
+                                )}
 
-                                    <Separator className="bg-border/30" />
+                                {activeTab === 'tracking' && (
+                                    <TrackingTab
+                                        settings={settings!}
+                                        onSaveSettings={onSaveSettings}
+                                        screenSources={screenSources}
+                                    />
+                                )}
 
-                                    <div id="settings-editor" className="space-y-4">
-                                        <div className="flex flex-col gap-4">
-                                            <div className="flex items-center justify-between">
-                                                <div className="space-y-0.5">
-                                                    <Label className="text-base font-medium">{t('settings.appearance.indentationLines')}</Label>
-                                                    <p className="text-sm text-muted-foreground">{t('settings.appearance.indentationLinesDesc')}</p>
-                                                </div>
-                                                <Switch
-                                                    checked={settings.showIndentationGuides !== false}
-                                                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showIndentationGuides: checked })}
-                                                />
-                                            </div>
-
-                                            <div className="flex items-center justify-between">
-                                                <div className="space-y-0.5">
-                                                    <Label className="text-base font-medium">{t('settings.appearance.spellCheck')}</Label>
-                                                    <p className="text-sm text-muted-foreground">{t('settings.appearance.spellCheckDesc')}</p>
-                                                </div>
-                                                <Switch
-                                                    checked={settings.enableSpellCheck || false}
-                                                    onCheckedChange={(checked) => onSaveSettings({ ...settings, enableSpellCheck: checked })}
-                                                />
-                                            </div>
+                                {activeTab === 'integrations' && (
+                                    <>
+                                        <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 py-2 mb-4">
+                                            <h3 className="text-xl font-bold text-foreground">{t('settings.backup.title')}</h3>
+                                            <Separator className="bg-border/60 mt-4" />
                                         </div>
 
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'quotes' && (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4 text-foreground">Custom Quotes</h3>
-                                        <Separator className="bg-border/60" />
-                                    </div>
-                                    <QuoteManager />
-                                </div>
-                            )}
-
-                            {activeTab === 'reminders' && (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4 text-foreground">Reminders</h3>
-                                        <Separator className="bg-border/60" />
-                                    </div>
-                                    <ReminderManager />
-                                </div>
-                            )}
-
-                            {activeTab === 'timetable' && (
-                                <TimetableTab
-                                    settings={settings}
-                                    onSaveSettings={onSaveSettings}
-                                    runningApps={allApps}
-                                />
-                            )}
-
-                            {activeTab === 'timeline' && (
-                                <TimelineViewTab
-                                    settings={settings}
-                                    onSaveSettings={onSaveSettings}
-                                />
-                            )}
-
-                            {activeTab === 'tracking' && (
-                                <TrackingTab
-                                    settings={settings}
-                                    onSaveSettings={onSaveSettings}
-                                    screenSources={screenSources}
-                                />
-                            )}
-
-                            {activeTab === 'integrations' && (
-                                <div className="space-y-6 animate-in fade-in duration-300">
-                                    <div>
-                                        <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.backup.title')}</h3>
-                                        <Separator className="bg-border/60" />
-                                    </div>
-
-                                    <div className="space-y-4">
-                                        {/* Data Management */}
-                                        <div className="p-4 bg-muted/30 rounded-lg flex flex-col gap-4 border border-border/50 mb-4">
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                                                    <Cloud className="w-5 h-5 text-primary" />
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-semibold text-base">{t('settings.backup.local')}</h4>
-                                                    <p className="text-sm text-muted-foreground">{t('settings.backup.localDesc')}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex gap-4">
-                                                <Button
-                                                    variant="outline"
-                                                    onClick={async () => {
-                                                        if ((window as any).ipcRenderer) {
-                                                            await (window as any).ipcRenderer.invoke('export-settings', settings);
-                                                        }
-                                                    }}
-                                                    className="flex-1"
-                                                >
-                                                    {t('settings.backup.export')}
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    onClick={async () => {
-                                                        if ((window as any).ipcRenderer) {
-                                                            const newSettings = await (window as any).ipcRenderer.invoke('import-settings');
-                                                            if (newSettings) {
-                                                                onSaveSettings(newSettings);
-                                                                window.location.reload(); // Reload to apply changes cleanly
-                                                            }
-                                                        }
-                                                    }}
-                                                    className="flex-1"
-                                                >
-                                                    {t('settings.backup.import')}
-                                                </Button>
-                                            </div>
-                                            <div className="flex gap-4 mt-2">
-                                                <Button
-                                                    variant="secondary"
-                                                    disabled={isRecovering}
-                                                    onClick={async () => {
-                                                        if ((window as any).ipcRenderer) {
-                                                            setIsRecovering(true);
-                                                            try {
-                                                                const result = await (window as any).ipcRenderer.invoke('recover-from-screenshots');
-                                                                setRecoveryResult(result);
-                                                            } catch (error) {
-                                                                console.error("Recovery failed", error);
-                                                                setRecoveryResult({ success: false, count: 0, error: String(error) });
-                                                            } finally {
-                                                                setIsRecovering(false);
-                                                            }
-                                                        }
-                                                    }}
-                                                    className="flex-1 gap-2"
-                                                >
-                                                    {isRecovering ? (
-                                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                                    ) : (
-                                                        <RefreshCw className="w-4 h-4" />
-                                                    )}
-                                                    {isRecovering ? 'Recovering...' : t('settings.backup.importScreenshots')}
-                                                </Button>
-                                            </div>
-
-                                            {/* Recovery Result Dialog */}
-                                            <Dialog open={!!recoveryResult} onOpenChange={(open) => {
-                                                if (!open) setRecoveryResult(null);
-                                            }}>
-                                                <DialogContent>
-                                                    <DialogHeader>
-                                                        <DialogTitle>
-                                                            {recoveryResult?.success ? 'Recovery Complete' : 'Recovery Failed'}
-                                                        </DialogTitle>
-                                                        <DialogDescription className="space-y-2 pt-2">
-                                                            {recoveryResult?.success ? (
-                                                                <div className="flex flex-col gap-2">
-                                                                    <div className="text-sm">
-                                                                        Successfully processed data from previous screenshots.
-                                                                    </div>
-                                                                    {recoveryResult.stats && (
-                                                                        <div className="bg-muted p-3 rounded-md text-sm space-y-1">
-                                                                            <div className="flex justify-between">
-                                                                                <span className="text-muted-foreground">Days Processed:</span>
-                                                                                <span className="font-medium">{recoveryResult.stats.days}</span>
-                                                                            </div>
-                                                                            <div className="flex justify-between">
-                                                                                <span className="text-muted-foreground">Screenshots Found:</span>
-                                                                                <span className="font-medium">{recoveryResult.stats.images}</span>
-                                                                            </div>
-                                                                            <div className="flex justify-between">
-                                                                                <span className="text-muted-foreground">Sessions Recovered:</span>
-                                                                                <span className="font-medium">{recoveryResult.stats.sessions}</span>
-                                                                            </div>
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="text-xs text-muted-foreground mt-2">
-                                                                        The app needs to reload to apply these changes.
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="text-destructive">
-                                                                    {recoveryResult?.error || 'An unknown error occurred during recovery.'}
-                                                                </div>
-                                                            )}
-                                                        </DialogDescription>
-                                                    </DialogHeader>
-                                                    <DialogFooter>
-                                                        <Button variant="outline" onClick={() => setRecoveryResult(null)}>
-                                                            Close
-                                                        </Button>
-                                                        {recoveryResult?.success && (
-                                                            <Button onClick={() => window.location.reload()}>
-                                                                Reload App
-                                                            </Button>
-                                                        )}
-                                                    </DialogFooter>
-                                                </DialogContent>
-                                            </Dialog>
-                                        </div>
-                                        {/* Notion Card */}
-                                        <div className="p-4 bg-muted/30 rounded-lg flex flex-col gap-4 border border-border/50">
-                                            <div className="flex items-start justify-between">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-10 h-10 rounded-full bg-slate-500/10 flex items-center justify-center">
-                                                        <FileText className="w-5 h-5 text-slate-500" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-semibold text-base">{t('settings.backup.notion')}</h4>
-                                                        <p className="text-sm text-muted-foreground">{t('settings.backup.notionDesc')}</p>
-                                                    </div>
-                                                </div>
-                                                {settings.notionTokens ? (
-                                                    <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 px-2 py-0.5 flex items-center gap-1">
-                                                        <Check className="w-3 h-3" />
-                                                        {t('settings.backup.connected')}
-                                                    </Badge>
-                                                ) : (
-                                                    <Badge variant="outline" className="text-muted-foreground px-2 py-0.5">
-                                                        {t('settings.backup.notConnected')}
-                                                    </Badge>
-                                                )}
-                                            </div>
-
-                                            <div className="flex items-center justify-between pt-2">
-                                                <div className="text-xs text-muted-foreground flex flex-col gap-2">
-                                                    <span>{settings.notionTokens ? t('settings.backup.connectedWorkspace', { name: settings.notionTokens.workspaceName || 'Unknown' }) : t('settings.backup.connectNotion')}</span>
-
-                                                    {settings.notionTokens && (
-                                                        <div className="flex items-center gap-2 mt-1">
-                                                            <Switch
-                                                                id="include-screenshots"
-                                                                className="scale-75 origin-left"
-                                                                checked={settings.notionConfig?.includeScreenshots !== false} // Default to true if undefined
-                                                                onCheckedChange={(checked) => onSaveSettings({
-                                                                    ...settings,
-                                                                    notionConfig: {
-                                                                        clientId: '',
-                                                                        clientSecret: '',
-                                                                        ...(settings.notionConfig || {}),
-                                                                        includeScreenshots: checked
-                                                                    }
-                                                                })}
-                                                            />
-                                                            <Label htmlFor="include-screenshots" className="text-xs font-normal cursor-pointer">
-                                                                {t('settings.backup.includeScreenshots')}
-                                                            </Label>
+                                        <div className="space-y-6 animate-in fade-in duration-300">
+                                            <div className="space-y-4">
+                                                {/* Data Management */}
+                                                <div className="p-4 bg-muted/30 rounded-lg flex flex-col gap-4 border border-border/50 mb-4">
+                                                    <div className="flex items-center gap-3 mb-2">
+                                                        <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                                            <Cloud className="w-5 h-5 text-primary" />
                                                         </div>
-                                                    )}
-                                                </div>
-
-                                                {settings.notionTokens ? (
-                                                    <div className="flex gap-2 w-full justify-end items-center">
-                                                        {isSyncingHistory ? (
-                                                            <div className="flex-1 mr-2 flex items-center gap-2 min-w-[240px]">
-                                                                <div className="flex-1 flex flex-col gap-1.5">
-                                                                    <div className="flex justify-between text-[11px] text-muted-foreground px-1">
-                                                                        <span id="sync-progress-label">{t('settings.backup.preparing')}</span>
-                                                                        <span id="sync-progress-percent">0%</span>
-                                                                    </div>
-                                                                    <div className="h-2 w-full bg-secondary/50 rounded-full overflow-hidden border border-border/50">
-                                                                        <div id="sync-progress-bar" className="h-full bg-primary transition-all duration-300 ease-out" style={{ width: '0%' }} />
-                                                                    </div>
-                                                                </div>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive shrink-0"
-                                                                    onClick={() => {
-                                                                        if ((window as any).ipcRenderer) {
-                                                                            (window as any).ipcRenderer.invoke('cancel-history-sync');
-                                                                        }
-                                                                    }}
-                                                                    title={t('settings.backup.cancelSync')}
-                                                                >
-                                                                    <X className="w-4 h-4" />
-                                                                </Button>
-                                                            </div>
-                                                        ) : (
-
-
-                                                            <div className="flex gap-2">
-                                                                <Button
-                                                                    variant="outline"
-                                                                    size="sm"
-                                                                    onClick={() => setShowImportDialog(true)}
-                                                                    className="h-8 gap-2"
-                                                                >
-                                                                    <FileText className="w-3.5 h-3.5" />
-                                                                    {t('settings.backup.import') || "Import"}
-                                                                </Button>
-                                                                <Button
-                                                                    variant="outline"
-                                                                    size="sm"
-                                                                    onClick={async () => {
-                                                                        // TS Safe Check
-                                                                        if (!settings.notionTokens) return;
-
-                                                                        setConfirmConfig({
-                                                                            title: t('settings.backup.syncHistoryTitle'),
-                                                                            description: t('settings.backup.syncHistoryDesc'),
-                                                                            actionLabel: t('settings.backup.startSync'),
-                                                                            onConfirm: async () => {
-                                                                                setIsSyncingHistory(true);
-                                                                                if ((window as any).ipcRenderer) {
-                                                                                    // Listen for progress
-                                                                                    const progressHandler = (_: any, p: { processed: number, total: number, message?: string }) => {
-                                                                                        const percent = p.total > 0 ? Math.round((p.processed / p.total) * 100) : 0;
-                                                                                        // Update Bars
-                                                                                        const labelEl = document.getElementById('sync-progress-label');
-                                                                                        if (labelEl) {
-                                                                                            if (p.message) {
-                                                                                                labelEl.innerText = p.message;
-                                                                                            } else {
-                                                                                                labelEl.innerText = p.processed === 0 ? t('settings.backup.initializing') : t('settings.backup.syncingProgress', { processed: p.processed, total: p.total });
-                                                                                            }
-                                                                                        }
-
-                                                                                        const percentEl = document.getElementById('sync-progress-percent');
-                                                                                        if (percentEl) percentEl.innerText = `${percent}%`;
-
-                                                                                        const bar = document.getElementById('sync-progress-bar');
-                                                                                        if (bar) bar.style.width = `${percent}%`;
-                                                                                    };
-                                                                                    (window as any).ipcRenderer.on('notion-sync-progress', progressHandler);
-
-                                                                                    try {
-                                                                                        const res = await (window as any).ipcRenderer.invoke('sync-all-history', {
-                                                                                            token: settings.notionTokens!.accessToken,
-                                                                                            databaseId: settings.notionTokens!.databaseId
-                                                                                        });
-
-                                                                                        if (res.success) {
-                                                                                            setInfoConfig({
-                                                                                                title: t('settings.backup.backupComplete'),
-                                                                                                description: t('settings.backup.backupSuccessMsg', { count: res.count }),
-                                                                                                details: res.details
-                                                                                            });
-                                                                                        } else if (res.cancelled) {
-                                                                                            setInfoConfig({
-                                                                                                title: t('settings.backup.backupCancelled'),
-                                                                                                description: t('settings.backup.backupCancelledMsg', { count: res.count || 0 }),
-                                                                                            });
-                                                                                        } else {
-                                                                                            setInfoConfig({
-                                                                                                title: t('settings.backup.backupFailed'),
-                                                                                                description: `Error: ${res.error}`,
-                                                                                                details: res.details
-                                                                                            });
-                                                                                        }
-                                                                                    } catch (e) {
-                                                                                        console.error(e);
-                                                                                        setInfoConfig({
-                                                                                            title: "Critical Error",
-                                                                                            description: "Backup encountered a critical error. Check console for details.",
-                                                                                        });
-                                                                                    } finally {
-                                                                                        console.log("[SettingsModal] Sync finished (finally block). Resetting state.");
-                                                                                        console.log("[SettingsModal] Sync finished (finally block). Resetting state.");
-                                                                                        if ((window as any).ipcRenderer.removeListener) {
-                                                                                            (window as any).ipcRenderer.removeListener('notion-sync-progress', progressHandler);
-                                                                                        } else {
-                                                                                            (window as any).ipcRenderer.off('notion-sync-progress', progressHandler);
-                                                                                        }
-                                                                                        setIsSyncingHistory(false);
-                                                                                    }
-                                                                                }
-                                                                            }
-                                                                        });
-                                                                    }}
-                                                                    disabled={isSyncingHistory}
-                                                                    className="h-8 gap-2 border-primary/20 text-primary hover:text-primary hover:bg-primary/5"
-                                                                >
-                                                                    <RefreshCw className="w-3.5 h-3.5" />
-                                                                    {t('settings.backup.syncHistory')}
-                                                                </Button>
-
-                                                                <Button
-                                                                    variant="outline"
-                                                                    size="sm"
-                                                                    onClick={() => {
-                                                                        setConfirmConfig({
-                                                                            title: t('settings.backup.disconnectNotionTitle'),
-                                                                            description: t('settings.backup.disconnectNotionConfirm'),
-                                                                            actionLabel: t('settings.backup.disconnect'),
-                                                                            onConfirm: async () => {
-                                                                                onSaveSettings({ ...settings, notionTokens: undefined });
-                                                                                if ((window as any).ipcRenderer) {
-                                                                                    await (window as any).ipcRenderer.invoke('logout-notion');
-                                                                                }
-                                                                            }
-                                                                        });
-                                                                    }}
-                                                                    className="h-8 text-destructive hover:text-destructive"
-                                                                >
-                                                                    {t('settings.backup.disconnect')}
-                                                                </Button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex flex-col gap-2 w-full max-w-sm">
-                                                        <div className="space-y-2 mb-2 p-3 bg-background/50 rounded-md border border-border/50">
-                                                            <Label className="text-xs text-muted-foreground">{t('settings.backup.secretLabel')}</Label>
-                                                            <Input
-                                                                type="password"
-                                                                placeholder="secret_..."
-                                                                className="h-7 text-xs font-mono"
-                                                                value={notionSecret}
-                                                                onChange={(e) => setNotionSecret(e.target.value)}
-                                                            />
-                                                            <p className="text-[10px] text-muted-foreground">
-                                                                <Trans
-                                                                    i18nKey="settings.backup.notionLinkInstructions"
-                                                                    components={{
-                                                                        1: <a
-                                                                            href="https://www.notion.so/profile/integrations"
-                                                                            onClick={(e) => {
-                                                                                e.preventDefault();
-                                                                                if ((window as any).ipcRenderer) {
-                                                                                    (window as any).ipcRenderer.invoke('open-external', "https://www.notion.so/profile/integrations");
-                                                                                } else {
-                                                                                    window.open("https://www.notion.so/profile/integrations", "_blank");
-                                                                                }
-                                                                            }}
-                                                                            className="underline hover:text-foreground transition-colors cursor-pointer"
-                                                                        />
-                                                                    }}
-                                                                />
-                                                            </p>
+                                                        <div>
+                                                            <h4 className="font-semibold text-base">{t('settings.backup.local')}</h4>
+                                                            <p className="text-sm text-muted-foreground">{t('settings.backup.localDesc')}</p>
                                                         </div>
+                                                    </div>
+                                                    <div className="flex gap-4">
                                                         <Button
-                                                            size="sm"
-                                                            className="h-8 gap-2 w-full"
-                                                            disabled={!notionSecret.trim()}
+                                                            variant="outline"
                                                             onClick={async () => {
                                                                 if ((window as any).ipcRenderer) {
-                                                                    try {
-                                                                        const result = await (window as any).ipcRenderer.invoke('verify-notion-token', notionSecret.trim());
-
-                                                                        if (result.success && result.tokens) {
-                                                                            onSaveSettings({
-                                                                                ...settings,
-                                                                                notionTokens: result.tokens,
-                                                                            });
-                                                                            setNotionSecret(""); // Clear input on success
-                                                                            setShowNotionSetup(true); // Trigger Setup Dialog
-                                                                        }
-                                                                    } catch (e) {
-                                                                        console.error("Notion Verification failed", e);
-                                                                        alert(t('settings.backup.verifyFailed'));
+                                                                    await (window as any).ipcRenderer.invoke('export-settings', settings);
+                                                                }
+                                                            }}
+                                                            className="flex-1"
+                                                        >
+                                                            {t('settings.backup.export')}
+                                                        </Button>
+                                                        <Button
+                                                            variant="outline"
+                                                            onClick={async () => {
+                                                                if ((window as any).ipcRenderer) {
+                                                                    const newSettings = await (window as any).ipcRenderer.invoke('import-settings');
+                                                                    if (newSettings) {
+                                                                        onSaveSettings(newSettings);
+                                                                        window.location.reload(); // Reload to apply changes cleanly
                                                                     }
                                                                 }
                                                             }}
+                                                            className="flex-1"
                                                         >
-                                                            {t('settings.backup.connectSecret')}
+                                                            {t('settings.backup.import')}
                                                         </Button>
                                                     </div>
-                                                )}
+                                                    <div className="flex gap-4 mt-2">
+                                                        <Button
+                                                            variant="secondary"
+                                                            disabled={isRecovering}
+                                                            onClick={async () => {
+                                                                if ((window as any).ipcRenderer) {
+                                                                    setIsRecovering(true);
+                                                                    try {
+                                                                        const result = await (window as any).ipcRenderer.invoke('recover-from-screenshots');
+                                                                        setRecoveryResult(result);
+                                                                    } catch (error) {
+                                                                        console.error("Recovery failed", error);
+                                                                        setRecoveryResult({ success: false, count: 0, error: String(error) });
+                                                                    } finally {
+                                                                        setIsRecovering(false);
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className="flex-1 gap-2"
+                                                        >
+                                                            {isRecovering ? (
+                                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                            ) : (
+                                                                <RefreshCw className="w-4 h-4" />
+                                                            )}
+                                                            {isRecovering ? 'Recovering...' : t('settings.backup.importScreenshots')}
+                                                        </Button>
+                                                    </div>
+
+                                                    {/* Recovery Result Dialog */}
+                                                    <Dialog open={!!recoveryResult} onOpenChange={(open) => {
+                                                        if (!open) setRecoveryResult(null);
+                                                    }}>
+                                                        <DialogContent>
+                                                            <DialogHeader>
+                                                                <DialogTitle>
+                                                                    {recoveryResult?.success ? 'Recovery Complete' : 'Recovery Failed'}
+                                                                </DialogTitle>
+                                                                <DialogDescription className="space-y-2 pt-2">
+                                                                    {recoveryResult?.success ? (
+                                                                        <div className="flex flex-col gap-2">
+                                                                            <div className="text-sm">
+                                                                                Successfully processed data from previous screenshots.
+                                                                            </div>
+                                                                            {recoveryResult.stats && (
+                                                                                <div className="bg-muted p-3 rounded-md text-sm space-y-1">
+                                                                                    <div className="flex justify-between">
+                                                                                        <span className="text-muted-foreground">Days Processed:</span>
+                                                                                        <span className="font-medium">{recoveryResult.stats.days}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between">
+                                                                                        <span className="text-muted-foreground">Screenshots Found:</span>
+                                                                                        <span className="font-medium">{recoveryResult.stats.images}</span>
+                                                                                    </div>
+                                                                                    <div className="flex justify-between">
+                                                                                        <span className="text-muted-foreground">Sessions Recovered:</span>
+                                                                                        <span className="font-medium">{recoveryResult.stats.sessions}</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                            <div className="text-xs text-muted-foreground mt-2">
+                                                                                The app needs to reload to apply these changes.
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="text-destructive">
+                                                                            {recoveryResult?.error || 'An unknown error occurred during recovery.'}
+                                                                        </div>
+                                                                    )}
+                                                                </DialogDescription>
+                                                            </DialogHeader>
+                                                            <DialogFooter>
+                                                                <Button variant="outline" onClick={() => setRecoveryResult(null)}>
+                                                                    Close
+                                                                </Button>
+                                                                {recoveryResult?.success && (
+                                                                    <Button onClick={() => window.location.reload()}>
+                                                                        Reload App
+                                                                    </Button>
+                                                                )}
+                                                            </DialogFooter>
+                                                        </DialogContent>
+                                                    </Dialog>
+                                                </div>
+                                                {/* Notion Card */}
+                                                <div className="p-4 bg-muted/30 rounded-lg flex flex-col gap-4 border border-border/50">
+                                                    <div className="flex items-start justify-between">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-10 h-10 rounded-full bg-slate-500/10 flex items-center justify-center">
+                                                                <FileText className="w-5 h-5 text-slate-500" />
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-semibold text-base">{t('settings.backup.notion')}</h4>
+                                                                <p className="text-sm text-muted-foreground">{t('settings.backup.notionDesc')}</p>
+                                                            </div>
+                                                        </div>
+                                                        {settings.notionTokens ? (
+                                                            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 px-2 py-0.5 flex items-center gap-1">
+                                                                <Check className="w-3 h-3" />
+                                                                {t('settings.backup.connected')}
+                                                            </Badge>
+                                                        ) : (
+                                                            <Badge variant="outline" className="text-muted-foreground px-2 py-0.5">
+                                                                {t('settings.backup.notConnected')}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center justify-between pt-2">
+                                                        <div className="text-xs text-muted-foreground flex flex-col gap-2">
+                                                            <span>{settings.notionTokens ? t('settings.backup.connectedWorkspace', { name: settings.notionTokens.workspaceName || 'Unknown' }) : t('settings.backup.connectNotion')}</span>
+
+                                                            {settings.notionTokens && (
+                                                                <div className="flex items-center gap-2 mt-1">
+                                                                    <Switch
+                                                                        id="include-screenshots"
+                                                                        className="scale-75 origin-left"
+                                                                        checked={settings.notionConfig?.includeScreenshots !== false} // Default to true if undefined
+                                                                        onCheckedChange={(checked) => onSaveSettings({
+                                                                            ...settings,
+                                                                            notionConfig: {
+                                                                                clientId: '',
+                                                                                clientSecret: '',
+                                                                                ...(settings.notionConfig || {}),
+                                                                                includeScreenshots: checked
+                                                                            }
+                                                                        })}
+                                                                    />
+                                                                    <Label htmlFor="include-screenshots" className="text-xs font-normal cursor-pointer">
+                                                                        {t('settings.backup.includeScreenshots')}
+                                                                    </Label>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        {settings.notionTokens ? (
+                                                            <div className="flex gap-2 w-full justify-end items-center">
+                                                                {isSyncingHistory ? (
+                                                                    <div className="flex-1 mr-2 flex items-center gap-2 min-w-[240px]">
+                                                                        <div className="flex-1 flex flex-col gap-1.5">
+                                                                            <div className="flex justify-between text-[11px] text-muted-foreground px-1">
+                                                                                <span id="sync-progress-label">{t('settings.backup.preparing')}</span>
+                                                                                <span id="sync-progress-percent">0%</span>
+                                                                            </div>
+                                                                            <div className="h-2 w-full bg-secondary/50 rounded-full overflow-hidden border border-border/50">
+                                                                                <div id="sync-progress-bar" className="h-full bg-primary transition-all duration-300 ease-out" style={{ width: '0%' }} />
+                                                                            </div>
+                                                                        </div>
+                                                                        <Button
+                                                                            variant="ghost"
+                                                                            size="icon"
+                                                                            className="h-8 w-8 hover:bg-destructive/10 hover:text-destructive shrink-0"
+                                                                            onClick={() => {
+                                                                                if ((window as any).ipcRenderer) {
+                                                                                    (window as any).ipcRenderer.invoke('cancel-history-sync');
+                                                                                }
+                                                                            }}
+                                                                            title={t('settings.backup.cancelSync')}
+                                                                        >
+                                                                            <X className="w-4 h-4" />
+                                                                        </Button>
+                                                                    </div>
+                                                                ) : (
+
+
+                                                                    <div className="flex gap-2">
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            onClick={() => setShowImportDialog(true)}
+                                                                            className="h-8 gap-2"
+                                                                        >
+                                                                            <FileText className="w-3.5 h-3.5" />
+                                                                            {t('settings.backup.import') || "Import"}
+                                                                        </Button>
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            onClick={async () => {
+                                                                                // TS Safe Check
+                                                                                if (!settings.notionTokens) return;
+
+                                                                                setConfirmConfig({
+                                                                                    title: t('settings.backup.syncHistoryTitle'),
+                                                                                    description: t('settings.backup.syncHistoryDesc'),
+                                                                                    actionLabel: t('settings.backup.startSync'),
+                                                                                    onConfirm: async () => {
+                                                                                        setIsSyncingHistory(true);
+                                                                                        if ((window as any).ipcRenderer) {
+                                                                                            // Listen for progress
+                                                                                            const progressHandler = (_: any, p: { processed: number, total: number, message?: string }) => {
+                                                                                                const percent = p.total > 0 ? Math.round((p.processed / p.total) * 100) : 0;
+                                                                                                // Update Bars
+                                                                                                const labelEl = document.getElementById('sync-progress-label');
+                                                                                                if (labelEl) {
+                                                                                                    if (p.message) {
+                                                                                                        labelEl.innerText = p.message;
+                                                                                                    } else {
+                                                                                                        labelEl.innerText = p.processed === 0 ? t('settings.backup.initializing') : t('settings.backup.syncingProgress', { processed: p.processed, total: p.total });
+                                                                                                    }
+                                                                                                }
+
+                                                                                                const percentEl = document.getElementById('sync-progress-percent');
+                                                                                                if (percentEl) percentEl.innerText = `${percent}%`;
+
+                                                                                                const bar = document.getElementById('sync-progress-bar');
+                                                                                                if (bar) bar.style.width = `${percent}%`;
+                                                                                            };
+                                                                                            (window as any).ipcRenderer.on('notion-sync-progress', progressHandler);
+
+                                                                                            try {
+                                                                                                const res = await (window as any).ipcRenderer.invoke('sync-all-history', {
+                                                                                                    token: settings.notionTokens!.accessToken,
+                                                                                                    databaseId: settings.notionTokens!.databaseId
+                                                                                                });
+
+                                                                                                if (res.success) {
+                                                                                                    setInfoConfig({
+                                                                                                        title: t('settings.backup.backupComplete'),
+                                                                                                        description: t('settings.backup.backupSuccessMsg', { count: res.count }),
+                                                                                                        details: res.details
+                                                                                                    });
+                                                                                                } else if (res.cancelled) {
+                                                                                                    setInfoConfig({
+                                                                                                        title: t('settings.backup.backupCancelled'),
+                                                                                                        description: t('settings.backup.backupCancelledMsg', { count: res.count || 0 }),
+                                                                                                    });
+                                                                                                } else {
+                                                                                                    setInfoConfig({
+                                                                                                        title: t('settings.backup.backupFailed'),
+                                                                                                        description: `Error: ${res.error}`,
+                                                                                                        details: res.details
+                                                                                                    });
+                                                                                                }
+                                                                                            } catch (e) {
+                                                                                                console.error(e);
+                                                                                                setInfoConfig({
+                                                                                                    title: "Critical Error",
+                                                                                                    description: "Backup encountered a critical error. Check console for details.",
+                                                                                                });
+                                                                                            } finally {
+                                                                                                console.log("[SettingsModal] Sync finished (finally block). Resetting state.");
+                                                                                                console.log("[SettingsModal] Sync finished (finally block). Resetting state.");
+                                                                                                if ((window as any).ipcRenderer.removeListener) {
+                                                                                                    (window as any).ipcRenderer.removeListener('notion-sync-progress', progressHandler);
+                                                                                                } else {
+                                                                                                    (window as any).ipcRenderer.off('notion-sync-progress', progressHandler);
+                                                                                                }
+                                                                                                setIsSyncingHistory(false);
+                                                                                            }
+                                                                                        }
+                                                                                    }
+                                                                                });
+                                                                            }}
+                                                                            disabled={isSyncingHistory}
+                                                                            className="h-8 gap-2 border-primary/20 text-primary hover:text-primary hover:bg-primary/5"
+                                                                        >
+                                                                            <RefreshCw className="w-3.5 h-3.5" />
+                                                                            {t('settings.backup.syncHistory')}
+                                                                        </Button>
+
+                                                                        <Button
+                                                                            variant="outline"
+                                                                            size="sm"
+                                                                            onClick={() => {
+                                                                                setConfirmConfig({
+                                                                                    title: t('settings.backup.disconnectNotionTitle'),
+                                                                                    description: t('settings.backup.disconnectNotionConfirm'),
+                                                                                    actionLabel: t('settings.backup.disconnect'),
+                                                                                    onConfirm: async () => {
+                                                                                        onSaveSettings({ ...settings, notionTokens: undefined });
+                                                                                        if ((window as any).ipcRenderer) {
+                                                                                            await (window as any).ipcRenderer.invoke('logout-notion');
+                                                                                        }
+                                                                                    }
+                                                                                });
+                                                                            }}
+                                                                            className="h-8 text-destructive hover:text-destructive"
+                                                                        >
+                                                                            {t('settings.backup.disconnect')}
+                                                                        </Button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex flex-col gap-2 w-full max-w-sm">
+                                                                <div className="space-y-2 mb-2 p-3 bg-background/50 rounded-md border border-border/50">
+                                                                    <Label className="text-xs text-muted-foreground">{t('settings.backup.secretLabel')}</Label>
+                                                                    <Input
+                                                                        type="password"
+                                                                        placeholder="secret_..."
+                                                                        className="h-7 text-xs font-mono"
+                                                                        value={notionSecret}
+                                                                        onChange={(e) => setNotionSecret(e.target.value)}
+                                                                    />
+                                                                    <p className="text-[10px] text-muted-foreground">
+                                                                        <Trans
+                                                                            i18nKey="settings.backup.notionLinkInstructions"
+                                                                            components={{
+                                                                                1: <a
+                                                                                    href="https://www.notion.so/profile/integrations"
+                                                                                    onClick={(e) => {
+                                                                                        e.preventDefault();
+                                                                                        if ((window as any).ipcRenderer) {
+                                                                                            (window as any).ipcRenderer.invoke('open-external', "https://www.notion.so/profile/integrations");
+                                                                                        } else {
+                                                                                            window.open("https://www.notion.so/profile/integrations", "_blank");
+                                                                                        }
+                                                                                    }}
+                                                                                    className="underline hover:text-foreground transition-colors cursor-pointer"
+                                                                                />
+                                                                            }}
+                                                                        />
+                                                                    </p>
+                                                                </div>
+                                                                <Button
+                                                                    size="sm"
+                                                                    className="h-8 gap-2 w-full"
+                                                                    disabled={!notionSecret.trim()}
+                                                                    onClick={async () => {
+                                                                        if ((window as any).ipcRenderer) {
+                                                                            try {
+                                                                                const result = await (window as any).ipcRenderer.invoke('verify-notion-token', notionSecret.trim());
+
+                                                                                if (result.success && result.tokens) {
+                                                                                    onSaveSettings({
+                                                                                        ...settings,
+                                                                                        notionTokens: result.tokens,
+                                                                                    });
+                                                                                    setNotionSecret(""); // Clear input on success
+                                                                                    setShowNotionSetup(true); // Trigger Setup Dialog
+                                                                                }
+                                                                            } catch (e) {
+                                                                                console.error("Notion Verification failed", e);
+                                                                                alert(t('settings.backup.verifyFailed'));
+                                                                            }
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    {t('settings.backup.connectSecret')}
+                                                                </Button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                </div>
-                            )}
+                                    </>
+                                )}
 
-                        </div>
-                    </ScrollArea>
-                )}
-            </div>
+                            </div>
+                        </ScrollArea>
+                    )
+                }
+            </div >
         );
     };
 
@@ -1661,6 +1672,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                 ))}
                             </div>
                         </div>
+
                     )}
                     <div className="p-4 flex justify-end bg-muted/10">
                         <Button onClick={() => setInfoConfig(null)} size="sm">
@@ -1668,7 +1680,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                         </Button>
                     </div>
                 </DialogContent>
-            </Dialog>
+            </Dialog >
         </>
     )
 }

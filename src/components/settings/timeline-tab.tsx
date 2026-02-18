@@ -133,12 +133,13 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
-            <div>
-                <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.timelineConfig')}</h3>
-                <Separator className="bg-border/60" />
-
-
+            <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-1 mb-4">
+                <h3 className="text-xl font-bold text-foreground">{t('settings.timelineConfig')}</h3>
+                <Separator className="bg-border/60 mt-2" />
             </div>
+
+
+
 
 
 
@@ -557,7 +558,7 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
                                     }
                                 }}
                             >
-                                Test
+                                {t('common.test')}
                             </Button>
                             <Switch
                                 checked={settings.enableUnresolvedTodoNotifications || false}
@@ -570,6 +571,6 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
             </div>
 
 
-        </div>
+        </div >
     )
 }

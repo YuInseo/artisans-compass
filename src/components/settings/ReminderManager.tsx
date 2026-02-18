@@ -4,8 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, Plus, Bell } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 export function ReminderManager() {
+    const { t } = useTranslation();
     const { settings, saveSettings } = useDataStore();
     const [newReminder, setNewReminder] = useState('');
 
@@ -28,14 +30,14 @@ export function ReminderManager() {
         <div className="space-y-4">
             <div className="flex gap-2">
                 <Input
-                    placeholder="Enter a new reminder..."
+                    placeholder={t('settings.appearance.reminders.placeholder') || "Enter a new reminder..."}
                     value={newReminder}
                     onChange={(e) => setNewReminder(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddReminder()}
                     className="flex-1"
                 />
                 <Button onClick={handleAddReminder} disabled={!newReminder.trim()}>
-                    <Plus className="w-4 h-4 mr-2" /> Add
+                    <Plus className="w-4 h-4 mr-2" /> {t('settings.appearance.reminders.add') || "Add"}
                 </Button>
             </div>
 
@@ -44,7 +46,7 @@ export function ReminderManager() {
                     {reminders.length === 0 ? (
                         <div className="flex flex-col items-center justify-center h-full text-muted-foreground opacity-50 space-y-2 min-h-[100px]">
                             <Bell className="w-8 h-8" />
-                            <p>No reminders added yet.</p>
+                            <p>{t('settings.appearance.reminders.empty') || "No reminders added yet."}</p>
                         </div>
                     ) : (
                         <div className="space-y-2">
@@ -66,7 +68,7 @@ export function ReminderManager() {
                 </ScrollArea>
             </div>
             <p className="text-xs text-muted-foreground">
-                These reminders will appear randomly in the Reminder Modal.
+                {t('settings.appearance.reminders.description') || "These reminders will appear randomly in the Reminder Modal."}
             </p>
         </div>
     );

@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { DebouncedColorPicker } from "@/components/ui/debounced-color-picker"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Slider } from "@/components/ui/slider"
 import { X, Pencil, GripVertical } from "lucide-react";
 import {
     DndContext,
@@ -77,6 +78,7 @@ function ProjectTypeItem({
 }) {
     const [isEditing, setIsEditing] = useState(false);
     const [editName, setEditName] = useState(tag);
+    const { t } = useTranslation();
     const handleSave = () => {
         if (editName && editName !== tag) {
             onRename?.(editName);
@@ -131,7 +133,7 @@ function ProjectTypeItem({
                         <span className="font-medium text-sm text-foreground">{tag}</span>
                         {isDefault && (
                             <span className="text-[10px] font-bold text-muted-foreground bg-muted px-1.5 py-0.5 rounded uppercase tracking-wide">
-                                (Default)
+                                {t('settings.projectTypeDefault')}
                             </span>
                         )}
                     </>
@@ -265,123 +267,107 @@ export function TimelineViewTab({ settings, onSaveSettings }: TimelineViewTabPro
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
-            <div>
-                <h3 className="text-xl font-bold mb-4 text-foreground">{t('sidebar.timeline')}</h3>
-                <Separator className="bg-border/60" />
+            <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-1 mb-4">
+                <h3 className="text-xl font-bold text-foreground">{t('sidebar.timeline')}</h3>
+                <Separator className="bg-border/60 mt-2" />
+            </div>
 
-                {/* Project Types & Colors Section */}
-                <div className="space-y-4 mt-6" id="settings-project-types">
-                    <div className="flex flex-col gap-1">
-                        <div className="flex items-center justify-between">
-                            <h5 className="text-base font-semibold text-foreground">{t('settings.projectTypes')}</h5>
-                            <div className="flex items-center gap-2">
-                                <Label htmlFor="custom-colors" className="text-sm font-normal text-muted-foreground cursor-pointer select-none">
-                                    {t('settings.allowCustomColors')}
-                                </Label>
-                                <Switch
-                                    id="custom-colors"
-                                    checked={settings.enableCustomProjectColors || false}
-                                    onCheckedChange={(checked) => onSaveSettings({ ...settings, enableCustomProjectColors: checked })}
-                                />
-                            </div>
+            {/* Project Types & Colors Section */}
+            <div className="space-y-4 mt-6" id="settings-project-types">
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center justify-between">
+                        <h5 className="text-base font-semibold text-foreground">{t('settings.projectTypes')}</h5>
+                        <div className="flex items-center gap-2">
+                            <Label htmlFor="custom-colors" className="text-sm font-normal text-muted-foreground cursor-pointer select-none">
+                                {t('settings.allowCustomColors')}
+                            </Label>
+                            <Switch
+                                id="custom-colors"
+                                checked={settings.enableCustomProjectColors || false}
+                                onCheckedChange={(checked) => onSaveSettings({ ...settings, enableCustomProjectColors: checked })}
+                            />
                         </div>
-                        <p className="text-sm text-muted-foreground pb-2">
-                            {t('settings.projectTagDesc')}
-                        </p>
                     </div>
+                    <p className="text-sm text-muted-foreground pb-2">
+                        {t('settings.projectTagDesc')}
+                    </p>
+                </div>
 
-                    <div className="bg-muted/30 p-4 rounded-lg space-y-4">
-                        <div className="space-y-2 max-h-[300px] overflow-y-auto px-1 custom-scrollbar">
-                            <DndContext
-                                sensors={sensors}
-                                collisionDetection={closestCenter}
-                                onDragEnd={handleDragEnd}
-                                onDragStart={handleDragStart}
-                                onDragCancel={handleDragCancel}
+                <div className="bg-muted/30 p-4 rounded-lg space-y-4">
+                    <div className="space-y-2 max-h-[300px] overflow-y-auto px-1 custom-scrollbar">
+                        <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={handleDragEnd}
+                            onDragStart={handleDragStart}
+                            onDragCancel={handleDragCancel}
+                        >
+                            <SortableContext
+                                items={settings.projectTags || []}
+                                strategy={verticalListSortingStrategy}
                             >
-                                <SortableContext
-                                    items={settings.projectTags || []}
-                                    strategy={verticalListSortingStrategy}
-                                >
-                                    {(settings.projectTags || ["Main", "Sub", "Practice"]).map((tag, index) => (
-                                        <SortableProjectType
-                                            key={tag}
-                                            id={tag}
-                                            tag={tag}
-                                            color={settings.typeColors?.[tag] || "#3b82f6"}
-                                            isDefault={index === 0}
-                                            onColorChange={(newColor) => {
-                                                const newColors = { ...(settings.typeColors || {}), [tag]: newColor };
-                                                onSaveSettings({ ...settings, typeColors: newColors });
-                                            }}
-                                            onRename={(newName) => {
-                                                if (newName && !settings.projectTags.includes(newName)) {
-                                                    const updatedTags = settings.projectTags.map(t => t === tag ? newName : t);
+                                {(settings.projectTags || ["Main", "Sub", "Practice"]).map((tag, index) => (
+                                    <SortableProjectType
+                                        key={tag}
+                                        id={tag}
+                                        tag={tag}
+                                        color={settings.typeColors?.[tag] || "#3b82f6"}
+                                        isDefault={index === 0}
+                                        onColorChange={(newColor) => {
+                                            const newColors = { ...(settings.typeColors || {}), [tag]: newColor };
+                                            onSaveSettings({ ...settings, typeColors: newColors });
+                                        }}
+                                        onRename={(newName) => {
+                                            if (newName && !settings.projectTags.includes(newName)) {
+                                                const updatedTags = settings.projectTags.map(t => t === tag ? newName : t);
+                                                const updatedColors = { ...settings.typeColors };
+                                                if (updatedColors[tag]) {
+                                                    updatedColors[newName] = updatedColors[tag];
+                                                    delete updatedColors[tag];
+                                                }
+                                                onSaveSettings({ ...settings, projectTags: updatedTags, typeColors: updatedColors });
+                                            }
+                                        }}
+                                        onDelete={() => {
+                                            setConfirmConfig({
+                                                title: t('settings.projectTypeDeleteTitle'),
+                                                description: t('settings.projectTypeDeleteDesc', { tag }),
+                                                actionLabel: t('common.delete'),
+                                                onConfirm: () => {
+                                                    const updatedTags = settings.projectTags.filter(t => t !== tag);
                                                     const updatedColors = { ...settings.typeColors };
-                                                    if (updatedColors[tag]) {
-                                                        updatedColors[newName] = updatedColors[tag];
-                                                        delete updatedColors[tag];
-                                                    }
+                                                    delete updatedColors[tag];
                                                     onSaveSettings({ ...settings, projectTags: updatedTags, typeColors: updatedColors });
                                                 }
-                                            }}
-                                            onDelete={() => {
-                                                setConfirmConfig({
-                                                    title: "Delete Project Type",
-                                                    description: `Delete project type "${tag}"?`,
-                                                    actionLabel: "Delete",
-                                                    onConfirm: () => {
-                                                        const updatedTags = settings.projectTags.filter(t => t !== tag);
-                                                        const updatedColors = { ...settings.typeColors };
-                                                        delete updatedColors[tag];
-                                                        onSaveSettings({ ...settings, projectTags: updatedTags, typeColors: updatedColors });
-                                                    }
-                                                });
-                                            }}
-                                        />
-                                    ))}
-                                </SortableContext>
-                                <DragOverlay modifiers={[restrictToVerticalAxis]} dropAnimation={null}>
-                                    {activeDragId ? (
-                                        <ProjectTypeItem
-                                            tag={activeDragId}
-                                            color={settings.typeColors?.[activeDragId] || "#3b82f6"}
-                                            isDefault={settings.projectTags.indexOf(activeDragId) === 0}
-                                            isOverlay={true}
-                                            style={{ width: dragWidth ?? 'auto' }}
-                                        />
-                                    ) : null}
-                                </DragOverlay>
-                            </DndContext>
-                        </div>
-
-                        {/* Add New Type */}
-                        <div className="flex gap-2 pt-2">
-                            <Input
-                                placeholder="New Type Name..."
-                                value={newTypeInput}
-                                onChange={(e) => setNewTypeInput(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && newTypeInput.trim()) {
-                                        const tag = newTypeInput.trim();
-                                        if (!settings.projectTags.includes(tag)) {
-                                            onSaveSettings({
-                                                ...settings,
-                                                projectTags: [...settings.projectTags, tag],
-                                                typeColors: { ...(settings.typeColors || {}), [tag]: "#808080" }
                                             });
-                                            setNewTypeInput("");
-                                        }
-                                    }
-                                }}
-                                className="h-9 bg-background"
-                            />
-                            <Button
-                                size="sm"
-                                disabled={!newTypeInput.trim()}
-                                onClick={() => {
+                                        }}
+                                    />
+                                ))}
+                            </SortableContext>
+                            <DragOverlay modifiers={[restrictToVerticalAxis]} dropAnimation={null}>
+                                {activeDragId ? (
+                                    <ProjectTypeItem
+                                        tag={activeDragId}
+                                        color={settings.typeColors?.[activeDragId] || "#3b82f6"}
+                                        isDefault={settings.projectTags.indexOf(activeDragId) === 0}
+                                        isOverlay={true}
+                                        style={{ width: dragWidth ?? 'auto' }}
+                                    />
+                                ) : null}
+                            </DragOverlay>
+                        </DndContext>
+                    </div>
+
+                    {/* Add New Type */}
+                    <div className="flex gap-2 pt-2">
+                        <Input
+                            placeholder={t('settings.projectTypeNewPlaceholder')}
+                            value={newTypeInput}
+                            onChange={(e) => setNewTypeInput(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && newTypeInput.trim()) {
                                     const tag = newTypeInput.trim();
-                                    if (tag && !settings.projectTags.includes(tag)) {
+                                    if (!settings.projectTags.includes(tag)) {
                                         onSaveSettings({
                                             ...settings,
                                             projectTags: [...settings.projectTags, tag],
@@ -389,33 +375,72 @@ export function TimelineViewTab({ settings, onSaveSettings }: TimelineViewTabPro
                                         });
                                         setNewTypeInput("");
                                     }
-                                }}
-                            >
-                                Add
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="space-y-4 mt-8">
-
-
-
-                    {/* Drag Preview Toggle */}
-                    <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
-                        <div className="space-y-0.5">
-                            <Label className="text-base">{t('settings.timeline.showPreview')}</Label>
-                            <p className="text-sm text-muted-foreground">
-                                {t('settings.timeline.showPreviewDesc')}
-                            </p>
-                        </div>
-                        <Switch
-                            checked={settings.showTimelinePreview}
-                            onCheckedChange={(checked) => onSaveSettings({ ...settings, showTimelinePreview: checked })}
+                                }
+                            }}
+                            className="h-9 bg-background"
                         />
+                        <Button
+                            size="sm"
+                            disabled={!newTypeInput.trim()}
+                            onClick={() => {
+                                const tag = newTypeInput.trim();
+                                if (tag && !settings.projectTags.includes(tag)) {
+                                    onSaveSettings({
+                                        ...settings,
+                                        projectTags: [...settings.projectTags, tag],
+                                        typeColors: { ...(settings.typeColors || {}), [tag]: "#808080" }
+                                    });
+                                    setNewTypeInput("");
+                                }
+                            }}
+                        >
+                            Add
+                        </Button>
                     </div>
                 </div>
             </div>
+
+            <div className="space-y-4 mt-8">
+
+
+
+                {/* Drag Preview Toggle */}
+                <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                    <div className="space-y-0.5">
+                        <Label className="text-base">{t('settings.timeline.showPreview')}</Label>
+                        <p className="text-sm text-muted-foreground">
+                            {t('settings.timeline.showPreviewDesc')}
+                        </p>
+                    </div>
+                    <Switch
+                        checked={settings.showTimelinePreview}
+                        onCheckedChange={(checked) => onSaveSettings({ ...settings, showTimelinePreview: checked })}
+                    />
+                </div>
+            </div>
+
+            {/* Visible Rows Slider */}
+            <div className="flex flex-col gap-4 p-4 border rounded-lg bg-card">
+                <div className="flex items-center justify-between">
+                    <Label className="text-base">{t('settings.visibleRows')}</Label>
+                    <span className="text-sm font-medium bg-muted px-2 py-1 rounded">
+                        {settings.visibleProjectRows || 10}
+                    </span>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                    {t('settings.visibleRowsDesc')}
+                </p>
+                <Slider
+                    value={[settings.visibleProjectRows || 6]}
+                    min={3}
+                    max={6}
+                    step={1}
+                    onValueChange={(value) => onSaveSettings({ ...settings, visibleProjectRows: value[0] })}
+                    className="pt-2"
+                />
+            </div>
+
+
 
             {/* Confirmation Dialog */}
             <Dialog open={!!confirmConfig} onOpenChange={(open) => !open && handleConfirmClose()}>
@@ -430,11 +455,11 @@ export function TimelineViewTab({ settings, onSaveSettings }: TimelineViewTabPro
                             confirmConfig?.onConfirm();
                             handleConfirmClose();
                         }}>
-                            {confirmConfig?.actionLabel || "Confirm"}
+                            {confirmConfig?.actionLabel || t('common.confirm')}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     );
 }

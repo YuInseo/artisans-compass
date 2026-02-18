@@ -87,98 +87,98 @@ export function GeneralTab({
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* General Preferences Section */}
-            <div>
-                <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.general')}</h3>
-                <Separator className="bg-border/60 mb-6" />
+            <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-1 mb-4">
+                <h3 className="text-xl font-bold text-foreground">{t('settings.general')}</h3>
+                <Separator className="bg-border/60 mt-2" />
+            </div>
 
-                <div className="space-y-4 mb-8">
-                    <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.general')}</h5>
-                    <div className="flex flex-col gap-3" id="settings-preferences">
-                        {/* Language */}
-                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.language')}</Label>
-                        <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
-                            <Select
-                                value={i18n.language}
-                                onValueChange={(val) => i18n.changeLanguage(val)}
-                            >
-                                <SelectTrigger className="w-[180px] bg-background border-none">
-                                    <SelectValue placeholder="Select Language" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="en">English</SelectItem>
-                                    <SelectItem value="ko">한국어</SelectItem>
-                                    <SelectItem value="ja">日本語</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <span className="text-sm text-foreground">{t('settings.languageDesc')}</span>
-                        </div>
+            <div className="space-y-4 mb-8">
+                <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.general')}</h5>
+                <div className="flex flex-col gap-3" id="settings-preferences">
+                    {/* Language */}
+                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.language')}</Label>
+                    <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
+                        <Select
+                            value={i18n.language}
+                            onValueChange={(val) => i18n.changeLanguage(val)}
+                        >
+                            <SelectTrigger className="w-[180px] bg-background border-none">
+                                <SelectValue placeholder="Select Language" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="en">English</SelectItem>
+                                <SelectItem value="ko">한국어</SelectItem>
+                                <SelectItem value="ja">日本語</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <span className="text-sm text-foreground">{t('settings.languageDesc')}</span>
+                    </div>
 
-                        {/* Display Mode */}
-                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2">{t('settings.runningApps.displayMode')}</Label>
-                        <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
-                            <Select
-                                value={settings.runningAppsDisplayMode || 'both'}
-                                onValueChange={(val: 'title' | 'process' | 'both') => onSaveSettings({ ...settings, runningAppsDisplayMode: val })}
-                            >
-                                <SelectTrigger className="w-[180px] bg-background border-none">
-                                    <SelectValue placeholder={t('settings.runningApps.selectDisplayMode')} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="both">{t('settings.runningApps.displayBoth')}</SelectItem>
-                                    <SelectItem value="title">{t('settings.runningApps.displayTitle')}</SelectItem>
-                                    <SelectItem value="process">{t('settings.runningApps.displayProcess')}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <span className="text-sm text-foreground">{t('settings.runningApps.displayModeDesc')}</span>
-                        </div>
+                    {/* Display Mode */}
+                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2">{t('settings.runningApps.displayMode')}</Label>
+                    <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
+                        <Select
+                            value={settings.runningAppsDisplayMode || 'both'}
+                            onValueChange={(val: 'title' | 'process' | 'both') => onSaveSettings({ ...settings, runningAppsDisplayMode: val })}
+                        >
+                            <SelectTrigger className="w-[180px] bg-background border-none">
+                                <SelectValue placeholder={t('settings.runningApps.selectDisplayMode')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="both">{t('settings.runningApps.displayBoth')}</SelectItem>
+                                <SelectItem value="title">{t('settings.runningApps.displayTitle')}</SelectItem>
+                                <SelectItem value="process">{t('settings.runningApps.displayProcess')}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <span className="text-sm text-foreground">{t('settings.runningApps.displayModeDesc')}</span>
+                    </div>
 
-                        {/* Daily Archive Mode */}
-                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2">{t('settings.timeline.dailyRecordMode') || "Daily Archive Mode"}</Label>
-                        <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
-                            <Select
-                                value={settings.dailyRecordMode || 'fixed'}
-                                onValueChange={(val: 'fixed' | 'dynamic') => onSaveSettings({ ...settings, dailyRecordMode: val })}
-                            >
-                                <SelectTrigger className="w-[180px] bg-background border-none">
-                                    <SelectValue placeholder="Select mode" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="fixed">
-                                        {t('settings.timeline.modeFixed') || "Fixed (Midnight)"}
-                                    </SelectItem>
-                                    <SelectItem value="dynamic">
-                                        {t('settings.timeline.modeDynamic') || "Dynamic (Flexible)"}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <span className="text-sm text-foreground">{t('settings.timeline.dailyRecordModeDesc') || "Choose when to start a new daily log."}</span>
-                        </div>
+                    {/* Daily Archive Mode */}
+                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2">{t('settings.timeline.dailyRecordMode') || "Daily Archive Mode"}</Label>
+                    <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
+                        <Select
+                            value={settings.dailyRecordMode || 'fixed'}
+                            onValueChange={(val: 'fixed' | 'dynamic') => onSaveSettings({ ...settings, dailyRecordMode: val })}
+                        >
+                            <SelectTrigger className="w-[180px] bg-background border-none">
+                                <SelectValue placeholder="Select mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="fixed">
+                                    {t('settings.timeline.modeFixed') || "Fixed (Midnight)"}
+                                </SelectItem>
+                                <SelectItem value="dynamic">
+                                    {t('settings.timeline.modeDynamic') || "Dynamic (Flexible)"}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <span className="text-sm text-foreground">{t('settings.timeline.dailyRecordModeDesc') || "Choose when to start a new daily log."}</span>
                     </div>
                 </div>
-                <div className="space-y-4 mb-8" id="settings-schedule">
-                    <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.weeklySchedule')}</h5>
-                    <div className="flex flex-col gap-3">
-                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.startOfWeek')}</Label>
-                        <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
-                            <Select
-                                value={settings.startOfWeek || 'sunday'}
-                                onValueChange={(val: any) => onSaveSettings({ ...settings, startOfWeek: val })}
-                            >
-                                <SelectTrigger className="w-[180px] bg-background border-none">
-                                    <SelectValue placeholder={t('settings.daysOfWeek.sunday')} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="sunday">{t('settings.daysOfWeek.sunday')}</SelectItem>
-                                    <SelectItem value="monday">{t('settings.daysOfWeek.monday')}</SelectItem>
-                                    <SelectItem value="tuesday">{t('settings.daysOfWeek.tuesday')}</SelectItem>
-                                    <SelectItem value="wednesday">{t('settings.daysOfWeek.wednesday')}</SelectItem>
-                                    <SelectItem value="thursday">{t('settings.daysOfWeek.thursday')}</SelectItem>
-                                    <SelectItem value="friday">{t('settings.daysOfWeek.friday')}</SelectItem>
-                                    <SelectItem value="saturday">{t('settings.daysOfWeek.saturday')}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <span className="text-sm text-foreground">{t('settings.weeklyResetDesc')}</span>
-                        </div>
+            </div>
+            <div className="space-y-4 mb-8" id="settings-schedule">
+                <h5 className="text-base font-semibold text-foreground mb-1">{t('settings.weeklySchedule')}</h5>
+                <div className="flex flex-col gap-3">
+                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">{t('settings.startOfWeek')}</Label>
+                    <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
+                        <Select
+                            value={settings.startOfWeek || 'sunday'}
+                            onValueChange={(val: any) => onSaveSettings({ ...settings, startOfWeek: val })}
+                        >
+                            <SelectTrigger className="w-[180px] bg-background border-none">
+                                <SelectValue placeholder={t('settings.daysOfWeek.sunday')} />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="sunday">{t('settings.daysOfWeek.sunday')}</SelectItem>
+                                <SelectItem value="monday">{t('settings.daysOfWeek.monday')}</SelectItem>
+                                <SelectItem value="tuesday">{t('settings.daysOfWeek.tuesday')}</SelectItem>
+                                <SelectItem value="wednesday">{t('settings.daysOfWeek.wednesday')}</SelectItem>
+                                <SelectItem value="thursday">{t('settings.daysOfWeek.thursday')}</SelectItem>
+                                <SelectItem value="friday">{t('settings.daysOfWeek.friday')}</SelectItem>
+                                <SelectItem value="saturday">{t('settings.daysOfWeek.saturday')}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <span className="text-sm text-foreground">{t('settings.weeklyResetDesc')}</span>
                     </div>
                 </div>
             </div>

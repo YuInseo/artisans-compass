@@ -34,7 +34,20 @@
             "myThemes": "내 테마",
             "cssEditor": "CSS 에디터",
             "cssEditorDesc": "* \"기본값 불러오기\"를 클릭하면 편집 가능한 모든 색상 변수를 볼 수 있습니다.",
-            "customQuotes": "사용자 지정 명언",
+            "customQuotes": {
+                "title": "사용자 지정 명언",
+                "placeholder": "새 명언 입력...",
+                "add": "추가",
+                "empty": "추가된 사용자 지정 명언이 없습니다.",
+                "description": "이 명언들은 영감 모달에 무작위로 나타납니다."
+            },
+            "reminders": {
+                "title": "리마인더",
+                "placeholder": "새 리마인더 입력...",
+                "add": "추가",
+                "empty": "추가된 리마인더가 없습니다.",
+                "description": "이 리마인더들은 리마인더 모달에 무작위로 나타납니다."
+            },
             "customQuotesDesc": "일일 로테이션에 나만의 명언을 추가합니다.",
             "addQuote": "명언 추가",
             "enterQuote": "명언을 입력하세요...",
@@ -130,11 +143,21 @@
         "checkboxVisibility": "체크박스 표시",
         "indentationLines": "들여쓰기 가이드",
         "projectTypes": "프로젝트 유형 및 색상",
+        "projectTypeDefault": "(기본값)",
+        "projectTypeNewPlaceholder": "새 유형 이름...",
+        "projectTypeDeleteTitle": "프로젝트 유형 삭제",
+        "projectTypeDeleteDesc": "\"{tag}\" 프로젝트 유형을 삭제하시겠습니까?",
+        "timelineSettings": "타임라인 설정",
+        "timelineConfigDesc": "표시 옵션을 설정합니다.",
+        "snapToGrid": "15분 그리드에 맞추기",
+        "snapToGridDesc": "시간을 15분 단위로 정렬합니다",
+        "showWorkOnly": "작업 앱만 표시",
+        "showWorkOnlyDesc": "활성화하면 'Work' 태그가 있는 프로젝트만 표시됩니다.",
+        "visibleRows": "표시할 프로젝트 행 수",
+        "visibleRowsDesc": "타임라인 뷰의 최소 높이를 이 행 수에 맞춰 조정합니다.",
         "weeklyResetDesc": "주간 목표가 재설정되는 요일",
         "projectTagDesc": "가장 위에 있는 프로젝트 태그가 새 프로젝트의 기본값이 됩니다. 드래그하여 순서를 변경하세요.",
         "allowCustomColors": "프로젝트별 사용자 지정 색상 허용",
-        "visibleRows": "표시되는 프로젝트 행",
-        "rowsShown": "스크롤 전 표시되는 행 수",
         "defaultDuration": "기본 프로젝트 기간",
         "daysForNew": "일 (새 프로젝트용)",
         "timeline": {
@@ -181,7 +204,11 @@
             "addWorkApp": "작업 프로그램 추가",
             "noAppsInList": "이 목록에 앱이 없습니다.",
             "selectAppToAdd": "추가할 앱 선택...",
-            "allAppsAdded": "모든 앱이 추가되었습니다."
+            "allAppsAdded": "모든 앱이 추가되었습니다.",
+            "gridMode": "15분 단위 자석 모드",
+            "gridModeDesc": "블록을 15분 단위로 정렬합니다",
+            "workAppsOnly": "작업 앱만 표시",
+            "workAppsOnlyDesc": "작업 앱이 아닌 활동은 숨깁니다"
         },
         "softwareUpdate": {
             "title": "소프트웨어 업데이트",
@@ -270,6 +297,7 @@
         "confirm": "확인",
         "add": "추가",
         "search": "검색...",
+        "test": "테스트",
         "done": "완료"
     },
     "sidebar": {

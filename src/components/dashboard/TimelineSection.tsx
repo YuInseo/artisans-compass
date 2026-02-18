@@ -635,7 +635,12 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                     </div>
 
                     {/* Canvas Body */}
-                    <div className="relative flex-1 min-h-[500px] pt-4">
+                    <div
+                        className="relative flex-1 pt-4"
+                        style={{
+                            minHeight: `${((settings?.visibleProjectRows || 10) * ROW_HEIGHT) + 60}px`
+                        }}
+                    >
                         {/* Background Grid */}
                         <div className="absolute inset-0 pointer-events-none h-full pt-8">
                             {(() => {
@@ -887,7 +892,7 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                                                     onDoubleClick={() => setEditingProject(project)}
                                                 >
                                                     <div
-                                                        className="w-full h-full opacity-20 rounded-md"
+                                                        className="absolute inset-0 w-full h-full opacity-20 rounded-md"
                                                         style={{
                                                             backgroundColor: (() => {
                                                                 if (settings?.enableCustomProjectColors && project.color) return project.color;
@@ -895,7 +900,7 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
                                                             })()
                                                         }}
                                                     ></div>
-                                                    <div className="absolute inset-0 flex flex-col justify-center px-3 min-w-0">
+                                                    <div className="sticky left-0 z-10 flex flex-col justify-center px-3 min-w-0 h-full w-fit max-w-full pointer-events-none">
                                                         <div className="flex items-center gap-1.5 w-full">
                                                             {project.locked && (
                                                                 <div className="shrink-0 bg-background/80 p-0.5 rounded-full shadow-sm">
