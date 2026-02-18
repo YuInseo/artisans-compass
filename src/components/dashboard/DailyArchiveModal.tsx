@@ -17,7 +17,7 @@ interface DailyArchiveModalProps {
 
 export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: DailyArchiveModalProps) {
     const { t } = useTranslation();
-    const { getDailyLog, settings, projects } = useDataStore();
+    const { getDailyLog, settings, saveSettings, projects } = useDataStore();
     const [logData, setLogData] = useState<any>(null);
     const formattedDate = format(date, 'yyyy-MM-dd');
 
@@ -129,6 +129,8 @@ export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: Daily
                             className="bg-card h-full"
                             onClose={onClose}
                             readOnly={true}
+                            settings={settings}
+                            onUpdateSettings={saveSettings}
                         />
                     ) : (
                         <div className="h-full flex flex-col items-center justify-center text-muted-foreground">

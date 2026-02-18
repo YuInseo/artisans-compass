@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect } from 'react';
 import { format, differenceInSeconds, differenceInMinutes, getHours, isSameDay } from "date-fns";
-import { AppSettings, Session, Project } from '@/types';
+import { AppSettings, Session, Project, PlannedSession } from '@/types';
+import { getDay } from 'date-fns';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -46,29 +47,57 @@ interface TimeTableGraphProps {
     hideAppUsage?: boolean;
     projects?: Project[];
     nightTimeStart?: number; // 0-24 or >24 for next day
-    settings?: AppSettings | null; // Added
+    settings?: AppSettings | null; // Restored
     onUpdateSettings?: (settings: AppSettings) => void;
+    renderMode?: 'fixed' | 'dynamic'; // New prop to control visualization behavior
+    plannedSessions?: PlannedSession[]; // NEW: For overlay
+    currentTime?: Date; // NEW: Allow parent to drive the clock
 }
 
-export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLiveSession, hideAppUsage, projects = [], activeProjectId, nightTimeStart = 22, settings, onUpdateSettings }: TimeTableGraphProps) {
+export function TimeTableGraph({
+    sessions,
+    date,
+    liveSession,
+    allSessions,
+    allLiveSession,
+    projects = [],
+    activeProjectId,
+    nightTimeStart = 24, // Default to 24 (Midnight)
+    settings,
+    onUpdateSettings,
+    hideAppUsage, // Add this
+    renderMode = 'dynamic', // Default to dynamic safely,
+    plannedSessions = [], // Default to empty
+    currentTime
+}: TimeTableGraphProps & { hideAppUsage?: boolean }): React.ReactNode {
+    console.log('[TimeTableGraph] Render Mode:', renderMode);
     const { t } = useTranslation();
     // const { settings } = useDataStore(); // Removed
-    const [now, setNow] = useState(new Date());
+    const [internalNow, setInternalNow] = useState(new Date());
+    const now = currentTime || internalNow;
+
     const [isIgnoredAppsModalOpen, setIsIgnoredAppsModalOpen] = useState(false);
     const [modalMode, setModalMode] = useState<'ignored' | 'work'>('ignored');
     const [appsToConfigure, setAppsToConfigure] = useState<{ name: string; duration: number }[]>([]);
 
     // Update 'now' every second to keep live session growing and enable seconds display
     useEffect(() => {
-        if (!liveSession && !allLiveSession) return; // No need to tick if no live session
+        if (!liveSession && !allLiveSession && currentTime) return; // If parent provides time, no need to tick internal unless we want strictly internal fallback? Actually if currentTime is provided, we ignore internal.
 
-        const interval = setInterval(() => {
-            setNow(new Date());
-        }, 1000); // Update every second
+        // If no external time, and we have live session, we tick.
+        if (!currentTime && (liveSession || allLiveSession)) {
+            const interval = setInterval(() => {
+                setInternalNow(new Date());
+            }, 1000); // Update every second
+            setInternalNow(new Date());
+            return () => clearInterval(interval);
+        }
 
-        setNow(new Date()); // Update immediately on mount/liveSession structure change
-        return () => clearInterval(interval);
-    }, [liveSession, allLiveSession]);
+        // Fallback: If no external time and no live session, do we tick? 
+        // Original logic: "if (!liveSession && !allLiveSession) return;"
+        // We preserve original logic for internal timer, but prioritize currentTime.
+
+    }, [liveSession, allLiveSession, currentTime]);
 
     // Helper to check for valid dates
     const isValidDate = (d: any) => {
@@ -77,8 +106,13 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
 
     // Fit to view: 24h = 100% height OR Dynamic if sessions exceed 24h
     // We determine the maximum end time of all sessions to set the scale.
-    const { maxSessionMins, eventsWithRelativeTime } = useMemo(() => {
-        const allSessions = liveSession ? [...sessions, liveSession] : sessions;
+    const { eventsWithRelativeTime, TOTAL_MINUTES = 1440 } = useMemo(() => {
+        // Deduplicate: If liveSession is present, filter it out from 'sessions' based on start time similarity
+        const uniqueSessions = liveSession
+            ? sessions.filter(s => Math.abs(new Date(s.start).getTime() - new Date(liveSession.start).getTime()) > 1000)
+            : sessions;
+
+        const allSessions = liveSession ? [...uniqueSessions, liveSession] : sessions;
         if (allSessions.length === 0) return { maxSessionMins: 24 * 60, eventsWithRelativeTime: [] };
 
         const dayStart = date ? new Date(date) : new Date(now);
@@ -114,13 +148,10 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             let durationMins = endMins - startMins;
 
             // Sanity check for negative start (shouldn't happen with correct data, but safe guard)
-            if (startMins < 0) {
-                // partial overlap or wrong day? Clamp to 0 if purely display
-                // But if it's "Yesterday's" session shown on today, it might be weird.
-                // Assuming sessions passed here belong to this logical day.
-                // If data is messy, we might see negative.
-            }
+            if (startMins < 0) startMins = 0;
 
+            // Standardize maxEnd to clamp at 24h for visual scaling IF we are strictly splitting
+            // BUT wait, we need to detect overflow first.
             if (endMins > maxEnd) maxEnd = endMins;
 
             return {
@@ -129,17 +160,14 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             };
         }).filter(Boolean) as any[]; // Filter out nulls
 
-        // Add some padding at the bottom if we exceed 24h, or just fit tight?
-        // Let's ceil to nearest hour if > 24h
-        if (maxEnd > 24 * 60) {
-            maxEnd = Math.ceil(maxEnd / 60) * 60;
-        }
+        // Force 24h Scale (1440 mins) to prevent axis extension
+        // visually we want 00:00 to 24:00.
+        maxEnd = 24 * 60;
 
-        return { maxSessionMins: maxEnd, eventsWithRelativeTime: mapped };
+        return { maxSessionMins: maxEnd, eventsWithRelativeTime: mapped, TOTAL_MINUTES: 1440 };
     }, [sessions, liveSession, date, now]);
 
-    const TOTAL_MINUTES = maxSessionMins;
-    const TOTAL_HOURS = TOTAL_MINUTES / 60;
+    const TOTAL_HOURS = 24;
 
     // Helper interface for the layout logic
     interface RenderEvent {
@@ -156,239 +184,453 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
         startHour: number;
         color?: string;
         isIgnored?: boolean;
+        forceSide?: 'left' | 'right'; // New property for visual separation
     }
 
     const sessionBlocks = useMemo(() => {
-        // 1. Pre-process: Filter & Sort (Using pre-calculated relative times)
-        // We reuse the mapping from above but need to shape it for the merge logic
+        const gridMode = settings?.timelineGridMode || '15min';
+        console.log('[TimeTableGraph] Grid Mode:', gridMode, 'Raw Envents:', eventsWithRelativeTime.length);
 
-        const rawEvents = eventsWithRelativeTime
-            .map(session => {
+        // --- OPTION A: CONTINUOUS MODE (Legacy/Exact) ---
+        if (gridMode === 'continuous') {
+            // 1. Pre-process: Split sessions crossing midnight (1440 mins)
+            const splitSessions: any[] = [];
+            const MIDNIGHT_MINS = 1440;
+
+            eventsWithRelativeTime.forEach(evt => {
+                if (evt.startMins < MIDNIGHT_MINS && evt.endMins > MIDNIGHT_MINS) {
+                    // Split into two
+                    // Part A: Start -> 1440
+                    splitSessions.push({
+                        ...evt,
+                        endMins: MIDNIGHT_MINS,
+                        durationMins: MIDNIGHT_MINS - evt.startMins,
+                        e: new Date(evt.s.getTime() + (MIDNIGHT_MINS - evt.startMins) * 60000)
+                    });
+                    // Part B: 1440 -> End
+                    splitSessions.push({
+                        ...evt,
+                        startMins: MIDNIGHT_MINS,
+                        durationMins: evt.endMins - MIDNIGHT_MINS,
+                        s: new Date(evt.s.getTime() + (MIDNIGHT_MINS - evt.startMins) * 60000)
+                    });
+                } else {
+                    splitSessions.push(evt);
+                }
+            });
+
+            const sortedSessions = splitSessions.sort((a, b) => a.startMins - b.startMins);
+
+            const merged: RenderEvent[] = [];
+
+            sortedSessions.forEach(session => {
+                const last = merged[merged.length - 1];
+
+                // Merge if overlap or gap < 1 minute (Continuity)
+                // AND ensure we don't merge across the midnight boundary (Left vs Right)
+                const isCrossingMidnightConfig = last && last.startMins < MIDNIGHT_MINS && session.startMins >= MIDNIGHT_MINS;
+
+                if (last && session.startMins <= (last.endMins + 1) && !isCrossingMidnightConfig) {
+                    // Update End
+                    last.endMins = Math.max(last.endMins, session.endMins);
+                    last.endDate = new Date(Math.max(last.endDate.getTime(), session.e.getTime())); // Use session.e (Date object)
+                    last.durationMins = last.endMins - last.startMins;
+
+                    // Add Duration (in seconds for appDistribution)
+                    const sessionDurationSeconds = differenceInSeconds(session.e, session.s);
+                    // last.duration (RenderEvent uses durationMins usually for logic, but we might want a 'totalSeconds' for stats?)
+                    // The RenderEvent interface defined above has 'durationMins'. 
+                    // Let's check the previous code... it used 'duration' (seconds?)? 
+                    // RenderEvent definition: durationMins: number. 
+                    // But in the previous invalid code I was using 'last.duration += ...' which might have been a type error if not defined.
+                    // Let's assume RenderEvent needs a 'totalSeconds' or we just update appDistribution.
+
+                    // Merge Apps
+                    const appName = session.process || session.title || t('calendar.focusSession');
+                    last.appDistribution[appName] = (last.appDistribution[appName] || 0) + sessionDurationSeconds;
+
+                    // Update Dominant App
+                    // Need to track maxAppDur in RenderEvent to keep this efficient? Or recalculate?
+                    // Let's add maxAppDur to the pushed object for internal usage.
+                    const currentMax = (last as any).maxAppDur || 0;
+                    if (last.appDistribution[appName] > currentMax) {
+                        (last as any).maxAppDur = last.appDistribution[appName];
+                        last.title = appName;
+                        // Re-check color
+                        const p = projects.find(proj => proj.name === appName);
+                        // Fix simplistic check
+                        const isIgnored = settings?.ignoredApps?.some(ignored =>
+                            ignored === appName ||
+                            ignored.toLowerCase() === appName.toLowerCase() ||
+                            ignored.replace(/\s/g, "").toLowerCase() === appName.replace(/\s/g, "").toLowerCase() ||
+                            appName.toLowerCase().includes(ignored.toLowerCase())
+                        );
+                        last.color = isIgnored ? (settings?.ignoredAppsColor || '#808080') : p?.color;
+                        last.isIgnored = isIgnored;
+                        last.type = p?.type;
+                    }
+
+                } else {
+                    // Start New Block
+                    const appName = session.process || session.title || t('calendar.focusSession');
+                    const p = projects.find(proj => proj.name === appName);
+                    const isIgnored = settings?.ignoredApps?.some(ignored =>
+                        ignored === appName ||
+                        ignored.toLowerCase() === appName.toLowerCase() ||
+                        ignored.replace(/\s/g, "").toLowerCase() === appName.replace(/\s/g, "").toLowerCase() ||
+                        appName.toLowerCase().includes(ignored.toLowerCase())
+                    );
+
+                    // Determine Side
+                    let forceSide: 'left' | 'right' | undefined = undefined;
+                    let visualStartMins = session.startMins;
+                    let visualEndMins = session.endMins;
+
+                    if (renderMode === 'dynamic') {
+                        if (plannedSessions && plannedSessions.length > 0) {
+                            forceSide = 'right';
+                        } else if (session.startMins >= MIDNIGHT_MINS) {
+                            forceSide = 'right';
+                            visualStartMins = session.startMins - MIDNIGHT_MINS;
+                            visualEndMins = session.endMins - MIDNIGHT_MINS;
+                        }
+                    }
+
+                    merged.push({
+                        id: `block-${session.startMins}`,
+                        title: appName,
+                        startMins: visualStartMins, // Store VISUAL mins for rendering
+                        endMins: visualEndMins,
+                        startDate: session.s,
+                        endDate: session.e,
+                        durationMins: session.durationMins,
+                        appDistribution: { [appName]: differenceInSeconds(session.e, session.s) },
+                        color: isIgnored ? (settings?.ignoredAppsColor || '#808080') : p?.color,
+                        type: p?.type,
+                        startHour: Math.floor(visualStartMins / 60) % 24,
+                        isIgnored,
+                        forceSide: forceSide,
+                        // Internal properties for merging logic
+                        ...({ maxAppDur: differenceInSeconds(session.e, session.s) } as any)
+                    });
+                }
+            });
+
+            // Post-Process: Force 'Left' if any 'Right' exists (Split View)
+            if (renderMode === 'dynamic') {
+                const hasRight = merged.some(e => e.forceSide === 'right');
+                if (hasRight) {
+                    merged.forEach(e => {
+                        if (e.forceSide !== 'right') {
+                            e.forceSide = 'left';
+                        }
+                    });
+                }
+            }
+
+            return merged.map(evt => {
+                const top = (evt.startMins / TOTAL_MINUTES) * 100;
+                const height = ((evt.endMins - evt.startMins) / TOTAL_MINUTES) * 100;
+                const durationMins = Math.floor((evt.endMins - evt.startMins));
+
+                let left = "0%";
+                let width = "100%";
+                if (evt.forceSide === 'left') {
+                    width = "50%";
+                } else if (evt.forceSide === 'right') {
+                    left = "50%";
+                    width = "50%";
+                }
+
                 return {
-                    start: session.s,
-                    end: session.e,
-                    title: session.process || t('calendar.focusSession'),
-                    original: session,
-                    // Pass pre-calculated mins to avoid re-calc issues with 'getHours' wrapping
-                    _startMins: session.startMins,
-                    _endMins: session.endMins
+                    top: `${top}%`,
+                    height: `${height}%`,
+                    left,
+                    width,
+                    title: evt.title,
+                    timeRange: `${format(evt.startDate, 'HH:mm')} - ${format(evt.endDate, 'HH:mm')}`,
+                    duration: `${durationMins}m`,
+                    durationMins,
+                    isShort: durationMins < 10,
+                    fullApps: Object.keys(evt.appDistribution).join(", "),
+                    type: evt.type,
+                    appDistribution: evt.appDistribution,
+                    isNightTime: (() => {
+                        if (evt.isIgnored) return false;
+                        const h = evt.startHour;
+                        const limit = 5;
+                        if (h < limit) {
+                            if (nightTimeStart < 24) return true;
+                            return h >= (nightTimeStart - 24);
+                        } else {
+                            if (nightTimeStart >= 24) return false;
+                            return h >= nightTimeStart;
+                        }
+                    })(),
+                    color: evt.color,
+                    forceSide: evt.forceSide
                 };
-            })
-            .sort((a, b) => a.start.getTime() - b.start.getTime());
+            });
+        }
 
-        // 2. Merge Logic: Two-Pass Strategy
-        // Pass 1: Pre-Merge SAME APP sessions (gap <= 5m)
-        const preMergedEvents: (typeof rawEvents[number] & { appDistribution: Record<string, number> })[] = [];
+        // --- OPTION B: SESSION-CENTRIC SNAPPING ---
+        console.log('[TimeTableGraph] Entering Option B (Snapping)');
+        // Refactored Logic: Pre-Merge -> Threshold -> Snap
+        const events: RenderEvent[] = [];
+        const MIDNIGHT_MINS = 1440;
 
-        rawEvents.forEach(evt => {
-            const currentDuration = differenceInSeconds(evt.end, evt.start);
+        // 1. PRE-MERGE: Group consecutive sessions (gap < 5m) of the same app
+        const mergedSessions: any[] = [];
+        if (eventsWithRelativeTime.length > 0) {
+            // Sort by start time logic
+            const sorted = [...eventsWithRelativeTime].sort((a, b) => a.startMins - b.startMins);
 
-            if (preMergedEvents.length === 0) {
-                preMergedEvents.push({
-                    ...evt,
-                    appDistribution: { [evt.title]: currentDuration }
-                });
-                return;
-            }
+            let currentBlock: any = null;
 
-            const last = preMergedEvents[preMergedEvents.length - 1];
-            // Use time diff on Date objects for accuracy in gap check
-            const timeDiff = differenceInSeconds(evt.start, last.end);
+            sorted.forEach(session => {
+                const appName = session.process || session.title || t('calendar.focusSession');
+                const sessionDurSec = differenceInSeconds(session.e, session.s);
 
-            // Pass 1: Pre-Merge SAME APP sessions (gap <= 5m)
-            const isSameApp = last.title === evt.title;
-
-            if (timeDiff <= 300 && isSameApp) {
-                // Merge same app
-                last.end = new Date(Math.max(last.end.getTime(), evt.end.getTime()));
-                // Update cached endMins
-                last._endMins = Math.max(last._endMins, evt._endMins);
-
-                last.appDistribution[evt.title] = (last.appDistribution[evt.title] || 0) + currentDuration;
-            } else {
-                preMergedEvents.push({
-                    ...evt,
-                    appDistribution: { [evt.title]: currentDuration }
-                });
-            }
-        });
-
-        // Pass 2: Summary Merge (Cross App)
-        const mergedEvents: (typeof rawEvents[number] & { appDistribution: Record<string, number> })[] = [];
-
-        preMergedEvents.forEach(evt => {
-            if (mergedEvents.length === 0) {
-                mergedEvents.push(evt);
-                return;
-            }
-
-            const last = mergedEvents[mergedEvents.length - 1];
-            const timeDiff = differenceInSeconds(evt.start, last.end);
-            const currentDuration = differenceInSeconds(evt.end, evt.start);
-            const isSummaryView = !settings?.timelineShowDetail;
-            const isSameApp = last.title === evt.title;
-
-            let shouldMerge = false;
-
-            if (isSummaryView) {
-                // Summary View: Merge if gap is small
-                if (timeDiff <= 300) {
-                    shouldMerge = true;
-
-                    // Exception: Different App AND Duration >= 15 mins
-                    if (!isSameApp && currentDuration >= 900) {
-                        shouldMerge = false;
-                    }
+                if (!currentBlock) {
+                    currentBlock = {
+                        ...session,
+                        title: appName,
+                        appDistribution: { [appName]: sessionDurSec }
+                    };
+                    return;
                 }
-            } else {
-                // Detail View: Merge if Same App (already done in Pass 1) OR Minor Interruption (< 2m)
-                if (timeDiff <= 300 && currentDuration < 120) {
-                    shouldMerge = true;
+
+                // Calculate Gap (Minutes)
+                const gap = session.startMins - currentBlock.endMins;
+                // RELAXED MERGE: Merge if gap < 5 minutes, REGARDLESS of app name
+                // This mimics "Continuous" mode behavior where we group by time, not just app
+                if (gap < 5) {
+                    // Extend Block
+                    currentBlock.endMins = Math.max(currentBlock.endMins, session.endMins);
+                    // Update End Date if extended
+                    currentBlock.e = session.e.getTime() > currentBlock.e.getTime() ? session.e : currentBlock.e;
+                    currentBlock.durationMins = currentBlock.endMins - currentBlock.startMins;
+
+                    // Accumulate App Usage
+                    currentBlock.appDistribution[appName] = (currentBlock.appDistribution[appName] || 0) + sessionDurSec;
+
+                    // Update Title to Dominant App (on the fly or post-process? Let's do on-the-fly for simplicity)
+                    const currentMax = (Object.values(currentBlock.appDistribution) as number[]).reduce((a, b) => Math.max(a, b), 0);
+                    if ((currentBlock.appDistribution[appName] || 0) >= currentMax) {
+                        currentBlock.title = appName;
+                    }
+
+                } else {
+                    // Push and Start New
+                    mergedSessions.push(currentBlock);
+                    currentBlock = {
+                        ...session,
+                        title: appName,
+                        appDistribution: { [appName]: sessionDurSec }
+                    };
+                }
+            });
+            if (currentBlock) mergedSessions.push(currentBlock);
+        }
+        console.log('[TimeTableGraph] Option B - Merged Sessions:', mergedSessions.length);
+
+        // 2. FILTER & SNAP & POST-MERGE
+        const snappedBlocks: any[] = [];
+
+        mergedSessions.forEach(block => {
+            // A. Threshold Filter (Disabled for debugging/usability)
+            // if (block.durationMins < 8) return;
+
+            // B. Snap to Grid (Nearest 15m)
+            let snapStart = Math.round(block.startMins / 15) * 15;
+            let snapEnd = Math.round(block.endMins / 15) * 15;
+
+            // Prevent zero-duration blocks
+            if (snapStart === snapEnd) return;
+
+            // Add to intermediate array
+            snappedBlocks.push({
+                ...block,
+                startMins: snapStart,
+                endMins: snapEnd,
+                durationMins: snapEnd - snapStart
+            });
+        });
+        console.log('[TimeTableGraph] Option B - Snapped Blocks:', snappedBlocks.length);
+
+        // 2.5 POST-SNAP MERGE
+        // Merge adjacent blocks that snapped to touching times (End == Start) AND have same app
+        const finalBlocks: any[] = [];
+        if (snappedBlocks.length > 0) {
+            // Sort by start time just in case, though they should be sorted
+            snappedBlocks.sort((a, b) => a.startMins - b.startMins);
+
+            let current = snappedBlocks[0];
+            for (let i = 1; i < snappedBlocks.length; i++) {
+                const next = snappedBlocks[i];
+                const isTouching = current.endMins === next.startMins;
+                const isOverlap = current.endMins > next.startMins; // Should not happen with sorting but safety
+
+                // RELAXED MERGE: Always merge touching blocks in Grid Mode to form continuous chunks
+                // const isSameApp = (current.title || "") === (next.title || ""); 
+
+                if (isTouching || isOverlap) {
+                    // Merge!
+                    current.endMins = Math.max(current.endMins, next.endMins);
+                    current.durationMins = current.endMins - current.startMins;
+                    current.e = next.e; // Take later end date
+                    // Merge app distribution
+                    Object.entries(next.appDistribution).forEach(([app, dur]) => {
+                        current.appDistribution[app] = (current.appDistribution[app] || 0) + (dur as number);
+                    });
+
+                    // Recalculate Dominant App for the merged block
+                    let maxDur = 0;
+                    let dominantApp = current.title;
+                    Object.entries(current.appDistribution).forEach(([app, dur]) => {
+                        if ((dur as number) > maxDur) {
+                            maxDur = (dur as number);
+                            dominantApp = app;
+                        }
+                    });
+                    current.title = dominantApp;
+
+                } else {
+                    finalBlocks.push(current);
+                    current = next;
                 }
             }
+            finalBlocks.push(current);
+        }
+        console.log('[TimeTableGraph] Option B - Final Blocks:', finalBlocks.length);
 
-            if (shouldMerge) {
-                last.end = new Date(Math.max(last.end.getTime(), evt.end.getTime()));
-                last._endMins = Math.max(last._endMins, evt._endMins);
-
-                // Merge app distribution
-                Object.entries(evt.appDistribution).forEach(([app, dur]) => {
-                    last.appDistribution[app] = (last.appDistribution[app] || 0) + (dur as number);
-                });
-            } else {
-                mergedEvents.push(evt);
-            }
-        });
-
-        // 3. Convert to RenderEvents & Determine Dominant Title for each merged block
-        const events: RenderEvent[] = mergedEvents.map(session => {
-            // Use the preserved relative minutes!
-            const startMins = session._startMins;
-            const endMins = session._endMins;
-            const durationMins = Math.max(endMins - startMins, 5); // Minimum 5 mins
-
-            // Find the dominant app within this merged block for its title
-            let maxDuration = 0;
-            let dominantTitle = t('calendar.activity'); // Default title if no apps or for very short sessions
-            if (Object.keys(session.appDistribution).length > 0) {
-                Object.entries(session.appDistribution).forEach(([app, dur]) => {
-                    if ((dur as number) > maxDuration) {
-                        maxDuration = (dur as number);
-                        dominantTitle = app;
-                    }
-                });
-            } else {
-                dominantTitle = session.title; // Fallback to original title if appDistribution is empty
-            }
-
-            // Find project type if available
-            const matchedProject = projects.find(p => p.name === dominantTitle);
-            const projectType = matchedProject?.type;
-
-            // Check if it's an ignored app (Robust Matching)
+        // 3. GENERATE RENDER EVENTS
+        finalBlocks.forEach(block => {
+            const processName = block.title;
+            const matchedProject = projects.find(p => p.name === processName);
             const isIgnored = settings?.ignoredApps?.some(ignored =>
-                ignored === dominantTitle ||
-                ignored.toLowerCase() === dominantTitle.toLowerCase() ||
-                ignored.replace(/\s/g, "").toLowerCase() === dominantTitle.replace(/\s/g, "").toLowerCase() ||
-                dominantTitle.toLowerCase().includes(ignored.toLowerCase())
+                ignored === processName ||
+                ignored.toLowerCase() === processName.toLowerCase() ||
+                ignored.replace(/\s/g, "").toLowerCase() === processName.replace(/\s/g, "").toLowerCase() ||
+                processName.toLowerCase().includes(ignored.toLowerCase())
             );
-            const ignoredColor = settings?.ignoredAppsColor || '#808080';
+            const color = isIgnored ? (settings?.ignoredAppsColor || '#808080') : (matchedProject?.color || undefined);
 
-            return {
-                id: Math.random().toString(36),
-                title: dominantTitle,
-                startDate: session.start,
-                endDate: session.end,
-                startMins,
-                endMins,
-                durationMins,
-                appDistribution: session.appDistribution,
-                type: projectType,
-                startHour: getHours(session.start), // Still useful for Night Mode color logic (0-24 cycle)
-                color: isIgnored ? ignoredColor : matchedProject?.color,
-                isIgnored
+            // Generate Render Event Function
+            const createEvent = (sMins: number, eMins: number, side: 'left' | 'right' | undefined) => {
+                const sDate = new Date(date || now); sDate.setHours(0, 0, 0, 0); sDate.setMinutes(sMins);
+                const eDate = new Date(date || now); eDate.setHours(0, 0, 0, 0); eDate.setMinutes(eMins);
+
+                events.push({
+                    id: `block-${sMins}-${processName}`,
+                    title: processName,
+                    startDate: sDate,
+                    endDate: eDate,
+                    startMins: side === 'right' ? sMins - MIDNIGHT_MINS : sMins,
+                    endMins: side === 'right' ? eMins - MIDNIGHT_MINS : eMins,
+                    durationMins: eMins - sMins,
+                    appDistribution: block.appDistribution,
+                    type: matchedProject?.type,
+                    startHour: Math.floor(sMins / 60) % 24,
+                    color,
+                    isIgnored,
+                    forceSide: side
+                });
             };
-        });
 
-        // 4. Compute Layout Columns (Simple Greedy Packing) for remaining overlaps
-        const columns: RenderEvent[][] = [];
-        events.forEach(event => {
-            let placed = false;
+            // Handling Crossing Midnight
+            const s = block.startMins;
+            const e = block.endMins;
 
-            // Force single column for Summary View (flatten overlaps)
-            if (!settings?.timelineShowDetail) {
-                if (columns.length === 0) columns.push([]);
-                columns[0].push(event);
-                event.colIndex = 0;
-                return;
-            }
+            if (renderMode === 'dynamic') {
+                const hasPlanned = plannedSessions && plannedSessions.length > 0;
 
-            for (let i = 0; i < columns.length; i++) {
-                const lastEventInCol = columns[i][columns[i].length - 1];
-                // Check if the current event can fit into this column without overlapping the last event
-                if (event.startMins >= lastEventInCol.endMins) {
-                    columns[i].push(event);
-                    event.colIndex = i; // Assign column index
-                    placed = true;
-                    break;
+                if (hasPlanned) {
+                    // Split View: Planned (Left) vs Actual (Right)
+                    // Force Actual to Right
+                    if (s < MIDNIGHT_MINS && e > MIDNIGHT_MINS) {
+                        createEvent(s, MIDNIGHT_MINS, 'right');
+                        createEvent(MIDNIGHT_MINS, e, 'right');
+                    } else {
+                        createEvent(s, e, 'right');
+                    }
+                } else {
+                    // Standard Midnight Split: Day 1 (Left) vs Day 2 (Right)
+                    if (s < MIDNIGHT_MINS && e > MIDNIGHT_MINS) {
+                        createEvent(s, MIDNIGHT_MINS, 'left');
+                        createEvent(MIDNIGHT_MINS, e, 'right');
+                    } else if (s >= MIDNIGHT_MINS) {
+                        createEvent(s, e, 'right');
+                    } else {
+                        createEvent(s, e, undefined);
+                    }
+                }
+            } else {
+                const clampedEnd = Math.min(e, 24 * 60);
+                if (s < clampedEnd) {
+                    createEvent(s, clampedEnd, undefined);
                 }
             }
-            if (!placed) {
-                // If it doesn't fit into any existing column, create a new one
-                columns.push([event]);
-                event.colIndex = columns.length - 1; // Assign new column index
-            }
         });
 
-        const totalTracks = columns.length > 0 ? columns.length : 1;
+        // 3. Post-Process: Force 'Left' logic for Split View
+        if (renderMode === 'dynamic') {
+            const hasRight = events.some(e => e.forceSide === 'right');
+            if (hasRight) {
+                events.forEach(e => {
+                    if (e.forceSide !== 'right') {
+                        e.forceSide = 'left';
+                    }
+                });
+            }
+        }
 
-        return events.map((event) => {
-            const top = (event.startMins / TOTAL_MINUTES) * 100;
-            const height = (event.durationMins / TOTAL_MINUTES) * 100;
+        // 4. Layout Generation
+        return events.map(evt => {
+            const top = (evt.startMins / TOTAL_MINUTES) * 100;
+            const height = ((evt.endMins - evt.startMins) / TOTAL_MINUTES) * 100;
 
-            const widthPercent = 100 / totalTracks;
-            const leftPercent = (event.colIndex || 0) * widthPercent;
+            let left = "0%";
+            let width = "100%";
 
-            // In Summary View, use full width and ignore nesting
-            const isSummary = !settings?.timelineShowDetail;
-            const finalLeft = isSummary ? "0%" : `${leftPercent}%`;
-            const finalWidth = isSummary ? "100%" : `${widthPercent}%`;
-
-            const hours = Math.floor(event.durationMins / 60);
-            const mins = event.durationMins % 60;
-            const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+            if (evt.forceSide === 'left') {
+                width = "50%";
+            } else if (evt.forceSide === 'right') {
+                left = "50%";
+                width = "50%";
+            }
 
             return {
                 top: `${top}%`,
-                height: `${Math.max(height, 0.5)}%`, // Ensure minimum height for visibility
-                left: finalLeft,
-                width: finalWidth,
-                title: event.title,
-                timeRange: `${format(event.startDate, 'h:mm a')} - ${format(event.endDate, 'h:mm a')}`,
-                duration: durationStr,
-                durationMins: event.durationMins, // Added
-                isShort: event.durationMins < 30,
-                fullApps: Object.keys(event.appDistribution).join(", "), // For tooltip
-                type: event.type,
-                appDistribution: event.appDistribution, // Pass through for tooltip
+                height: `${height}%`,
+                left,
+                width,
+                title: evt.title,
+                timeRange: `${format(evt.startDate, 'HH:mm')} - ${format(evt.endDate, 'HH:mm')}`,
+                duration: `${evt.durationMins}m`,
+                durationMins: evt.durationMins,
+                isShort: evt.durationMins < 15,
+                fullApps: Object.keys(evt.appDistribution).join(", "),
+                type: evt.type,
+                appDistribution: evt.appDistribution,
                 isNightTime: (() => {
-                    if (event.isIgnored) return false; // Ignored apps should use their own color, not night time yellow
-                    const h = event.startHour;
-                    const limit = 5; // 5 AM morning start
+                    if (evt.isIgnored) return false;
+                    const h = evt.startHour;
+                    const limit = 5;
                     if (h < limit) {
-                        // Early morning (0-5)
-                        if (nightTimeStart >= 24) return h >= (nightTimeStart - 24);
-                        return false; // User requested: strictly strictly apply 'Start' logic linearly (02:00 is before 22:00)
+                        if (nightTimeStart < 24) return true;
+                        return h >= (nightTimeStart - 24);
                     } else {
-                        // Day/Evening
                         if (nightTimeStart >= 24) return false;
                         return h >= nightTimeStart;
                     }
                 })(),
-                color: event.color
+                color: evt.color,
+                forceSide: evt.forceSide
             };
         });
-    }, [sessions, date, liveSession, now, projects, activeProjectId, nightTimeStart, settings]);
+
+    }, [sessions, date, liveSession, now, projects, activeProjectId, nightTimeStart, settings, renderMode, plannedSessions]);
 
     // Calculate Summary Stats
     // 1. TIMELINE STATS (Filtered) - Calculate totalFocusTime from filtered 'sessions'
@@ -540,7 +782,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                     )}
                     <div className="flex items-center justify-between w-full">
                         <div>
-                            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-1 opacity-70">{t('calendar.totalWork') || "Total Work"}</div>
+                            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-1 opacity-70">{t('calendar.totalWork')}</div>
                             <div className="text-2xl font-bold font-mono tracking-tight text-foreground flex items-baseline justify-start gap-1 shadow-sm">
                                 {Math.floor(totalAppUsageTime / 3600)}<span className="text-xs font-sans font-medium text-muted-foreground">h</span>
                                 {Math.floor((totalAppUsageTime % 3600) / 60)}<span className="text-xs font-sans font-medium text-muted-foreground">m</span>
@@ -600,7 +842,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
             <Tabs defaultValue="timetable" className="flex-1 flex flex-col min-h-0">
                 <div className="px-2 mb-2 shrink-0">
                     <TabsList className="flex w-full bg-muted/50 p-0.5 h-8">
-                        <TabsTrigger value="timetable" className="flex-1 text-[10px] px-3 h-7 data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings.timelineLabel') || 'Timeline'}</TabsTrigger>
+                        <TabsTrigger value="timetable" className="flex-1 text-[10px] px-3 h-7 data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings.timelineLabel')}</TabsTrigger>
                         {!hideAppUsage && <TabsTrigger value="app-usage" className="flex-1 text-[10px] px-3 h-7 data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('calendar.appUsage')}</TabsTrigger>}
                     </TabsList>
                 </div>
@@ -636,23 +878,133 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                             <div className="absolute top-0 bottom-0 left-8 border-l border-border/20 h-full pointer-events-none"></div>
 
                             {/* Current Time Indicator */}
-                            {(settings?.showCurrentTimeIndicator !== false) && (!date || isSameDay(date, now) || (settings?.dailyRecordMode === 'dynamic' && differenceInMinutes(now, date!) < TOTAL_MINUTES)) && (
-                                <div
-                                    className="absolute left-8 right-0 border-t-2 border-red-500/50 border-dashed z-20 pointer-events-none flex items-center"
-                                    style={{
-                                        top: `${(differenceInMinutes(now, (() => {
-                                            const d = date ? new Date(date) : new Date(now);
-                                            d.setHours(0, 0, 0, 0);
-                                            return d;
-                                        })()) / TOTAL_MINUTES) * 100}%`,
-                                        transform: 'translateY(-50%)' // Center the line on the exact time
-                                    }}
-                                >
-                                    <div className="absolute -left-1 w-2 h-2 bg-red-500 rounded-full -translate-x-1/2" />
-                                </div>
-                            )}
+                            {/* Current Time Indicator */}
+                            {(() => {
+                                if (settings?.showCurrentTimeIndicator === false) return null;
+
+                                const d = date ? new Date(date) : new Date(now);
+                                d.setHours(0, 0, 0, 0);
+                                const diffMins = differenceInMinutes(now, d);
+                                const isNextDay = diffMins >= TOTAL_MINUTES;
+
+                                // Condition: Show if within 24h OR (Dynamic Mode AND within 48h)
+                                const shouldShow = diffMins >= 0 && (
+                                    diffMins < TOTAL_MINUTES ||
+                                    (settings?.dailyRecordMode === 'dynamic' && renderMode === 'dynamic' && diffMins < TOTAL_MINUTES * 2)
+                                );
+
+                                if (!shouldShow) return null;
+
+                                const displayMins = isNextDay ? diffMins - TOTAL_MINUTES : diffMins;
+                                const topPct = (displayMins / TOTAL_MINUTES) * 100;
+
+                                return (
+                                    <div
+                                        className="absolute left-8 right-0 border-t-2 border-red-500/50 border-dashed z-20 pointer-events-none flex items-center"
+                                        style={{
+                                            top: `${topPct}%`,
+                                            transform: 'translateY(-50%)'
+                                        }}
+                                    >
+                                        <div className="absolute -left-1 w-2 h-2 bg-red-500 rounded-full -translate-x-1/2" />
+                                    </div>
+                                );
+                            })()}
 
                             {/* Events Layer */}
+                            {/* GHOST LAYER (Routine + Planned) */}
+                            <div className="absolute top-0 bottom-0 left-8 right-0 pointer-events-none z-0">
+                                {(() => {
+                                    // 1. Combine Routine & Planned
+                                    const ghostBlocks: {
+                                        startMins: number;
+                                        durationMins: number;
+                                        title: string;
+                                        color?: string;
+                                        source: 'routine' | 'plan';
+                                    }[] = [];
+
+                                    // A. Routine (from settings)
+                                    // Only show routine if we have a valid date to check the day of week
+                                    if (settings?.weeklyRoutine && date) {
+                                        const currentDay = getDay(date); // 0-6
+                                        settings.weeklyRoutine
+                                            .filter(r => r.dayOfWeek === currentDay)
+                                            .forEach(r => {
+                                                ghostBlocks.push({
+                                                    startMins: Math.floor(r.startSeconds / 60),
+                                                    durationMins: Math.floor(r.durationSeconds / 60),
+                                                    title: r.title,
+                                                    color: r.color,
+                                                    source: 'routine'
+                                                });
+                                            });
+                                    }
+
+                                    // B. Planned Sessions (from props)
+                                    // These override routine (visually, we might want to show both or prioritize plan)
+                                    // For now, let's just render them.
+                                    if (plannedSessions) {
+                                        plannedSessions.forEach(p => {
+                                            const d = new Date(p.start);
+                                            // Ensure it matches the view date (though props should probably filter this)
+                                            if (date && !isSameDay(d, date)) return;
+
+                                            const startMins = d.getHours() * 60 + d.getMinutes();
+                                            ghostBlocks.push({
+                                                startMins,
+                                                durationMins: Math.floor(p.duration / 60),
+                                                title: p.title,
+                                                color: p.color,
+                                                source: 'plan'
+                                            });
+                                        });
+                                    }
+
+                                    return ghostBlocks.map((block, i) => {
+                                        // Calculate Position
+                                        const startPercentage = (block.startMins / TOTAL_MINUTES) * 100;
+                                        const endPercentage = ((block.startMins + block.durationMins) / TOTAL_MINUTES) * 100;
+                                        const heightPercentage = endPercentage - startPercentage;
+
+                                        // Skip if out of bounds (though dynamic mode usually expands)
+                                        if (startPercentage > 100) return null;
+
+                                        // Split View Logic: Planned on LEFT
+                                        const isSplitView = renderMode === 'dynamic' && plannedSessions && plannedSessions.length > 0;
+                                        const widthStyle = isSplitView ? '50%' : undefined;
+                                        const rightStyle = isSplitView ? undefined : '1rem'; // Default right-4 is 1rem
+
+                                        return (
+                                            <div
+                                                key={`ghost-${i}`}
+                                                className={cn(
+                                                    "absolute left-0 rounded-sm border-2 border-dashed flex flex-col justify-center px-2 overflow-hidden opacity-30",
+                                                    // Color Logic
+                                                    !block.color && "bg-muted border-foreground/20 text-foreground",
+                                                    block.color === 'blue' && "bg-blue-500/20 border-blue-500/50 text-blue-700 dark:text-blue-300",
+                                                    block.color === 'green' && "bg-green-500/20 border-green-500/50 text-green-700 dark:text-green-300",
+                                                    block.color === 'orange' && "bg-orange-500/20 border-orange-500/50 text-orange-700 dark:text-orange-300",
+                                                    block.color === 'purple' && "bg-purple-500/20 border-purple-500/50 text-purple-700 dark:text-purple-300",
+                                                )}
+                                                style={{
+                                                    top: `${startPercentage}%`,
+                                                    height: `${heightPercentage}%`,
+                                                    width: widthStyle,
+                                                    right: rightStyle
+                                                }}
+                                            >
+                                                <div className="font-semibold text-[10px] truncate opacity-100 flex items-center gap-1">
+                                                    {block.source === 'routine' && <span className="text-[8px] uppercase tracking-tighter opacity-70">[R]</span>}
+                                                    {block.source === 'plan' && <span className="text-[8px] uppercase tracking-tighter opacity-70">[P]</span>}
+                                                    {block.title}
+                                                </div>
+                                            </div>
+                                        );
+                                    });
+                                })()}
+                            </div>
+
                             <div className="absolute top-0 bottom-0 left-8 right-0">
                                 <TooltipProvider delayDuration={0}>
                                     {sessionBlocks.map((block, i) => (
@@ -714,10 +1066,19 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                             </ContextMenuTrigger>
                                             <ContextMenuContent className="w-64">
                                                 <ContextMenuCheckboxItem
+                                                    checked={!settings?.timelineGridMode || settings?.timelineGridMode === '15min'}
+                                                    onCheckedChange={(checked) => {
+                                                        onUpdateSettings?.({ ...settings!, timelineGridMode: checked ? '15min' : 'continuous' });
+                                                    }}
+                                                >
+                                                    {t('settings.timeline.gridMode')}
+                                                </ContextMenuCheckboxItem>
+                                                <ContextMenuSeparator />
+                                                <ContextMenuCheckboxItem
                                                     checked={settings?.filterTimelineByWorkApps}
                                                     onCheckedChange={toggleWorkFilter}
                                                 >
-                                                    {t('settings.timeline.filterWorkApps') || "Show Only Work Apps"}
+                                                    {t('settings.timeline.filterWorkApps')}
                                                 </ContextMenuCheckboxItem>
                                                 <ContextMenuSeparator />
                                                 <ContextMenuItem
@@ -725,14 +1086,14 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                                     className="gap-2 cursor-pointer"
                                                 >
                                                     <Briefcase className="w-4 h-4" />
-                                                    {t('settings.timeline.configureWorkApps') || "Configure Work Programs..."}
+                                                    {t('settings.timeline.configureWorkApps')}
                                                 </ContextMenuItem>
                                                 <ContextMenuItem
                                                     onSelect={() => openModal('ignored', block)}
                                                     className="gap-2 cursor-pointer"
                                                 >
                                                     <Settings2 className="w-4 h-4" />
-                                                    {t('settings.timeline.configureIgnoredApps') || "Configure Ignored Apps..."}
+                                                    {t('settings.timeline.configureIgnoredApps')}
                                                 </ContextMenuItem>
                                             </ContextMenuContent>
                                         </ContextMenu>
@@ -787,7 +1148,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                 })}
                                 {sortedApps.length === 0 && (
                                     <div className="text-xs text-muted-foreground italic py-2 text-center">
-                                        {t('calendar.noActivity') || 'No activity'}
+                                        {t('calendar.noActivity')}
                                     </div>
                                 )}
                             </div>
@@ -806,13 +1167,13 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                     <DialogHeader>
                         <DialogTitle>
                             {modalMode === 'ignored'
-                                ? (t('settings.timeline.configureIgnoredApps') || "Manage Ignored Apps")
-                                : (t('settings.timeline.configureWorkApps') || "Configure Work Programs")}
+                                ? t('settings.timeline.configureIgnoredApps')
+                                : t('settings.timeline.configureWorkApps')}
                         </DialogTitle>
                         <DialogDescription>
                             {modalMode === 'ignored'
-                                ? (t('settings.timeline.configureIgnoredAppsDesc') || "Select apps to ignore. Ignored apps will be excluded from focus time calculations.")
-                                : (t('settings.timeline.configureWorkAppsDesc') || "Select apps to classify as Work. These will be visible when the Work Filter is active.")}
+                                ? t('settings.timeline.configureIgnoredAppsDesc')
+                                : t('settings.timeline.configureWorkAppsDesc')}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="flex flex-col gap-6 py-4">
@@ -820,8 +1181,8 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                         <div className="flex flex-col gap-2">
                             <h4 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                                 {modalMode === 'ignored'
-                                    ? (t('settings.timeline.ignoredAppsList') || "Currently Ignored")
-                                    : (t('settings.timeline.workAppsList') || "Current Work Apps")}
+                                    ? t('settings.timeline.ignoredAppsList')
+                                    : t('settings.timeline.workAppsList')}
                             </h4>
                             <div className="flex flex-wrap gap-2 min-h-[2.5rem] p-3 border rounded-md bg-muted/20">
                                 {/* Check if empty */}
@@ -831,8 +1192,8 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                 }).length === 0 && (
                                         <span className="text-sm text-muted-foreground self-center italic">
                                             {modalMode === 'ignored'
-                                                ? (t('settings.timeline.noIgnoredApps') || "No apps ignored in this block")
-                                                : (t('settings.timeline.noAppsInList') || "No apps in this list")}
+                                                ? t('settings.timeline.noIgnoredApps')
+                                                : t('settings.timeline.noAppsInList')}
                                         </span>
                                     )}
 
@@ -878,8 +1239,8 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                         <div className="flex flex-col gap-2">
                             <h4 className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
                                 {modalMode === 'ignored'
-                                    ? (t('settings.timeline.addIgnoredApp') || "Add App to Ignore")
-                                    : (t('settings.timeline.addWorkApp') || "Add Work App")}
+                                    ? t('settings.timeline.addIgnoredApp')
+                                    : t('settings.timeline.addWorkApp')}
                             </h4>
                             <Select onValueChange={(val) => {
                                 if (modalMode === 'ignored') {
@@ -891,8 +1252,8 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                 <SelectTrigger className="w-full">
                                     <SelectValue placeholder={
                                         modalMode === 'ignored'
-                                            ? (t('settings.timeline.selectAppToIgnore') || "Select an app to ignore...")
-                                            : (t('settings.timeline.selectAppToAdd') || "Select an app...")
+                                            ? t('settings.timeline.selectAppToIgnore')
+                                            : t('settings.timeline.selectAppToAdd')
                                     } />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -902,8 +1263,8 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                                     }).length === 0 ? (
                                         <div className="p-2 text-sm text-muted-foreground text-center">
                                             {modalMode === 'ignored'
-                                                ? (t('settings.timeline.allAppsIgnored') || "All apps are already ignored")
-                                                : (t('settings.timeline.allAppsAdded') || "All apps are already added")}
+                                                ? t('settings.timeline.allAppsIgnored')
+                                                : t('settings.timeline.allAppsAdded')}
                                         </div>
                                     ) : (
                                         appsToConfigure
@@ -934,7 +1295,7 @@ export function TimeTableGraph({ sessions, allSessions, date, liveSession, allLi
                     </div>
                     <DialogFooter>
                         <Button onClick={() => setIsIgnoredAppsModalOpen(false)}>
-                            {t('common.done') || "Done"}
+                            {t('common.done')}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

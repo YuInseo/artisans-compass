@@ -81,6 +81,10 @@ export interface AppSettings {
     nightTimeStartSnapInterval?: number; // default: 30 (minutes)
     dailyRecordMode?: 'fixed' | 'dynamic'; // 'fixed' = 00:00 rollover, 'dynamic' = until app close
     runningAppsDisplayMode?: 'title' | 'process' | 'both'; // default: 'both'
+    todayTargetHours?: number; // Target focus hours for today
+    timelineGridMode?: 'continuous' | '15min'; // default: '15min'
+    reminders?: string[]; // User defined reminders
+    weeklyRoutine?: RoutineSession[]; // Recurring weekly schedule
 }
 
 export interface Project {
@@ -105,6 +109,17 @@ export interface WorkSession {
     startTime: string; // ISO timestamp
     endTime: string; // ISO timestamp
     durationSeconds: number;
+    process?: string;
+}
+
+export interface PlannedSession {
+    id: string;
+    start: number; // Unix timestamp (ms)
+    duration: number; // seconds
+    title: string;
+    description?: string;
+    isCompleted?: boolean;
+    color?: string;
 }
 
 export interface Todo {
@@ -131,6 +146,17 @@ export interface DailyLog {
     carriedOver?: boolean;
     quote?: string;
     nightTimeStart?: number;
+    plannedSessions?: PlannedSession[];
+}
+
+export interface RoutineSession {
+    id: string;
+    dayOfWeek: number; // 0=Sunday, 1=Monday, ... 6=Saturday
+    startSeconds: number; // Seconds from midnight (0 - 86400)
+    durationSeconds: number;
+    title: string;
+    description?: string;
+    color?: string;
 }
 
 export interface MonitorInfo {

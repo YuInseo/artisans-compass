@@ -136,7 +136,8 @@
         "timeline": {
             "title": "タイムライン設定",
             "showPreview": "ドラッグプレビューを表示",
-            "showPreviewDesc": "ドラッグまたはサイズ変更時に、変更後の位置を点線でプレビュー表示します。"
+            "showPreviewDesc": "ドラッグまたはサイズ変更時に、変更後の位置を点線でプレビュー表示します。",
+            "gridMode": "15分グリッドモード"
         },
         "backup": {
             "title": "バックアップとデータ",
@@ -189,7 +190,8 @@
         "edit": "編集",
         "confirm": "確認",
         "add": "追加",
-        "search": "検索..."
+        "search": "検索...",
+        "done": "完了"
     },
     "sidebar": {
         "timeline": "タイムライン",
@@ -204,7 +206,10 @@
         "jump": "移動",
         "noProjects": "プロジェクトが見つかりません",
         "newProject": "新規プロジェクト",
-        "today": "今日"
+        "today": "今日",
+        "creatingProject": "プロジェクトを作成中...",
+        "projectCreated": "プロジェクトが作成されました！",
+        "projectCreateFailed": "プロジェクトの作成に失敗しました"
     },
     "dashboard": {
         "todayFocus": "今日のフォーカス",
@@ -339,5 +344,13 @@
         "goal": "目標",
         "pickDate": "日付を選択",
         "launch": "コンパスを起動"
+    },
+    "weeklyView": {
+        "calendarMode": "カレンダー",
+        "routineMode": "ルーティン",
+        "weeklyRoutine": "週間ルーティン",
+        "showRoutine": "ルーティンを表示",
+        "loading": "読み込み中...",
+        "today": "今日"
     }
 }

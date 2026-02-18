@@ -140,31 +140,7 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
 
             </div>
 
-            {/* Daily Archive Mode */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-4">
-                <div className="space-y-0.5">
-                    <Label className="text-base font-semibold">{t('settings.timeline.dailyRecordMode') || "Daily Archive Mode"}</Label>
-                    <p className="text-xs text-muted-foreground opacity-80">
-                        {t('settings.timeline.dailyRecordModeDesc') || "Choose how the day is defined for archiving."}
-                    </p>
-                </div>
-                <Select
-                    value={settings.dailyRecordMode || 'fixed'}
-                    onValueChange={(val: 'fixed' | 'dynamic') => onSaveSettings({ ...settings, dailyRecordMode: val })}
-                >
-                    <SelectTrigger className="w-[180px]">
-                        <SelectValue placeholder="Select mode" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="fixed">
-                            {t('settings.timeline.modeFixed') || "Fixed (00:00)"}
-                        </SelectItem>
-                        <SelectItem value="dynamic">
-                            {t('settings.timeline.modeDynamic') || "Dynamic (App Close)"}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
+
 
 
 

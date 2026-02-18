@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { Play, Clock, CheckCircle2, Check, CornerDownRight, Import, ChevronDown, Briefcase } from "lucide-react";
+import { Play, Clock, CheckCircle2, Check, CornerDownRight, Import, ChevronDown, Briefcase, Settings2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 import { Todo, Session, Project, AppSettings } from "@/types";
 import { TimeTableGraph } from "./TimeTableGraph";
 import { format } from "date-fns";
@@ -8,7 +12,7 @@ import { ScreenshotSlider } from "./ScreenshotSlider";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { toast } from "@/lib/toast";
 import { TodoEditor } from "./TodoEditor";
-import { Button } from "@/components/ui/button";
+
 import { useTranslation } from "react-i18next";
 import {
     Select,
@@ -31,6 +35,7 @@ interface DailyArchiveViewProps {
     projects?: Project[];
     screenshots: string[];
     sessions: Session[];
+    plannedSessions?: any[];
     stats: {
         totalSeconds: number;
         questAchieved: boolean;
@@ -46,9 +51,11 @@ interface DailyArchiveViewProps {
     onDeleteTodo?: (id: string) => void;
     onToggleTodo?: (id: string) => void;
     onUpdateTodoText?: (id: string, text: string) => void;
+    settings?: AppSettings | null;
+    onUpdateSettings?: (settings: AppSettings) => void;
 }
 
-export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false, nightTimeStart: savedNightTimeStart, onDeleteTodo, onToggleTodo, onUpdateTodoText }: DailyArchiveViewProps) {
+export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, plannedSessions = [], stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false, nightTimeStart: savedNightTimeStart, onDeleteTodo, onToggleTodo, onUpdateTodoText, settings, onUpdateSettings }: DailyArchiveViewProps) {
     const { t } = useTranslation();
     const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
     const { carryOverTodos } = useTodoStore();
@@ -123,7 +130,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
     const [todos, setTodos] = useState<Todo[]>(filteredTodos);
     const [dynamicScreenshots, setDynamicScreenshots] = useState<string[]>(initialScreenshots);
 
-    const [settings, setSettings] = useState<AppSettings | null>(null);
+
 
     // Dynamic Screenshot & Settings Loading
     const [enableSpellCheck, setEnableSpellCheck] = useState(false);
@@ -152,41 +159,35 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
     };
 
     useEffect(() => {
-        const loadData = async () => {
+        const loadImages = async () => {
             if ((window as any).ipcRenderer) {
                 const dateStr = format(date, 'yyyy-MM-dd');
                 const images = await (window as any).ipcRenderer.invoke('get-daily-screenshots', dateStr);
                 setDynamicScreenshots(images);
-
-                const loadedSettings = await (window as any).ipcRenderer.invoke('get-settings');
-                if (loadedSettings) {
-                    setSettings(loadedSettings);
-                    if (typeof loadedSettings.enableSpellCheck === 'boolean') {
-                        setEnableSpellCheck(loadedSettings.enableSpellCheck);
-                    }
-                    // Prioritize saved daily setting, fallback to global setting
-                    if (savedNightTimeStart !== undefined) {
-                        setNightTimeStart(savedNightTimeStart);
-                    } else if (typeof loadedSettings.nightTimeStart === 'number') {
-                        setNightTimeStart(loadedSettings.nightTimeStart);
-                    }
-                }
             }
         };
-        loadData();
+        loadImages();
     }, [date]);
 
+    useEffect(() => {
+        if (settings?.nightTimeStart !== undefined) {
+            if (savedNightTimeStart === undefined) {
+                setNightTimeStart(settings.nightTimeStart);
+            }
+        }
+        if (settings?.enableSpellCheck !== undefined) {
+            setEnableSpellCheck(settings.enableSpellCheck);
+        }
+    }, [settings, savedNightTimeStart]);
+
     const handleUpdateSettings = async (newSettings: AppSettings) => {
-        if ((window as any).ipcRenderer) {
-            await (window as any).ipcRenderer.invoke('save-settings', newSettings);
-            setSettings(newSettings);
-            // Update local state derived from settings if needed
-            if (typeof newSettings.nightTimeStart === 'number') {
-                // Only update if not overridden by prop, but here we might want to reflect global change?
-                // Actually nightTimeStart prop takes precedence if provided.
-                if (savedNightTimeStart === undefined) {
-                    setNightTimeStart(newSettings.nightTimeStart);
-                }
+        if (onUpdateSettings) {
+            onUpdateSettings(newSettings);
+        }
+
+        if (typeof newSettings.nightTimeStart === 'number') {
+            if (savedNightTimeStart === undefined) {
+                setNightTimeStart(newSettings.nightTimeStart);
             }
         }
     };
@@ -685,6 +686,69 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                 <Clock className="w-4 h-4 text-blue-500" />
                                 {t('dashboard.timeTable')}
                             </h3>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7">
+                                        <Settings2 className="w-4 h-4 text-muted-foreground" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80" align="end">
+                                    <div className="grid gap-4">
+                                        <div className="space-y-2">
+                                            <h4 className="font-medium leading-none">{t('settings.timelineSettings') || 'Timeline Settings'}</h4>
+                                            <p className="text-sm text-muted-foreground">{t('settings.timelineConfigDesc') || 'Configure display options.'}</p>
+                                        </div>
+                                        <div className="grid gap-4">
+                                            <div className="flex items-center justify-between space-x-2">
+                                                <Label htmlFor="grid-mode" className="flex flex-col space-y-1">
+                                                    <span>{t('settings.snapToGrid') || 'Snap to 15m Grid'}</span>
+                                                    <span className="font-normal text-xs text-muted-foreground">{t('settings.snapToGridDesc') || 'Round times to nearest 15m'}</span>
+                                                </Label>
+                                                <Switch
+                                                    id="grid-mode"
+                                                    checked={settings?.timelineGridMode !== 'continuous'} // Default to 15min (checked)
+                                                    onCheckedChange={(checked) => {
+                                                        if (onUpdateSettings) {
+                                                            onUpdateSettings({
+                                                                ...settings!,
+                                                                timelineGridMode: checked ? '15min' : 'continuous'
+                                                            });
+                                                        } else if (handleUpdateSettings) {
+                                                            handleUpdateSettings({
+                                                                ...settings!,
+                                                                timelineGridMode: checked ? '15min' : 'continuous'
+                                                            });
+                                                        }
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="flex items-center justify-between space-x-2">
+                                                <Label htmlFor="work-filter" className="flex flex-col space-y-1">
+                                                    <span>{t('settings.showWorkOnly') || 'Show Work Apps Only'}</span>
+                                                    <span className="font-normal text-xs text-muted-foreground">{t('settings.showWorkOnlyDesc') || 'Hide non-work apps'}</span>
+                                                </Label>
+                                                <Switch
+                                                    id="work-filter"
+                                                    checked={settings?.filterTimelineByWorkApps || false}
+                                                    onCheckedChange={(checked) => {
+                                                        if (onUpdateSettings) {
+                                                            onUpdateSettings({
+                                                                ...settings!,
+                                                                filterTimelineByWorkApps: checked
+                                                            });
+                                                        } else if (handleUpdateSettings) {
+                                                            handleUpdateSettings({
+                                                                ...settings!,
+                                                                filterTimelineByWorkApps: checked
+                                                            });
+                                                        }
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
                         </div>
 
                         <div className="flex-1 overflow-hidden relative">
@@ -695,6 +759,8 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                 nightTimeStart={nightTimeStart}
                                 settings={settings}
                                 onUpdateSettings={handleUpdateSettings}
+                                renderMode={settings?.dailyRecordMode || 'dynamic'}
+                                plannedSessions={plannedSessions}
                             />
                         </div>
 

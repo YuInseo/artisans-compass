@@ -1,5 +1,5 @@
 import { Session, Todo, Project, AppSettings } from "@/types";
-import { Eraser, Sparkles, Briefcase, AlignLeft, AlignCenter, CheckCircle, Moon, Sun, Lock, Unlock, Play } from 'lucide-react';
+import { Eraser, Sparkles, AlignLeft, AlignCenter, CheckCircle, Moon, Sun, Lock, Unlock, Briefcase, ChevronDown, Settings2, Clock, Bell } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -22,6 +22,7 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
     ContextMenu,
     ContextMenuTrigger,
@@ -36,18 +37,21 @@ import {
 import { TodoEditor } from "./TodoEditor";
 import { TimerWidget } from "./TimerWidget";
 import { TimeTableGraph } from "./TimeTableGraph";
+import { WeeklyView } from "./WeeklyView";
+import { Calendar as CalendarIcon } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 
 interface DailyPanelProps {
-    onEndDay: (todos: Todo[], screenshots: string[]) => void;
+    onEndDay: (todos: Todo[], screenshots: string[], sessions: Session[], plannedSessions: any[]) => void;
     projects?: Project[];
     isSidebarOpen?: boolean;
+    onShowReminder?: () => void;
 }
 
-export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPanelProps) {
+export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarOpen }: DailyPanelProps) {
     const { t } = useTranslation();
     const [isWidgetLocked, setIsWidgetLocked] = useState(false);
-    const [isGeneralOpen, setIsGeneralOpen] = useState(false);
     const [isPinned, setIsPinned] = useState(false);
 
     // Timer Logic for Widget Mode
@@ -60,6 +64,8 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
         }, 1000);
         return () => clearInterval(interval);
     }, []);
+
+    const [isWeeklyView, setIsWeeklyView] = useState(false);
 
 
     // Use Store
@@ -74,23 +80,31 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
     // Stable Selector for Todos
     const todos = useMemo(() => projectTodos[activeProjectId] || [], [projectTodos, activeProjectId]);
 
-    // Filter duplicates to prevent dnd-kit ID collisions
-    const uniqueGeneralTodos = useMemo(() => {
-        const rawGeneral = projectTodos['general'] || [];
-        const mainIds = new Set(todos.map(t => t.id));
-        return rawGeneral.filter(t => !mainIds.has(t.id));
-    }, [todos, projectTodos]);
+    const [isGeneralOpen, setIsGeneralOpen] = useState(false);
+    const generalTodos = useMemo(() => projectTodos['general'] || [], [projectTodos]);
 
-    // Calculate generic completion for the unique list
+    const uniqueGeneralTodos = useMemo(() => {
+        const seen = new Set();
+        return generalTodos.filter(t => {
+            if (seen.has(t.id)) return false;
+            seen.add(t.id);
+            return true;
+        });
+    }, [generalTodos]);
+
     const uniqueGeneralCompletion = useMemo(() => {
         if (uniqueGeneralTodos.length === 0) return 0;
         const completed = uniqueGeneralTodos.filter(t => t.completed).length;
-        return Math.round((completed / uniqueGeneralTodos.length) * 100);
+        return (completed / uniqueGeneralTodos.length) * 100;
     }, [uniqueGeneralTodos]);
 
 
 
-    const { settings, isWidgetMode, setWidgetMode, saveSettings } = useDataStore();
+
+
+
+
+    const { settings, isWidgetMode, setWidgetMode, saveSettings, dailyLog } = useDataStore();
 
     const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
 
@@ -347,35 +361,56 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
 
         if ((window as any).ipcRenderer) {
             const loadSessionData = async () => {
-                let dateStr = format(new Date(), 'yyyy-MM-dd');
-                try {
-                    let logicalDate = null;
-                    // Only use logical date if in dynamic mode
-                    if (settings?.dailyRecordMode === 'dynamic') {
-                        logicalDate = await (window as any).ipcRenderer.invoke('get-logical-date');
-                    }
+                const todayStr = format(new Date(), 'yyyy-MM-dd');
+                let startViewDate = todayStr;
 
+                try {
+                    // ALWAYS fetch logical date to determine the "View Context"
+                    // This ensures the Timetable always shows the full "App Session" (Yesterday + Today)
+                    // regardless of the 'Fixed' vs 'Dynamic' recording setting.
+                    const logicalDate = await (window as any).ipcRenderer.invoke('get-logical-date');
                     if (logicalDate) {
-                        dateStr = logicalDate;
-                        setDisplayDate(logicalDate);
-                    } else {
-                        // Reset to today if fixed mode or no logical date
-                        setDisplayDate(null);
+                        startViewDate = logicalDate;
                     }
                 } catch (e) {
                     console.warn("Failed to get logical date", e);
                 }
-                const yearMonth = dateStr.slice(0, 7);
-                const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
-                if (logs && logs[dateStr]) {
-                    if (logs[dateStr].sessions) setSessions(logs[dateStr].sessions);
-                    if (logs[dateStr].screenshots) setScreenshots(logs[dateStr].screenshots);
-                } else {
-                    // Clear if no data found (e.g. new day in fixed mode)
-                    setSessions([]);
-                    setScreenshots([]);
+
+                // Helper to load data for a specific date
+                const loadDate = async (dateKey: string) => {
+                    const yearMonth = dateKey.slice(0, 7);
+                    const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
+                    return logs?.[dateKey] || null;
+                };
+
+                let mergedSessions: Session[] = [];
+                let mergedScreenshots: string[] = [];
+
+                // 1. Load data for the View Start Date (usually Logical Date/Yesterday)
+                const primaryData = await loadDate(startViewDate);
+                if (primaryData) {
+                    mergedSessions = [...(primaryData.sessions || [])];
+                    mergedScreenshots = [...(primaryData.screenshots || [])];
                 }
+
+                // 2. If we are in FIXED mode AND we have crossed midnight (View Date != Today),
+                // the data for "after midnight" is physically saved in 'Today's' file.
+                // We must load and merge it so the user sees a continuous timeline.
+                if (settings?.dailyRecordMode === 'fixed' && startViewDate !== todayStr) {
+                    const secondaryData = await loadDate(todayStr);
+                    if (secondaryData) {
+                        mergedSessions = [...mergedSessions, ...(secondaryData.sessions || [])];
+                        mergedScreenshots = [...mergedScreenshots, ...(secondaryData.screenshots || [])];
+                    }
+                }
+
+                setSessions(mergedSessions);
+                setScreenshots(mergedScreenshots);
+
+                // If the view starts yesterday, pass that date to the graph so it anchors 00:00 to Yesterday
+                setDisplayDate(startViewDate !== todayStr ? startViewDate : null);
             };
+
             loadSessionData();
 
             const removeListener = (window as any).ipcRenderer.onTrackingUpdate((data: any) => {
@@ -386,8 +421,10 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                 }
             });
 
-            const removeSessionListener = (window as any).ipcRenderer.onSessionCompleted((session: Session) => {
-                setSessions((prev: Session[]) => [...prev, session]);
+            // Listen for session completion to reload/update
+            const removeSessionListener = (window as any).ipcRenderer.onSessionCompleted(() => {
+                // We could optimistically add, but reloading ensures we respect the merge logic
+                loadSessionData();
             });
 
             return () => {
@@ -395,7 +432,7 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                 if (removeSessionListener) removeSessionListener();
             };
         }
-    }, [loadTodos, settings?.dailyRecordMode]);
+    }, [loadTodos, settings?.dailyRecordMode, format(now, 'yyyy-MM-dd')]);
 
 
     // Filter Sessions based on settings
@@ -443,7 +480,19 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                     }}
                 >
                     <TooltipProvider>
-                        {/* Split Content */}
+                        {/* Weekly View Modal */}
+                        <Dialog open={isWeeklyView} onOpenChange={setIsWeeklyView}>
+                            <DialogContent className="max-w-[90vw] h-[90vh] p-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50">
+                                <WeeklyView
+                                    currentDate={new Date()}
+                                    onDateChange={() => { }}
+                                    liveSession={liveSession}
+                                    todaySessions={sessions}
+                                />
+                            </DialogContent>
+                        </Dialog>
+
+                        {/* Main Split Content */}
                         <div className={cn("flex-1 flex min-w-0", isWidgetMode ? "gap-6 px-2 pt-2 pb-2" : "gap-6 px-6 py-4 relative")}>
                             {/* Left Panel: Focus List */}
                             <div
@@ -495,6 +544,24 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                             {/* Right: Controls (Consolidated Menu) */}
                                             <div className="flex items-center gap-0.5 shrink-0">
 
+
+
+                                                <Tooltip>
+                                                    <TooltipTrigger asChild>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            className="h-6 w-6 text-muted-foreground hover:text-foreground no-drag"
+                                                            onClick={onShowReminder}
+                                                            style={{ WebkitAppRegion: 'no-drag' } as any}
+                                                        >
+                                                            <Bell className="w-3.5 h-3.5" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>
+                                                        <p>{t('dashboard.showReminder') || "Show Reminder"}</p>
+                                                    </TooltipContent>
+                                                </Tooltip>
 
                                                 <Tooltip>
                                                     <TooltipTrigger asChild>
@@ -979,126 +1046,101 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                     )
                                 }
 
-                                {/* General Work Floating Panel */}
-                                {
-                                    !isWidgetMode && (
-                                        <div className={cn(
-                                            "absolute bottom-6 z-30 pointer-events-auto transition-all duration-300 ease-in-out",
-                                            isGeneralOpen ? "left-6 right-6" : "left-6"
-                                        )}>
-                                            {/* Collapsed State: FAB Button */}
-                                            {!isGeneralOpen && (
-                                                <div className="animate-in fade-in zoom-in duration-300">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="icon"
-                                                        className="h-14 w-14 rounded-full shadow-xl bg-card/80 backdrop-blur-md border border-border/50 hover:scale-105 transition-all group"
-                                                        onClick={() => setIsGeneralOpen(true)}
-                                                    >
-                                                        <div className="relative">
-                                                            <Briefcase className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
-                                                            {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
-                                                                <span className="sr-only">
-                                                                    {uniqueGeneralTodos.filter(t => !t.completed).length} uncompleted items
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </Button>
-                                                </div>
-                                            )}
+                                {/* General Work Floating Panel (Restored) */}
+                                {!isWidgetMode && (
+                                    <div className={cn(
+                                        "absolute bottom-6 z-30 pointer-events-auto transition-all duration-300 ease-in-out",
+                                        isGeneralOpen ? "left-6 right-6" : "left-6"
+                                    )}>
+                                        {/* Collapsed State: FAB Button */}
+                                        {!isGeneralOpen && (
+                                            <div className="animate-in fade-in zoom-in duration-300">
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-14 w-14 rounded-full shadow-xl bg-card/80 backdrop-blur-md border border-border/50 hover:scale-105 transition-all group"
+                                                    onClick={() => setIsGeneralOpen(true)}
+                                                >
+                                                    <div className="relative">
+                                                        <Briefcase className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
+                                                        {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                                            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground transform scale-90">
+                                                                {uniqueGeneralTodos.filter(t => !t.completed).length}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </Button>
+                                            </div>
+                                        )}
 
-                                            {/* Expanded State: Full Panel */}
-                                            {isGeneralOpen && (
-                                                <div className="bg-card/95 backdrop-blur-md shadow-2xl border border-border/50 rounded-xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col max-h-[500px]">
-                                                    <div
-                                                        className="flex items-center gap-2 p-3 border-b border-border/40"
-                                                    >
-                                                        <div
-                                                            className="flex items-center gap-2 flex-1 cursor-pointer select-none transition-colors hover:bg-muted/30 rounded p-1 -ml-1"
-                                                            onClick={() => setIsGeneralOpen(false)}
-                                                        >
-                                                            <div className={cn(
-                                                                "p-1.5 rounded-md transition-colors flex items-center justify-center text-muted-foreground group-hover:bg-muted/50"
-                                                            )}>
-                                                                {/* Notion-style Down Arrow (Play icon rotated 90deg) */}
-                                                                <Play className="w-3.5 h-3.5 fill-current rotate-90 transition-transform duration-200" />
-                                                            </div>
-
-                                                            <div className="flex items-center gap-2 flex-1">
-                                                                <Briefcase className="w-4 h-4 text-primary" />
-                                                                <span className="text-sm font-semibold text-foreground">
-                                                                    {t('dashboard.generalWork') || "일반 작업"}
-                                                                </span>
-                                                                {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
-                                                                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
-                                                                        {uniqueGeneralTodos.filter(t => !t.completed).length}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <Button
-                                                                    variant="ghost"
-                                                                    size="icon"
-                                                                    className="h-7 w-7 text-muted-foreground hover:text-foreground mr-2"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        clearUntitledTodos('general');
-                                                                    }}
-                                                                >
-                                                                    <Eraser className="w-4 h-4" />
-                                                                </Button>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent>
-                                                                <p>{t('dashboard.clearUntitled')}</p>
-                                                            </TooltipContent>
-                                                        </Tooltip>
-
-                                                        {/* Mini Progress Bar */}
-                                                        <div className="w-24 h-1.5 bg-muted/50 rounded-full overflow-hidden mr-1">
-                                                            <div className="h-full bg-primary/60 transition-all duration-500" style={{ width: `${uniqueGeneralCompletion}%` }} />
-                                                        </div>
-                                                        <span className="text-[10px] text-muted-foreground font-medium w-6 text-right tabular-nums">{uniqueGeneralCompletion}%</span>
+                                        {/* Expanded State: Full Panel */}
+                                        {isGeneralOpen && (
+                                            <div className="bg-card/95 backdrop-blur-md shadow-2xl border border-border/50 rounded-xl overflow-hidden animate-in slide-in-from-bottom-4 fade-in duration-300 flex flex-col max-h-[500px]">
+                                                {/* Header */}
+                                                <div
+                                                    className="flex items-center gap-2 p-3 cursor-pointer select-none transition-colors hover:bg-muted/30 border-b border-border/40"
+                                                    onClick={() => setIsGeneralOpen(false)}
+                                                >
+                                                    <div className={cn(
+                                                        "p-1.5 rounded-full transition-colors flex items-center justify-center text-primary bg-primary/10"
+                                                    )}>
+                                                        <ChevronDown className="w-4 h-4" />
                                                     </div>
 
-                                                    {/* Content */}
-                                                    <div className="overflow-y-auto custom-scrollbar bg-background/50 flex-1 min-h-0">
-                                                        <div className="p-2 pl-1">
-                                                            <TodoEditor
-                                                                key="general-section"
-                                                                todos={uniqueGeneralTodos}
-                                                                isWidgetMode={false}
-                                                                isWidgetLocked={false}
-                                                                actions={{
-                                                                    addTodo: (text, parentId, afterId) => {
-                                                                        return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
-                                                                    },
-                                                                    updateTodo: (id, updates) => useTodoStore.getState().updateTodo(id, updates, false, 'general'),
-                                                                    deleteTodo: (id) => useTodoStore.getState().deleteTodo(id, 'general'),
-                                                                    deleteTodos: (ids) => useTodoStore.getState().deleteTodos(ids, 'general'),
+                                                    <div className="flex items-center gap-2 flex-1">
+                                                        <Briefcase className="w-4 h-4 text-primary" />
+                                                        <span className="text-sm font-semibold text-foreground">
+                                                            {t('dashboard.generalWork') || "일반 작업"}
+                                                        </span>
+                                                        {uniqueGeneralTodos.filter(t => !t.completed).length > 0 && (
+                                                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
+                                                                {uniqueGeneralTodos.filter(t => !t.completed).length}
+                                                            </span>
+                                                        )}
+                                                    </div>
 
-                                                                    indentTodo: (id) => useTodoStore.getState().indentTodo(id, 'general'),
-                                                                    unindentTodo: (id) => useTodoStore.getState().unindentTodo(id, 'general'),
-                                                                    moveTodo: (id, pid, idx) => useTodoStore.getState().moveTodo(id, pid, idx, 'general'),
-                                                                    moveTodos: (ids, pid, idx) => useTodoStore.getState().moveTodos(ids, pid, idx, 'general'),
-                                                                }}
-                                                            />
-                                                        </div>
+                                                    {/* Mini Progress Bar */}
+                                                    <div className="w-24 h-1.5 bg-muted/50 rounded-full overflow-hidden mr-1">
+                                                        <div className="h-full bg-primary/60 transition-all duration-500" style={{ width: `${uniqueGeneralCompletion}%` }} />
                                                     </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                    )
-                                }
+
+                                                {/* Content */}
+                                                <div className="overflow-y-auto custom-scrollbar bg-background/50 flex-1 min-h-[300px]">
+                                                    <div className="p-2 pl-1">
+                                                        <TodoEditor
+                                                            key="general-work-section"
+                                                            todos={uniqueGeneralTodos}
+                                                            isWidgetMode={false}
+                                                            isWidgetLocked={false}
+                                                            actions={{
+                                                                addTodo: (text, parentId, afterId) => {
+                                                                    if ((window as any).ipcRenderer) return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
+                                                                    return "";
+                                                                },
+                                                                updateTodo: (id, updates) => useTodoStore.getState().updateTodo(id, updates, false, 'general'),
+                                                                deleteTodo: (id) => useTodoStore.getState().deleteTodo(id, 'general'),
+                                                                deleteTodos: (ids) => useTodoStore.getState().deleteTodos(ids, 'general'),
+
+                                                                indentTodo: (id) => useTodoStore.getState().indentTodo(id, 'general'),
+                                                                unindentTodo: (id) => useTodoStore.getState().unindentTodo(id, 'general'),
+                                                                moveTodo: (id, pid, idx) => useTodoStore.getState().moveTodo(id, pid, idx, 'general'),
+                                                                moveTodos: (ids, pid, idx) => useTodoStore.getState().moveTodos(ids, pid, idx, 'general'),
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                                 {
                                     !isWidgetMode && (projects.length > 0 && activeProjectId && activeProjectId !== 'none') && (
                                         <div className="absolute bottom-6 right-6 z-20 pointer-events-auto">
                                             <Button
                                                 variant="default"
                                                 size="lg"
-                                                onClick={() => onEndDay(todos, screenshots)}
+                                                onClick={() => onEndDay(todos, screenshots, sessions, dailyLog?.plannedSessions || [])}
                                                 className="gap-2 shadow-lg rounded-full"
                                             >
                                                 <CheckCircle className="w-5 h-5" />
@@ -1124,26 +1166,108 @@ export function DailyPanel({ onEndDay, projects = [], isSidebarOpen }: DailyPane
                                         )}>
                                             <div className="flex flex-col h-full gap-6">
                                                 {/* Timeline & App Usage Section */}
-                                                <div className="flex-1">
-                                                    <TimeTableGraph
-                                                        sessions={filteredSessions}
-                                                        allSessions={sessions}
-                                                        activeProjectId={activeProjectId}
-                                                        liveSession={filteredLiveSession}
-                                                        allLiveSession={liveSession}
-                                                        projects={projects}
-                                                        nightTimeStart={settings?.nightTimeStart}
-                                                        settings={settings}
-                                                        onUpdateSettings={saveSettings}
-                                                        date={displayDate ? new Date(displayDate) : new Date()}
-                                                    />
+                                                <div className="flex-1 flex flex-col h-full bg-card/50 backdrop-blur-sm rounded-xl border border-border/50 overflow-hidden shadow-sm">
+                                                    <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-muted/20 shrink-0">
+                                                        <h3 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
+                                                            <Clock className="w-3.5 h-3.5 text-primary" />
+                                                            {t('dashboard.timeTable')}
+                                                        </h3>
+                                                        <div className="flex items-center gap-1">
+                                                            <Tooltip>
+                                                                <TooltipTrigger asChild>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
+                                                                        onClick={() => setIsWeeklyView(true)}
+                                                                    >
+                                                                        <CalendarIcon className="w-3.5 h-3.5" />
+                                                                    </Button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Switch to Weekly View</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                            <Popover>
+                                                                <PopoverTrigger asChild>
+                                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground">
+                                                                        <Settings2 className="w-3.5 h-3.5" />
+                                                                    </Button>
+                                                                </PopoverTrigger>
+                                                                <PopoverContent className="w-80 p-0" align="end">
+                                                                    <div className="flex flex-col">
+                                                                        <div className="px-4 py-3 border-b border-border/50 bg-muted/30">
+                                                                            <h4 className="font-semibold text-sm flex items-center gap-2">
+                                                                                <Settings2 className="w-4 h-4 text-primary" />
+                                                                                {t('settings.title')}
+                                                                            </h4>
+                                                                        </div>
+                                                                        <div className="p-4 space-y-4">
+                                                                            {/* Grid Mode */}
+                                                                            <div className="flex items-center justify-between">
+                                                                                <div className="space-y-0.5">
+                                                                                    <Label htmlFor="grid-mode" className="text-sm font-medium">{t('settings.timeline.gridMode') || "15-Minute Snapping"}</Label>
+                                                                                    <p className="text-xs text-muted-foreground">
+                                                                                        {t('settings.timeline.gridModeDesc') || "Snap blocks to 15m grid"}
+                                                                                    </p>
+                                                                                </div>
+                                                                                <Switch
+                                                                                    id="grid-mode"
+                                                                                    checked={settings?.timelineGridMode !== 'continuous'}
+                                                                                    onCheckedChange={(checked) => saveSettings({
+                                                                                        ...settings!,
+                                                                                        timelineGridMode: checked ? '15min' : 'continuous'
+                                                                                    })}
+                                                                                />
+                                                                            </div>
+
+                                                                            {/* Time Tracking (Work Apps) */}
+                                                                            <div className="flex items-center justify-between">
+                                                                                <div className="space-y-0.5">
+                                                                                    <Label htmlFor="work-apps-only" className="text-sm font-medium">{t('settings.timeline.workAppsOnly') || "Work Apps Only"}</Label>
+                                                                                    <p className="text-xs text-muted-foreground">
+                                                                                        {t('settings.timeline.workAppsOnlyDesc') || "Hide non-work apps"}
+                                                                                    </p>
+                                                                                </div>
+                                                                                <Switch
+                                                                                    id="work-apps-only"
+                                                                                    checked={settings?.filterTimelineByWorkApps || false}
+                                                                                    onCheckedChange={(checked) => saveSettings({
+                                                                                        ...settings!,
+                                                                                        filterTimelineByWorkApps: checked
+                                                                                    })}
+                                                                                />
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </PopoverContent>
+                                                            </Popover>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex-1 relative min-h-0 bg-background/50">
+                                                        <TimeTableGraph
+                                                            sessions={filteredSessions}
+                                                            allSessions={sessions}
+                                                            activeProjectId={activeProjectId}
+                                                            liveSession={filteredLiveSession}
+                                                            allLiveSession={liveSession}
+                                                            projects={projects}
+                                                            nightTimeStart={settings?.nightTimeStart}
+                                                            settings={settings}
+                                                            onUpdateSettings={saveSettings}
+                                                            date={displayDate ? new Date(displayDate) : new Date()}
+                                                            renderMode="dynamic"
+                                                            plannedSessions={dailyLog?.plannedSessions}
+                                                            currentTime={now} // Pass live time from parent
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
                                 )
                             }
-                        </div >
+                        </div>
                     </TooltipProvider>
                 </div >
             </ContextMenuTrigger >

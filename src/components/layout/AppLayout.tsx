@@ -325,7 +325,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                             onClick={async () => {
                                 if (isCreating) return;
                                 setIsCreating(true);
-                                const toastId = toast.loading(t('sidebar.creatingProject') || "Creating project...");
+                                const toastId = toast.loading(t('sidebar.creatingProject'));
 
                                 try {
                                     // Small artificial delay to let the user see the feedback (optional, but good for "feeling")
@@ -341,10 +341,10 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                         isCompleted: false
                                     };
                                     await saveProjects([...projects, newProject]);
-                                    toast.success(t('sidebar.projectCreated') || "Project created!", { id: toastId });
+                                    toast.success(t('sidebar.projectCreated'), { id: toastId });
                                 } catch (error) {
                                     console.error("Failed to create project", error);
-                                    toast.error(t('sidebar.projectCreateFailed') || "Failed to create project", { id: toastId });
+                                    toast.error(t('sidebar.projectCreateFailed'), { id: toastId });
                                 } finally {
                                     setIsCreating(false);
                                 }
@@ -357,7 +357,7 @@ export function AppLayout({ timeline, calendar, dailyPanel, viewMode, onViewMode
                                 <Plus className="w-3.5 h-3.5 lg:mr-1" />
                             )}
                             <span className="hidden lg:inline">
-                                {isCreating ? (t('dashboard.workingOn') || "Progressing...") : t('sidebar.newProject')}
+                                {isCreating ? t('dashboard.workingOn') : t('sidebar.newProject')}
                             </span>
                         </Button>
 

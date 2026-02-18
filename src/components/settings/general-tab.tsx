@@ -131,6 +131,28 @@ export function GeneralTab({
                             </Select>
                             <span className="text-sm text-foreground">{t('settings.runningApps.displayModeDesc')}</span>
                         </div>
+
+                        {/* Daily Archive Mode */}
+                        <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2">{t('settings.timeline.dailyRecordMode') || "Daily Archive Mode"}</Label>
+                        <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
+                            <Select
+                                value={settings.dailyRecordMode || 'fixed'}
+                                onValueChange={(val: 'fixed' | 'dynamic') => onSaveSettings({ ...settings, dailyRecordMode: val })}
+                            >
+                                <SelectTrigger className="w-[180px] bg-background border-none">
+                                    <SelectValue placeholder="Select mode" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="fixed">
+                                        {t('settings.timeline.modeFixed') || "Fixed (Midnight)"}
+                                    </SelectItem>
+                                    <SelectItem value="dynamic">
+                                        {t('settings.timeline.modeDynamic') || "Dynamic (Flexible)"}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <span className="text-sm text-foreground">{t('settings.timeline.dailyRecordModeDesc') || "Choose when to start a new daily log."}</span>
+                        </div>
                     </div>
                 </div>
                 <div className="space-y-4 mb-8" id="settings-schedule">

@@ -269,7 +269,8 @@
         "edit": "편집",
         "confirm": "확인",
         "add": "추가",
-        "search": "검색..."
+        "search": "검색...",
+        "done": "완료"
     },
     "sidebar": {
         "timetable": "타임테이블",
@@ -287,8 +288,7 @@
         "newProject": "새 프로젝트",
         "creatingProject": "프로젝트 생성 중...",
         "projectCreated": "프로젝트가 생성되었습니다!",
-        "projectCreateFailed": "프로젝트 생성 실패",
-        "today": "오늘"
+        "projectCreateFailed": "프로젝트 생성 실패"
     },
     "update": {
         "availableTitle": "업데이트 가능",
@@ -481,5 +481,13 @@
         "deletedProjectsDesc": "이 프로젝트들은 더 이상 워크스페이스에 존재하지 않습니다.",
         "unresolvedTodosTitle": "야간 시간 시작 🌙",
         "unresolvedTodosBody": "{{count}}개의 할 일이 남아있습니다!"
+    },
+    "weeklyView": {
+        "calendarMode": "캘린더",
+        "routineMode": "루틴",
+        "weeklyRoutine": "주간 루틴",
+        "showRoutine": "루틴 표시",
+        "loading": "로딩 중...",
+        "today": "오늘"
     }
 }

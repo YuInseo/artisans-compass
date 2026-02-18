@@ -15,6 +15,7 @@ import { Todo, Project } from "@/types";
 import { DailyArchiveView } from "./DailyArchiveView";
 
 
+import { useDataStore } from "@/hooks/useDataStore";
 import { useTodoStore, insertNode, updateNode, deleteNode, indentNode, unindentNode, moveNodes } from "@/hooks/useTodoStore";
 import { TodoEditor } from "./TodoEditor";
 import { v4 as uuidv4 } from 'uuid';
@@ -25,7 +26,8 @@ interface ClosingRitualModalProps {
     currentStats: any;
     onSaveLog: (log: string) => void;
     screenshots?: string[];
-    sessions?: any[];
+    sessions?: any[]; // Keeping as any[] as Session type is not defined in context
+    plannedSessions?: any[];
     projects?: Project[];
 }
 
@@ -77,9 +79,10 @@ const LeftoverList = React.memo(({ todos, depth = 0, movedIds, selectedIds, onMo
 
 import { useTranslation } from "react-i18next";
 
-export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, screenshots = [], sessions = [], projects = [] }: ClosingRitualModalProps) {
+export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, projects = [], sessions = [], plannedSessions = [], screenshots = [] }: ClosingRitualModalProps) {
     const { t } = useTranslation();
     const { projectTodos, activeProjectId, saveFutureTodos } = useTodoStore();
+    const { settings, saveSettings } = useDataStore();
     const [step, setStep] = useState<1 | 2>(1);
 
     const [tomorrowPlans, setTomorrowPlans] = useState<Record<string, Todo[]>>({});
@@ -126,6 +129,23 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
         return projectTodos[selectedProjectId] || [];
     }, [projectTodos, selectedProjectId]);
 
+    const [freshSessions, setFreshSessions] = useState<any[]>(sessions);
+    const [freshPlannedSessions, setFreshPlannedSessions] = useState<any[]>(plannedSessions);
+    const [freshScreenshots, setFreshScreenshots] = useState<string[]>(screenshots);
+
+    // Helper to get daily log from IPC
+    const getDailyLog = useCallback(async (dateStr: string) => {
+        if ((window as any).ipcRenderer) {
+            try {
+                return await (window as any).ipcRenderer.invoke('get-daily-log', dateStr);
+            } catch (e) {
+                console.error("Failed to fetch daily log", e);
+                return null;
+            }
+        }
+        return null;
+    }, []);
+
     // Initialize/Reset state
     useEffect(() => {
         if (isOpen) {
@@ -163,35 +183,23 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
             };
             loadTomorrow();
 
-            // Fetch latest data to ensure timeline is up-to-date
-            const fetchLatestLog = async () => {
-                if ((window as any).ipcRenderer) {
-                    try {
-                        // Use local date for today
-                        const today = new Date();
-                        const dateStr = format(today, 'yyyy-MM-dd');
+            // Update local state from props when modal opens or props change
+            setFreshSessions(sessions);
+            setFreshPlannedSessions(plannedSessions);
+            setFreshScreenshots(screenshots);
 
-                        const latestLog = await (window as any).ipcRenderer.invoke('get-daily-log', dateStr);
-                        if (latestLog) {
-                            console.log("ClosingRitual: Fetched fresh log", latestLog);
-                            if (latestLog.sessions) setFreshSessions(latestLog.sessions);
-                            // We can also update stats if they are stored in log, or let DailyArchiveView calc them from sessions.
-                        }
-                    } catch (e) {
-                        console.error("Failed to fetch fresh daily log", e);
-                    }
+            // Fetch latest log as a backup or for other data (like quote)
+            const todayStr = format(new Date(), 'yyyy-MM-dd');
+            getDailyLog(todayStr).then(log => {
+                if (log) {
+                    if (sessions.length === 0 && log.sessions) setFreshSessions(log.sessions); // Only fallback if props are empty
+                    if (plannedSessions.length === 0 && log.plannedSessions) setFreshPlannedSessions(log.plannedSessions);
+                    if (screenshots.length === 0 && log.screenshots) setFreshScreenshots(log.screenshots);
+                    // ... other log data handling ...
                 }
-            };
-            fetchLatestLog();
+            });
         }
-    }, [isOpen, activeProjectId, activeProjects, projects]);
-
-    const [freshSessions, setFreshSessions] = useState<any[]>(sessions);
-
-    // Sync prop sessions to freshSessions when modal opens or props change (initially)
-    useEffect(() => {
-        if (!isOpen) setFreshSessions(sessions);
-    }, [sessions, isOpen]);
+    }, [isOpen, activeProjectId, activeProjects, projects, sessions, plannedSessions, screenshots, getDailyLog]);
 
     // Ensure selectedProjectId is valid
     useEffect(() => {
@@ -549,8 +557,9 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                 todos={todayTodos}
                                 projectTodos={projectTodos}
                                 projects={projects}
-                                screenshots={screenshots}
+                                screenshots={freshScreenshots}
                                 sessions={freshSessions}
+                                plannedSessions={freshPlannedSessions}
                                 stats={currentStats}
                                 hideCloseButton={true}
                                 onDeleteTodo={(id) => {
@@ -605,7 +614,10 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, s
                                         }
                                     }
                                     useTodoStore.getState().updateTodoText(id, text, false, foundPid);
+                                    useTodoStore.getState().updateTodoText(id, text, false, foundPid);
                                 }}
+                                settings={settings}
+                                onUpdateSettings={saveSettings}
                             />
                         </div>
                     )}

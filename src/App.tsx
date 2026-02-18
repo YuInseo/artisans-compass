@@ -8,12 +8,13 @@ import { CalendarNav } from '@/components/dashboard/CalendarNav';
 import { DailyPanel } from '@/components/dashboard/DailyPanel';
 import { ClosingRitualModal } from '@/components/dashboard/ClosingRitualModal';
 import { InspirationModal } from '@/components/dashboard/InspirationModal';
+import { ReminderModal } from '@/components/dashboard/ReminderModal';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { DailyArchiveModal } from '@/components/dashboard/DailyArchiveModal';
 import { format, addDays } from 'date-fns';
 import { ThemeProvider } from "@/components/theme-provider"
 import { SettingsModal } from '@/components/settings-modal';
-import { Todo, Project } from "@/types";
+import { Todo, Project, Session } from "@/types";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { Toaster } from "@/components/ui/sonner";
@@ -38,10 +39,54 @@ function App() {
     loadTodos();
   }, [loadTodos]);
 
+  // Smart Date Change Logic
+  useEffect(() => {
+    const checkDate = () => {
+      const now = new Date();
+      const currentDay = format(now, 'yyyy-MM-dd');
+      const lastLoadedDay = sessionStorage.getItem('lastLoadedDate');
+
+      if (lastLoadedDay && lastLoadedDay !== currentDay) {
+        console.log(`[App] Date changed from ${lastLoadedDay} to ${currentDay}`);
+
+        // Fixed Mode: Auto-refresh
+        // Dynamic Mode: Do nothing (persist)
+        const mode = settings?.dailyRecordMode || 'fixed'; // Default to fixed if not set? Or dynamic? 
+        // Actually, default for new users might be dynamic, but standard calendar apps are fixed.
+        // Let's stick to: if 'fixed', reload.
+
+        if (mode === 'fixed') {
+          console.log('[App] Fixed Mode Active: Auto-reloading for new day.');
+          loadTodos();
+          sessionStorage.setItem('lastLoadedDate', currentDay);
+        } else {
+          console.log('[App] Dynamic Mode Active: Preserving previous day state.');
+          // We DON'T update lastLoadedDate here, effectively "pretending" it's still the old day
+          // until the user manually ends the day? 
+          // actually, if we don't reload, the store keeps old data.
+          // But we should probably update session storage if we want to acknowledge the new day eventually?
+          // No, if we want "End Day" to trigger the switch, we leave it.
+        }
+      } else {
+        // Initial set
+        if (!lastLoadedDay) {
+          sessionStorage.setItem('lastLoadedDate', currentDay);
+        }
+      }
+    };
+
+    // Check every minute
+    const interval = setInterval(checkDate, 60000);
+    checkDate(); // Initial check
+
+    return () => clearInterval(interval);
+  }, [loadTodos, settings?.dailyRecordMode]);
+
 
 
   const [isRitualOpen, setIsRitualOpen] = useState(false);
   const [showInspiration, setShowInspiration] = useState(true);
+  const [showReminder, setShowReminder] = useState(false);
   const [currentStats, setCurrentStats] = useState({ totalSeconds: 0, questAchieved: false, screenshotCount: 0 });
 
   // Sidebar State (Lifted for Responsiveness)
@@ -211,6 +256,10 @@ function App() {
   const [isArchiveOpen, setIsArchiveOpen] = useState(false);
   const [archiveDate, setArchiveDate] = useState<Date>(new Date());
   const [lastSessionTodos, setLastSessionTodos] = useState<Todo[]>([]);
+  const [lastSessionSessions, setLastSessionSessions] = useState<Session[]>([]);
+  const [lastSessionScreenshots, setLastSessionScreenshots] = useState<string[]>([]);
+  const [lastSessionPlannedSessions, setLastSessionPlannedSessions] = useState<any[]>([]); // PlannedSession type inferred or any
+
   const [viewMode, setViewMode] = useState<'timeline' | 'list'>('timeline');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'timeline' | 'tracking' | 'integrations'>('general'); // State for initial tab
@@ -234,9 +283,12 @@ function App() {
   const timelineHeight = (rowCount * 50) + 33; // +33 for header border
 
   // Poll for stats when opening modal (or just keep them in sync via IPC)
-  const handleOpenRitual = async (todos: Todo[] = []) => {
+  const handleOpenRitual = async (todos: Todo[] = [], screenshots: string[] = [], sessions: Session[] = [], plannedSessions: any[] = []) => {
     // ... existing ...
     setLastSessionTodos(todos);
+    setLastSessionSessions(sessions);
+    setLastSessionScreenshots(screenshots);
+    setLastSessionPlannedSessions(plannedSessions);
     // Fetch today's stats from IPC or store
     if ((window as any).ipcRenderer) {
       const now = new Date();
@@ -369,6 +421,10 @@ function App() {
         isOpen={showInspiration && !!settings?.hasCompletedOnboarding}
         onClose={() => setShowInspiration(false)}
       />
+      <ReminderModal
+        isOpen={showReminder}
+        onClose={() => setShowReminder(false)}
+      />
       <AppLayout
         isSidebarOpen={isSidebarOpen}
         setIsSidebarOpen={setIsSidebarOpen}
@@ -389,7 +445,7 @@ function App() {
             : <ProjectList searchQuery={searchQuery} />
         }
         calendar={<CalendarNav onSelect={handleDateSelect} focusedProject={focusedProject} onNavigate={handleNavigate} navigationSignal={navigationSignal} />}
-        dailyPanel={<DailyPanel onEndDay={handleOpenRitual} projects={projects} isSidebarOpen={isSidebarOpen} />}
+        dailyPanel={<DailyPanel onEndDay={handleOpenRitual} onShowReminder={() => setShowReminder(true)} projects={projects} isSidebarOpen={isSidebarOpen} />}
       />
       <ClosingRitualModal
         isOpen={isRitualOpen}
@@ -397,11 +453,16 @@ function App() {
         currentStats={currentStats}
         onSaveLog={handleSaveLog}
         projects={projects}
-        sessions={currentStats.totalSeconds ? [{ duration: currentStats.totalSeconds, process: "Focus Session", timestamp: Date.now() }] : []}
+        sessions={lastSessionSessions}
+        plannedSessions={lastSessionPlannedSessions}
+        screenshots={lastSessionScreenshots}
       />
       <DailyArchiveModal
         isOpen={isArchiveOpen}
-        onClose={() => setIsArchiveOpen(false)}
+        onClose={() => {
+          setIsArchiveOpen(false);
+          handleNavigate(new Date()); // Reset Calendar to Today
+        }}
         date={archiveDate}
         onDateChange={setArchiveDate}
       />

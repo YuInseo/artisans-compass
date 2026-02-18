@@ -35,9 +35,11 @@ import { GeneralTab } from "./settings/general-tab";
 import { TrackingTab } from "./settings/tracking-tab";
 // @ts-ignore
 import { NotionSetupDialog } from "./notion-setup-dialog"; // Import
+import { QuoteManager } from "./settings/QuoteManager";
+import { ReminderManager } from "./settings/ReminderManager";
 import { version } from "../../package.json";
 import { themes } from "@/config/themes";
-export type SettingsTab = 'general' | 'appearance' | 'timetable' | 'timeline' | 'tracking' | 'integrations' | 'updatelog';
+export type SettingsTab = 'general' | 'appearance' | 'quotes' | 'reminders' | 'timetable' | 'timeline' | 'tracking' | 'integrations' | 'updatelog';
 
 interface SettingsModalProps {
     open?: boolean;
@@ -693,6 +695,20 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
             )}
 
             <SidebarButton
+                active={activeTab === 'quotes'}
+                onClick={() => { setActiveTab('quotes'); setActiveSection(null); }}
+                label="Quotes"
+                icon={<div className="w-4 h-4 mr-2 flex items-center justify-center font-serif text-xs font-bold">“</div>}
+            />
+
+            <SidebarButton
+                active={activeTab === 'reminders'}
+                onClick={() => { setActiveTab('reminders'); setActiveSection(null); }}
+                label="Reminders"
+                icon={<div className="w-4 h-4 mr-2 flex items-center justify-center font-bold text-xs">!</div>}
+            />
+
+            <SidebarButton
                 active={activeTab === 'timetable'}
                 onClick={() => { setActiveTab('timetable'); setActiveSection(null); }}
                 label={t('sidebar.timetable')}
@@ -1078,6 +1094,26 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                         </div>
 
                                     </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'quotes' && (
+                                <div className="space-y-6 animate-in fade-in duration-300">
+                                    <div>
+                                        <h3 className="text-xl font-bold mb-4 text-foreground">Custom Quotes</h3>
+                                        <Separator className="bg-border/60" />
+                                    </div>
+                                    <QuoteManager />
+                                </div>
+                            )}
+
+                            {activeTab === 'reminders' && (
+                                <div className="space-y-6 animate-in fade-in duration-300">
+                                    <div>
+                                        <h3 className="text-xl font-bold mb-4 text-foreground">Reminders</h3>
+                                        <Separator className="bg-border/60" />
+                                    </div>
+                                    <ReminderManager />
                                 </div>
                             )}
 

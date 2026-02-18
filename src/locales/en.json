@@ -167,7 +167,8 @@
             "addWorkApp": "Add Work App",
             "noAppsInList": "No apps in this list",
             "selectAppToAdd": "Select an app...",
-            "allAppsAdded": "All apps are already added"
+            "allAppsAdded": "All apps are already added",
+            "gridMode": "15-Min Grid Mode"
         },
         "softwareUpdate": {
             "title": "Software Update",
@@ -249,7 +250,8 @@
         "edit": "Edit",
         "confirm": "Confirm",
         "add": "Add",
-        "search": "Search..."
+        "search": "Search...",
+        "done": "Done"
     },
     "sidebar": {
         "timeline": "Timeline",
@@ -264,7 +266,10 @@
         "jump": "Jump",
         "noProjects": "No projects found",
         "newProject": "New Project",
-        "today": "Today"
+        "today": "Today",
+        "creatingProject": "Creating project...",
+        "projectCreated": "Project created!",
+        "projectCreateFailed": "Failed to create project"
     },
     "dashboard": {
         "todayFocus": "Today's Focus",
@@ -435,5 +440,13 @@
         "deletedProjectsDesc": "These projects no longer exist in your current workspace.",
         "unresolvedTodosTitle": "Unfinished Business!",
         "unresolvedTodosBody": "Night Time has started. You have {{count}} unresolved tasks. Time to wrap up!"
+    },
+    "weeklyView": {
+        "calendarMode": "Calendar",
+        "routineMode": "Routine",
+        "weeklyRoutine": "Weekly Routine",
+        "showRoutine": "Show Routine",
+        "loading": "Loading...",
+        "today": "Today"
     }
 }

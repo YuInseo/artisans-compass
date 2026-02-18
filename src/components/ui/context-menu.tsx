@@ -6,24 +6,19 @@ import { Check, ChevronRight, Circle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-const ContextMenu = ContextMenuPrimitive.Root
+const ContextMenu = ContextMenuPrimitive.Root as React.FC<React.ComponentProps<typeof ContextMenuPrimitive.Root>>
 
-const ContextMenuTrigger = ContextMenuPrimitive.Trigger
+const ContextMenuTrigger = ContextMenuPrimitive.Trigger as React.FC<React.ComponentProps<typeof ContextMenuPrimitive.Trigger>>
 
-const ContextMenuGroup = ContextMenuPrimitive.Group
+const ContextMenuGroup = ContextMenuPrimitive.Group as React.FC<React.ComponentProps<typeof ContextMenuPrimitive.Group>>
 
-const ContextMenuPortal = ContextMenuPrimitive.Portal
+const ContextMenuPortal = ContextMenuPrimitive.Portal as React.FC<React.ComponentProps<typeof ContextMenuPrimitive.Portal>>
 
-const ContextMenuSub = ContextMenuPrimitive.Sub
+const ContextMenuSub = ContextMenuPrimitive.Sub as React.FC<React.ComponentProps<typeof ContextMenuPrimitive.Sub>>
 
-const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup
+const ContextMenuRadioGroup = ContextMenuPrimitive.RadioGroup as React.FC<React.ComponentProps<typeof ContextMenuPrimitive.RadioGroup>>
 
-const ContextMenuSubTrigger = React.forwardRef<
-    React.ElementRef<typeof ContextMenuPrimitive.SubTrigger>,
-    React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubTrigger> & {
-        inset?: boolean
-    }
->(({ className, inset, children, ...props }, ref) => (
+const ContextMenuSubTrigger = React.forwardRef(({ className, inset, children, ...props }: React.ComponentPropsWithoutRef<typeof ContextMenuPrimitive.SubTrigger> & { inset?: boolean }, ref: React.ForwardedRef<React.ElementRef<typeof ContextMenuPrimitive.SubTrigger>>) => (
     <ContextMenuPrimitive.SubTrigger
         ref={ref}
         className={cn(
@@ -36,7 +31,7 @@ const ContextMenuSubTrigger = React.forwardRef<
         {children}
         <ChevronRight className="ml-auto h-4 w-4" />
     </ContextMenuPrimitive.SubTrigger>
-))
+) as React.ReactElement)
 ContextMenuSubTrigger.displayName = ContextMenuPrimitive.SubTrigger.displayName
 
 const ContextMenuSubContent = React.forwardRef<
