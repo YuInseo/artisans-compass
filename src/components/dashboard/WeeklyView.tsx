@@ -18,13 +18,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
+
 import {
     Popover,
     PopoverContent,
@@ -50,17 +44,40 @@ const getSessionDuration = (s: WorkSession | Session): number => {
     return s.duration;
 };
 
+import { useTimeStore } from "@/hooks/useTimeStore";
+
 export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessions }: WeeklyViewProps) {
     const { t } = useTranslation();
     const { settings, saveSettings } = useDataStore();
+
     const [viewMode, setViewMode] = useState<'calendar' | 'routine'>('calendar');
+
+    // Time Management
+    const { now: getNow, offset: timeOffset } = useTimeStore();
+    const [now, setNow] = useState(getNow());
+
+    useEffect(() => {
+        setNow(getNow());
+    }, [timeOffset, getNow]);
+
+    useEffect(() => {
+        const interval = setInterval(() => setNow(getNow()), 60000);
+        return () => clearInterval(interval);
+    }, [getNow]);
     const [showRoutineOverlay, setShowRoutineOverlay] = useState(false);
-    const [viewScope, setViewScope] = useState('week');
+
 
     const [viewDate, setViewDate] = useState(() => startOfWeek(currentDate, { weekStartsOn: 1 }));
     const [weekSessions, setWeekSessions] = useState<(WorkSession | Session)[]>([]);
     const [weekPlanned, setWeekPlanned] = useState<PlannedSession[]>([]);
-    const [isLoading, setIsLoading] = useState(false);
+
+
+    const [localRoutine, setLocalRoutine] = useState<RoutineSession[] | null>(null);
+
+    // Sync localRoutine with settings
+    useEffect(() => {
+        setLocalRoutine(settings?.weeklyRoutine || []);
+    }, [settings?.weeklyRoutine]);
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [selectedPlan, setSelectedPlan] = useState<Partial<PlannedSession> | null>(null);
     const [popoverPosition, setPopoverPosition] = useState<{ x: number, y: number } | null>(null);
@@ -94,12 +111,18 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
 
     // Rolling Week Logic: viewDate is the first visible day
     const days = useMemo(() => {
+        if (viewMode === 'routine') {
+            // Standardize Routine View to always allow Mon-Sun (Fixed)
+            // We use a reference week (e.g., this week) but ensuring Monday start
+            const baseDate = startOfWeek(new Date(), { weekStartsOn: 1 });
+            return Array.from({ length: 7 }).map((_, i) => addDays(baseDate, i));
+        }
         return Array.from({ length: 7 }).map((_, i) => addDays(viewDate, i));
-    }, [viewDate]);
+    }, [viewDate, viewMode]);
 
     const loadData = async () => {
         if (!(window as any).ipcRenderer) return;
-        setIsLoading(true);
+
         const monthsToFetch = new Set<string>();
         days.forEach(day => monthsToFetch.add(format(day, 'yyyy-MM')));
 
@@ -136,7 +159,7 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
 
         setWeekSessions(allSessions);
         setWeekPlanned(allPlanned);
-        setIsLoading(false);
+
     };
 
     const handleEditPlan = (session: PlannedSession, e?: React.MouseEvent) => {
@@ -162,12 +185,13 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
     const routineSessions = useMemo(() => {
         // Fetch if in routine mode OR if overlay is enabled in calendar mode
         const shouldFetch = viewMode === 'routine' || (viewMode === 'calendar' && showRoutineOverlay);
-        if (!shouldFetch || !settings?.weeklyRoutine) return [];
+        const sourceRoutine = localRoutine || settings?.weeklyRoutine;
+        if (!shouldFetch || !sourceRoutine) return [];
 
         // Map routine sessions to the current week's dates for rendering
 
 
-        return settings.weeklyRoutine.map(routine => {
+        return sourceRoutine.map(routine => {
             // routine.dayOfWeek: 0=Sun, 1=Mon... but date-fns 0=Sun
             // Let's assume our type uses 0=Sunday consistent with date-fns
             // We need to find the date in the current week that matches this day
@@ -191,7 +215,7 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
             } as PlannedSession;
         }).filter(Boolean) as PlannedSession[];
 
-    }, [settings?.weeklyRoutine, viewMode, viewDate, days]);
+    }, [settings?.weeklyRoutine, localRoutine, viewMode, viewDate, days]);
 
     const effectivePlanned = viewMode === 'routine' ? routineSessions : weekPlanned;
 
@@ -348,9 +372,10 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
             return;
         }
 
-        if (!selectedPlan || !selectedPlan.start) return;
+        const sessionToDelete = effectivePlanned.find(p => p.id === id);
+        if (!sessionToDelete) return; // Session not found in current view
 
-        const sessionDate = new Date(selectedPlan.start);
+        const sessionDate = new Date(sessionToDelete.start);
         const dateStr = format(sessionDate, 'yyyy-MM-dd');
         const yearMonth = format(sessionDate, 'yyyy-MM');
 
@@ -383,12 +408,7 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         onDateChange(start);
     };
 
-    // Current Time Indicator
-    const [now, setNow] = useState(new Date());
-    useEffect(() => {
-        const interval = setInterval(() => setNow(new Date()), 60000);
-        return () => clearInterval(interval);
-    }, []);
+    // Current Time Indicator (Managed at top)
 
     const scrollRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
@@ -658,9 +678,18 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                 const element = document.querySelector(`[data-session-id="${prev.session.id}"]`);
                 if (element) {
                     const rect = element.getBoundingClientRect();
-                    setPopoverPosition({ x: rect.right + 2, y: rect.top });
+                    let x = rect.right + 2;
+                    // Smart Positioning
+                    if (x + 340 > window.innerWidth) {
+                        x = rect.left - 340 - 2;
+                    }
+                    setPopoverPosition({ x, y: rect.top });
                 } else {
-                    setPopoverPosition({ x: e.clientX, y: e.clientY });
+                    let x = e.clientX;
+                    if (x + 340 > window.innerWidth) {
+                        x = x - 340;
+                    }
+                    setPopoverPosition({ x, y: e.clientY });
                 }
 
                 setSelectedPlan(prev.session);
@@ -671,6 +700,18 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
 
         if (prev.type === 'create') {
             if (newDuration >= 900) { // Min 15 mins to be valid
+                // Calculate position for popover (Right of the column, at the top of the new block)
+                const rect = prev.containerRect;
+                const top = Math.min(prev.startY, e.clientY);
+                let x = rect.right + 2;
+
+                // Smart Positioning: Flip to left if no space on right
+                if (x + 340 > window.innerWidth) {
+                    x = rect.left - 340 - 2;
+                }
+
+                setPopoverPosition({ x, y: top });
+
                 setSelectedPlan({
                     start: newStart,
                     duration: newDuration,
@@ -687,10 +728,54 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
         }
     };
 
-    const handleBulkDelete = () => {
+    const handleBulkDelete = async () => {
         if (selectedSessionIds.size === 0) return;
-        if (!confirm('Are you sure you want to delete these sessions?')) return;
-        selectedSessionIds.forEach(id => handleDeletePlan(id));
+
+        if (viewMode === 'routine') {
+            if (!settings) return;
+            // Filter out the selected IDs
+            const updatedRoutine = (settings.weeklyRoutine || []).filter(r => !selectedSessionIds.has(r.id));
+            await saveSettings({ ...settings, weeklyRoutine: updatedRoutine });
+            setSelectedSessionIds(new Set());
+            return;
+        }
+
+        // Group by YearMonth to handle batch updates efficiently
+        const sessionsToDelete = effectivePlanned.filter(s => selectedSessionIds.has(s.id));
+        const updatesByMonth = new Map<string, Set<string>>();
+
+        sessionsToDelete.forEach(s => {
+            const date = new Date(s.start);
+            const key = format(date, 'yyyy-MM');
+            if (!updatesByMonth.has(key)) {
+                updatesByMonth.set(key, new Set());
+            }
+            updatesByMonth.get(key)!.add(s.id);
+        });
+
+        if ((window as any).ipcRenderer) {
+            for (const [yearMonth, ids] of updatesByMonth) {
+                const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
+                let changed = false;
+
+                Object.keys(logs).forEach(dateKey => {
+                    const log = logs[dateKey];
+                    if (log.plannedSessions) {
+                        const originalLen = log.plannedSessions.length;
+                        log.plannedSessions = log.plannedSessions.filter((p: PlannedSession) => !ids.has(p.id));
+                        if (log.plannedSessions.length !== originalLen) {
+                            changed = true;
+                        }
+                    }
+                });
+
+                if (changed) {
+                    await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
+                }
+            }
+            loadData();
+        }
+
         setSelectedSessionIds(new Set());
     };
 
@@ -964,22 +1049,8 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                         </div>
                     )}
 
-                    {/* 3. View Scope Select */}
-                    <Select value={viewScope} onValueChange={setViewScope}>
-                        <SelectTrigger className="w-[110px] h-8 text-xs">
-                            <SelectValue placeholder="Week" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="day">Day (D/1)</SelectItem>
-                            <SelectItem value="week">Week (W/2)</SelectItem>
-                            <SelectItem value="month">Month (M/3)</SelectItem>
-                            <SelectItem value="schedule">Schedule (A/4)</SelectItem>
-                            <SelectItem value="multiday">5 Days</SelectItem>
-                            <SelectItem value="multiweek">2 Weeks</SelectItem>
-                        </SelectContent>
-                    </Select>
-
-                    {isLoading && <div className="text-xs text-muted-foreground animate-pulse mr-2">{t('weeklyView.loading')}</div>}
+                    {/* View Scope Select Removed */}
+                    {/* {isLoading && <div className="text-xs text-muted-foreground animate-pulse mr-2">{t('weeklyView.loading')}</div>} */}
                 </div>
             </div>
 
@@ -1122,14 +1193,22 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                                     ></div>
                                 ))}
 
-                                {/* Current Time Indicator - Hide in Routine Mode */}
+                                {/* Current Time Indicator - Solid Red Line */}
                                 {viewMode === 'calendar' && isSameDay(day, now) && (
                                     <div
-                                        className="absolute left-0 right-0 h-[2px] bg-red-500 z-30 pointer-events-none flex items-center shadow-[0_0_8px_rgba(239,68,68,0.5)]"
+                                        className="absolute left-0 right-0 border-t-2 border-red-500 z-30 pointer-events-none flex items-center"
                                         style={{ top: `${((now.getHours() * 60 + now.getMinutes()) / 1440) * 100}%` }}
                                     >
-                                        <div className="w-2 h-2 rounded-full bg-red-500 -ml-1 ring-2 ring-background"></div>
+                                        <div className="w-2 h-2 rounded-full bg-red-500 -ml-1"></div>
                                     </div>
+                                )}
+
+                                {/* Nighttime Indicator - Yellow Dotted Line */}
+                                {viewMode === 'calendar' && settings?.calendarSettings?.showNighttime && (
+                                    <div
+                                        className="absolute left-0 right-0 border-t-2 border-dotted border-yellow-500/70 z-20 pointer-events-none"
+                                        style={{ top: `${((settings.nightTimeStart || 22) / 24) * 100}%` }}
+                                    />
                                 )}
 
                                 {/* Nighttime Overlay */}
@@ -1214,6 +1293,21 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                                     >
                                         <div className="text-xs font-medium">
                                             {format(new Date(dragState.currentStart), 'a h:mm', { locale: ko })} - {format(addMinutes(new Date(dragState.currentStart), dragState.currentDuration / 60), 'a h:mm', { locale: ko })}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Creation Ghost (Persist while editor is open for new session) */}
+                                {isEditorOpen && selectedPlan && !selectedPlan.id && selectedPlan.start && selectedPlan.duration && isSameDay(new Date(selectedPlan.start), day) && (
+                                    <div
+                                        className="absolute left-[4px] right-[4px] rounded-sm bg-blue-500/20 border border-blue-500 text-blue-700 dark:text-blue-300 z-50 pointer-events-none flex flex-col px-2 py-1 shadow-sm"
+                                        style={{
+                                            top: `${((new Date(selectedPlan.start).getHours() * 60 + new Date(selectedPlan.start).getMinutes()) / 1440) * 100}%`,
+                                            height: `${(selectedPlan.duration / 60 / 1440) * 100}%`
+                                        }}
+                                    >
+                                        <div className="text-[10px] opacity-90 font-mono mt-0.5">
+                                            {format(new Date(selectedPlan.start), 'a h:mm', { locale: ko })} - {format(addMinutes(new Date(selectedPlan.start), selectedPlan.duration / 60), 'a h:mm', { locale: ko })}
                                         </div>
                                     </div>
                                 )}
@@ -1404,6 +1498,42 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                             session={selectedPlan}
                             onSave={handleSavePlan}
                             onDelete={handleDeletePlan}
+                            onChange={(updatedSession) => {
+                                // Immediate update for UI responsiveness
+                                setSelectedPlan(updatedSession);
+
+                                if (viewMode === 'routine') {
+                                    if (localRoutine) {
+                                        // Convert PlannedSession payload to RoutineSession format specifically for the view
+                                        // Note: We only update the visual properties here for speed.
+                                        // Actual persistence happens via onSave -> handleSaveRoutine.
+
+                                        const date = new Date(updatedSession.start!);
+                                        const dayOfWeek = getDay(date);
+                                        const startSeconds = date.getHours() * 3600 + date.getMinutes() * 60;
+
+                                        setLocalRoutine(prev => (prev || []).map(r => {
+                                            if (r.id === updatedSession.id) {
+                                                return {
+                                                    ...r,
+                                                    title: updatedSession.title || r.title,
+                                                    description: updatedSession.description !== undefined ? updatedSession.description : r.description,
+                                                    color: updatedSession.color || r.color,
+                                                    durationSeconds: updatedSession.duration || r.durationSeconds,
+                                                    startSeconds: startSeconds, // Update time if changed
+                                                    dayOfWeek: dayOfWeek // Update day if changed
+                                                };
+                                            }
+                                            return r;
+                                        }));
+                                    }
+                                } else {
+                                    // Calendar Mode
+                                    setWeekPlanned(prev => prev.map(p =>
+                                        p.id === updatedSession.id ? { ...p, ...updatedSession } as PlannedSession : p
+                                    ));
+                                }
+                            }}
                             mode="card"
                             tags={settings?.projectTags || []}
                         />
@@ -1420,6 +1550,14 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                                 session={selectedPlan}
                                 onSave={handleSavePlan}
                                 onDelete={handleDeletePlan}
+                                onChange={(updatedSession) => {
+                                    setSelectedPlan(updatedSession);
+                                    if (viewMode !== 'routine') {
+                                        setWeekPlanned(prev => prev.map(p =>
+                                            p.id === updatedSession.id ? { ...p, ...updatedSession } as PlannedSession : p
+                                        ));
+                                    }
+                                }}
                                 mode="dialog"
                             />
                         </div>

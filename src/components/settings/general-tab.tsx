@@ -25,6 +25,7 @@ import { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 import { useTranslation } from 'react-i18next';
 import { version } from "../../../package.json";
+import { useTimeStore } from "@/hooks/useTimeStore";
 
 interface GeneralTabProps {
     settings: AppSettings;
@@ -50,6 +51,7 @@ export function GeneralTab({
     const [newAppInput, setNewAppInput] = useState("");
     const [showDevModeError, setShowDevModeError] = useState(false);
     const [isTrackedAppsOpen, setIsTrackedAppsOpen] = useState(false);
+    const { offset: timeOffset, setTime, resetTime } = useTimeStore();
 
     useEffect(() => {
         const fetchRunningApps = async () => {
@@ -462,6 +464,27 @@ export function GeneralTab({
                         onCheckedChange={(checked) => onSaveSettings({ ...settings, debuggerMode: checked })}
                     />
                 </div>
+
+                {/* Time Travel (Debug) */}
+                {settings.developerMode && (
+                    <div className="flex items-center justify-between mt-4 border-t border-border/30 pt-4">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">Time Travel (Debug)</Label>
+                            <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                Offset: {(timeOffset / 1000 / 60 / 60).toFixed(1)}h
+                                {timeOffset !== 0 && (
+                                    <Button variant="link" size="sm" className="h-auto p-0 text-xs text-destructive" onClick={resetTime}>
+                                        Reset
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => setTime(new Date(Date.now() + timeOffset - 3600000))}>-1h</Button>
+                            <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={() => setTime(new Date(Date.now() + timeOffset + 3600000))}>+1h</Button>
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* Update Section */}

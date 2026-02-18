@@ -1,7 +1,6 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { AppSettings } from "@/types";
-import { useTranslation } from "react-i18next";
 
 interface CalendarViewTabProps {
     settings: AppSettings;

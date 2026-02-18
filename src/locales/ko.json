@@ -513,7 +513,7 @@
     "weeklyView": {
         "calendarMode": "캘린더",
         "routineMode": "루틴",
-        "weeklyRoutine": "주간 루틴",
+        "weeklyRoutine": "반복 루틴",
         "showRoutine": "루틴 표시",
         "loading": "로딩 중...",
         "today": "오늘"

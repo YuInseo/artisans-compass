@@ -21,12 +21,13 @@ interface PlanEditorProps {
     onClose: () => void;
     session: Partial<PlannedSession> | null;
     onSave: (session: Partial<PlannedSession>) => void;
+    onChange?: (session: Partial<PlannedSession>) => void; // Immediate update
     onDelete: (id: string) => void;
     mode?: 'dialog' | 'sidebar' | 'card';
     tags?: string[]; // Available project tags
 }
 
-export function PlanEditor({ isOpen, onClose, session, onSave, onDelete, mode = 'dialog', tags = [] }: PlanEditorProps) {
+export function PlanEditor({ isOpen, onClose, session, onSave, onChange, onDelete, mode = 'dialog', tags = [] }: PlanEditorProps) {
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [duration, setDuration] = useState(60); // minutes
@@ -186,6 +187,8 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onDelete, mode = 
                                 placeholder="Untitled"
                                 onChange={(e) => {
                                     setTitle(e.target.value);
+                                    // Immediate update for UI
+                                    onChange?.({ ...session, title: e.target.value });
                                     triggerAutoSave({ title: e.target.value });
                                 }}
                             />
@@ -202,9 +205,92 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onDelete, mode = 
                                     el.style.height = el.scrollHeight + 'px'; // Set to content
                                 }
                             }}
-                            className="w-full bg-transparent border-none resize-none focus:ring-0 p-0 text-sm leading-relaxed placeholder:text-muted-foreground/50 overflow-hidden"
+                            className="w-full bg-transparent border-none resize-none focus:ring-0 p-0 text-sm leading-relaxed placeholder:text-muted-foreground/50 overflow-hidden text-foreground"
                             placeholder="내용을 입력하거나 메뉴를 위해 '/'를 입력하세요."
                             value={description}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                    const cursorPosition = e.currentTarget.selectionStart;
+                                    const textBefore = description.substring(0, cursorPosition);
+                                    const textAfter = description.substring(cursorPosition);
+
+                                    // Find current line
+                                    const lastNewline = textBefore.lastIndexOf('\n');
+                                    const currentLine = textBefore.substring(lastNewline + 1);
+
+                                    // Check for checklist pattern "- [ ] " or "- [x] "
+                                    const checkboxMatch = currentLine.match(/^(\s*-\s\[[ x]\]\s)(.*)/);
+                                    // Check for bullet pattern "- "
+                                    const bulletMatch = currentLine.match(/^(\s*-\s)(.*)/);
+
+                                    if (checkboxMatch) {
+                                        e.preventDefault();
+                                        const prefix = checkboxMatch[1];
+                                        const content = checkboxMatch[2];
+
+                                        if (!content.trim()) {
+                                            // Empty checklist item -> Break out (remove line)
+                                            const newText = textBefore.substring(0, lastNewline + 1) + textAfter;
+                                            setDescription(newText);
+                                            // Trigger autosave/resize needs to happen after state update, but here we can just update
+                                            setTimeout(() => {
+                                                const target = e.target as HTMLTextAreaElement;
+                                                target.selectionStart = target.selectionEnd = lastNewline + 1;
+                                                target.style.height = 'auto';
+                                                target.style.height = target.scrollHeight + 'px';
+                                                triggerAutoSave({ description: newText });
+                                            }, 0);
+                                        } else {
+                                            // Non-empty -> Add new checkbox line
+                                            // Reset checkbox to empty [ ]
+                                            const newPrefix = prefix.replace('[x]', '[ ]');
+                                            const newText = textBefore + '\n' + newPrefix + textAfter;
+                                            setDescription(newText);
+                                            setTimeout(() => {
+                                                const target = e.target as HTMLTextAreaElement;
+                                                target.selectionStart = target.selectionEnd = cursorPosition + 1 + newPrefix.length;
+                                                target.style.height = 'auto';
+                                                target.style.height = target.scrollHeight + 'px';
+                                                onChange?.({ ...session, description: newText });
+                                                triggerAutoSave({ description: newText });
+                                            }, 0);
+                                        }
+                                        return;
+                                    }
+
+                                    if (bulletMatch) {
+                                        e.preventDefault();
+                                        const prefix = bulletMatch[1];
+                                        const content = bulletMatch[2];
+
+                                        if (!content.trim()) {
+                                            // Empty bullet -> Break out
+                                            const newText = textBefore.substring(0, lastNewline + 1) + textAfter;
+                                            setDescription(newText);
+                                            setTimeout(() => {
+                                                const target = e.target as HTMLTextAreaElement;
+                                                target.selectionStart = target.selectionEnd = lastNewline + 1;
+                                                target.style.height = 'auto';
+                                                target.style.height = target.scrollHeight + 'px';
+                                                triggerAutoSave({ description: newText });
+                                            }, 0);
+                                        } else {
+                                            // Non-empty -> Add new bullet line
+                                            const newText = textBefore + '\n' + prefix + textAfter;
+                                            setDescription(newText);
+                                            setTimeout(() => {
+                                                const target = e.target as HTMLTextAreaElement;
+                                                target.selectionStart = target.selectionEnd = cursorPosition + 1 + prefix.length;
+                                                target.style.height = 'auto';
+                                                target.style.height = target.scrollHeight + 'px';
+                                                onChange?.({ ...session, description: newText });
+                                                triggerAutoSave({ description: newText });
+                                            }, 0);
+                                        }
+                                        return;
+                                    }
+                                }
+                            }}
                             onChange={(e) => {
                                 const newDesc = e.target.value;
                                 setDescription(newDesc);
@@ -213,6 +299,7 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onDelete, mode = 
                                 e.target.style.height = 'auto';
                                 e.target.style.height = e.target.scrollHeight + 'px';
 
+                                onChange?.({ ...session, description: newDesc });
                                 triggerAutoSave({ description: newDesc });
                             }}
                         />

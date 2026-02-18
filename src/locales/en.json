@@ -472,7 +472,7 @@
     "weeklyView": {
         "calendarMode": "Calendar",
         "routineMode": "Routine",
-        "weeklyRoutine": "Weekly Routine",
+        "weeklyRoutine": "Recurring Routine",
         "showRoutine": "Show Routine",
         "loading": "Loading...",
         "today": "Today"

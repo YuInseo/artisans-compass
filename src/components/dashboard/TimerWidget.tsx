@@ -56,8 +56,8 @@ export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove
 
                 <div className="z-10">
                     <div className="z-10">
-                        <div className={cn("text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-1", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}>{t('calendar.totalFocus')}</div>
-                        <div className={cn("text-3xl font-bold font-mono tracking-tight text-foreground flex items-baseline gap-1", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}>
+                        <div className={cn("text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-1", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")}>{t('calendar.totalFocus')}</div>
+                        <div className={cn("text-3xl font-bold font-mono tracking-tight text-foreground flex items-baseline gap-1", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")}>
                             {Math.floor(totalFocusTime / 3600)}<span className="text-sm font-sans font-medium text-muted-foreground">h</span>
                             {Math.floor((totalFocusTime % 3600) / 60)}<span className="text-sm font-sans font-medium text-muted-foreground">m</span>
                             {totalFocusTime % 60}<span className="text-sm font-sans font-medium text-muted-foreground">s</span>
@@ -74,7 +74,7 @@ export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove
                                     </span>
                                     <span className="text-[10px] font-bold text-green-500 uppercase tracking-wider">{t('calendar.focusing')}</span>
                                 </div>
-                                <div className={cn("text-xs font-medium text-foreground max-w-[120px] truncate text-right border-t border-border/50 pt-1 mt-1 transition-all", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")} title={liveSession.process}>
+                                <div className={cn("text-xs font-medium text-foreground max-w-[120px] truncate text-right border-t border-border/50 pt-1 mt-1 transition-all", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")} title={liveSession.process}>
                                     {liveSession.process}
                                 </div>
                             </>
@@ -86,7 +86,7 @@ export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove
                                     </span>
                                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ready</span>
                                 </div>
-                                <div className={cn("text-xs font-medium text-muted-foreground max-w-[120px] truncate text-right border-t border-border/50 pt-1 mt-1 italic", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}>
+                                <div className={cn("text-xs font-medium text-muted-foreground max-w-[120px] truncate text-right border-t border-border/50 pt-1 mt-1 italic", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")}>
                                     Waiting for activity...
                                 </div>
                             </>
