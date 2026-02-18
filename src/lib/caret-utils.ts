@@ -27,8 +27,7 @@ export function getCaretCoordinates(element: HTMLTextAreaElement, position: numb
 
     document.body.appendChild(div);
 
-    const spanRect = span.getBoundingClientRect();
-    const divRect = div.getBoundingClientRect(); // This might not be right if div is not positioned relative to viewport like textarea
+
 
     // Actually, simpler approach:
     // Create a mirror div, set text up to caret.
