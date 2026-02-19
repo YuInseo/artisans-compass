@@ -128,6 +128,17 @@ export interface PlannedSession {
     color?: string;
     priority?: 'high' | 'medium' | 'low';
     tag?: string;
+    location?: string;
+    alert?: number; // minutes before
+    recurrence?: RecurrenceRule;
+}
+
+export interface RecurrenceRule {
+    freq: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    interval: number;
+    byWeekDay?: number[]; // 0=Sunday
+    until?: number; // timestamp
+    count?: number;
 }
 
 export interface Todo {
@@ -166,6 +177,8 @@ export interface RoutineSession {
     description?: string;
     color?: string;
     priority?: 'high' | 'medium' | 'low';
+    location?: string;
+    alert?: number; // minutes before
 }
 
 export interface MonitorInfo {

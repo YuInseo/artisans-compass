@@ -1,20 +1,19 @@
 import { useState, useEffect, useRef } from "react";
-import { PlannedSession } from "@/types";
+import { PlannedSession, RecurrenceRule } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Trash2, Pencil, X, Calendar as CalendarIcon, Flag, List, Inbox, Clock, Check } from "lucide-react";
+import { Trash2, Pencil, X, Calendar as CalendarIcon, Flag, List, Inbox, Clock, Check, MapPin, Bell } from "lucide-react";
 import { format } from "date-fns";
-
 import {
     Popover,
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover"
 import { cn } from "@/lib/utils";
-
+import { SessionDatePicker } from "./SessionDatePicker";
 
 interface PlanEditorProps {
     isOpen: boolean;
@@ -38,6 +37,11 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onChange, onDelet
     const [isEditing, setIsEditing] = useState(false);
     const [isPriorityOpen, setIsPriorityOpen] = useState(false);
     const [isTagOpen, setIsTagOpen] = useState(false);
+    const [location, setLocation] = useState("");
+    const [alert, setAlert] = useState<number | undefined>(undefined); // minutes before
+    const [recurrence, setRecurrence] = useState<RecurrenceRule | undefined>(undefined);
+    const [isAlertOpen, setIsAlertOpen] = useState(false);
+    const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -49,6 +53,9 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onChange, onDelet
             setColor(session.color || "blue");
             setPriority(session.priority);
             setTag(session.tag);
+            setLocation(session.location || "");
+            setAlert(session.alert);
+            setRecurrence(session.recurrence);
             setIsCompleted(session.isCompleted || false);
             // If it's a new session (no ID), start in edit mode
             setIsEditing(!session.id);
@@ -59,6 +66,9 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onChange, onDelet
             setColor("blue");
             setPriority(undefined);
             setTag(undefined);
+            setLocation("");
+            setAlert(undefined);
+            setRecurrence(undefined);
             setIsCompleted(false);
             setIsEditing(true);
         }
@@ -81,6 +91,9 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onChange, onDelet
             color,
             priority,
             tag,
+            location,
+            alert,
+            recurrence,
             isCompleted
         });
         if (mode === 'dialog') {
@@ -137,12 +150,53 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onChange, onDelet
                                 {isCompleted && <Check className="w-3.5 h-3.5" />}
                             </div>
                             <div className="h-4 w-[1px] bg-border/60"></div>
-                            <div className="flex items-center gap-1 text-xs text-blue-500 font-medium">
-                                <CalendarIcon className="w-3.5 h-3.5" />
-                                <span>
-                                    {session?.start && format(new Date(session.start), 'M月 d日')}, {session?.start && format(new Date(session.start), 'a h:mm')} - {session?.start && format(new Date(session.start + (duration * 60 * 1000)), 'a h:mm')}
-                                </span>
-                            </div>
+
+                            <Dialog open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+                                <DialogTrigger asChild>
+                                    <div className="flex items-center gap-1 text-xs text-blue-500 font-medium cursor-pointer hover:bg-blue-500/10 px-1 py-0.5 rounded transition-colors">
+                                        <CalendarIcon className="w-3.5 h-3.5" />
+                                        <span>
+                                            {session?.start && format(new Date(session.start), 'M月 d日')}, {session?.start && format(new Date(session.start), 'a h:mm')} - {session?.start && format(new Date(session.start + (duration * 60 * 1000)), 'a h:mm')}
+                                        </span>
+                                    </div>
+                                </DialogTrigger>
+                                <DialogContent className="w-auto p-0 border-none bg-transparent shadow-none max-w-fit" hideCloseButton>
+                                    {session?.start && (
+                                        <SessionDatePicker
+                                            start={session.start}
+                                            duration={duration * 60}
+                                            alert={alert}
+                                            recurrence={recurrence}
+                                            onSave={(updates) => {
+                                                const newDurationMins = Math.round(updates.duration / 60);
+                                                setDuration(newDurationMins);
+                                                if (updates.alert !== undefined) setAlert(updates.alert);
+                                                if (updates.recurrence !== undefined) setRecurrence(updates.recurrence);
+
+                                                // Trigger update
+                                                onSave({
+                                                    ...session,
+                                                    start: updates.start,
+                                                    duration: updates.duration,
+                                                    alert: updates.alert,
+                                                    recurrence: updates.recurrence
+                                                });
+
+                                                triggerAutoSave({
+                                                    start: updates.start,
+                                                    duration: updates.duration,
+                                                    alert: updates.alert,
+                                                    recurrence: updates.recurrence
+                                                });
+
+                                                setIsDatePickerOpen(false);
+                                            }}
+                                            onClose={() => setIsDatePickerOpen(false)}
+                                            onDelete={handleDelete}
+                                        />
+                                    )}
+                                </DialogContent>
+                            </Dialog>
                         </div>
 
                         <Popover open={isPriorityOpen} onOpenChange={setIsPriorityOpen}>
@@ -176,6 +230,64 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onChange, onDelet
                                 </div>
                             </PopoverContent>
                         </Popover>
+                    </div>
+
+                    {/* Metadata Row: Alert & Location */}
+                    <div className="flex items-center gap-4 mb-3 px-0.5 text-sm text-muted-foreground select-none">
+                        {/* Alert */}
+                        <Popover open={isAlertOpen} onOpenChange={setIsAlertOpen}>
+                            <PopoverTrigger asChild>
+                                <div className={cn("flex items-center gap-1.5 cursor-pointer hover:text-foreground transition-colors", alert !== undefined && "text-blue-500 font-medium")}>
+                                    <Bell className="w-3.5 h-3.5" />
+                                    <span className="text-xs">
+                                        {alert === undefined ? 'Notification' :
+                                            alert === 0 ? 'On time' :
+                                                alert < 60 ? `${alert}m early` :
+                                                    alert < 1440 ? `${Math.floor(alert / 60)}h early` :
+                                                        `${Math.floor(alert / 1440)}d early`
+                                        }
+                                    </span>
+                                </div>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-32 p-1" align="start">
+                                <div className="flex flex-col gap-1">
+                                    {[undefined, 0, 5, 10, 15, 30, 60, 1440].map((mins) => (
+                                        <Button
+                                            key={String(mins)}
+                                            variant="ghost"
+                                            size="sm"
+                                            className="justify-start h-7 font-normal text-xs"
+                                            onClick={() => {
+                                                setAlert(mins);
+                                                setIsAlertOpen(false);
+                                                triggerAutoSave({ alert: mins });
+                                            }}
+                                        >
+                                            {mins === undefined ? 'None' :
+                                                mins === 0 ? 'On time' :
+                                                    mins < 60 ? `${mins}m early` :
+                                                        mins < 1440 ? `${Math.floor(mins / 60)}h early` :
+                                                            `${Math.floor(mins / 1440)}d early`
+                                            }
+                                        </Button>
+                                    ))}
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+
+                        {/* Location */}
+                        <div className="flex items-center gap-1.5 flex-1 group">
+                            <MapPin className="w-3.5 h-3.5 group-hover:text-foreground transition-colors" />
+                            <input
+                                className="bg-transparent border-none focus:ring-0 p-0 text-xs w-full placeholder:text-muted-foreground/50 text-foreground"
+                                placeholder="Add location..."
+                                value={location}
+                                onChange={(e) => {
+                                    setLocation(e.target.value);
+                                    triggerAutoSave({ location: e.target.value });
+                                }}
+                            />
+                        </div>
                     </div>
 
                     {/* Title & Actions */}
@@ -512,7 +624,15 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onChange, onDelet
     }
 
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+        <Dialog open={isOpen} onOpenChange={(open) => {
+            if (!open) {
+                if (title && title.trim().length > 0) {
+                    handleSave();
+                } else {
+                    onClose();
+                }
+            }
+        }}>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>
@@ -538,5 +658,3 @@ export function PlanEditor({ isOpen, onClose, session, onSave, onChange, onDelet
         </Dialog>
     );
 }
-
-

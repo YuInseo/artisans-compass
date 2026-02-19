@@ -41,6 +41,7 @@ import { version } from "../../package.json";
 import { themes } from "@/config/themes";
 export type SettingsTab = 'general' | 'appearance' | 'quotes' | 'reminders' | 'timetable' | 'timeline' | 'calendar' | 'tracking' | 'integrations' | 'updatelog';
 import { CalendarViewTab } from "./settings/calendar-view-tab";
+import { UpdateLogTab } from "./settings/update-log-tab";
 
 // ... inside renderSidebar ...
 interface SettingsModalProps {
@@ -55,7 +56,7 @@ interface SettingsModalProps {
 
 export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, defaultTab = 'general' }: SettingsModalProps) {
     const { setTheme } = useTheme()
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab);
     const [activeSection, setActiveSection] = useState<string | null>(null);
     const { dailyLog } = useDataStore();
@@ -172,66 +173,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     const [updateError, setUpdateError] = useState<string | null>(null);
 
     // Update Log State
-    const [updates, setUpdates] = useState<{ version: string, date: string, title: string, file: string }[]>([]);
-    const [selectedUpdate, setSelectedUpdate] = useState<{ version: string, content: string } | null>(null);
 
-    useEffect(() => {
-        if (open && activeTab === 'updatelog') {
-            fetch('/updates/index.json')
-                .then(res => res.json())
-                .then(async (data) => {
-                    // Filter out "no release" versions or versions without proper title
-                    let candidates = data.filter((update: any) =>
-                        update.title &&
-                        update.title.toLowerCase() !== 'no release' &&
-                        !update.title.toLowerCase().includes('unreleased')
-                    );
-
-                    // Pre-validate candidates to filter out missing files (404/HTML fallback)
-                    const lang = (i18n.language || 'en').split('-')[0];
-                    const validatedUpdates = [];
-
-                    for (const update of candidates) {
-                        const v = update.version;
-                        const f = update.file;
-                        // Try localized first, then default
-                        const localizedPath = `/updates/${lang}/${v}.md`;
-                        const defaultPath = `/updates/${f}`;
-
-                        try {
-                            // Try localized
-                            let res = await fetch(localizedPath);
-                            let text = "";
-                            if (!res.ok) {
-                                // Fallback
-                                res = await fetch(defaultPath);
-                            }
-
-                            if (res.ok) {
-                                text = await res.text();
-                                // Check for HTML fallback (SPA 404)
-                                if (!text.trim().toLowerCase().startsWith('<!doctype html>')) {
-                                    validatedUpdates.push(update);
-                                }
-                            }
-                        } catch (e) {
-                            // Build error? Ignore.
-                        }
-                    }
-
-                    setUpdates(validatedUpdates);
-
-                    // Select first by default if nothing selected and list is not empty
-                    if (validatedUpdates.length > 0 && !selectedUpdate) {
-                        const first = validatedUpdates[0];
-                        // We already verified it exists, so just fetch again or assume it works
-                        // To be safe and consistent with handleSelectUpdate logic:
-                        handleSelectUpdate(first.version, first.file);
-                    }
-                })
-                .catch(err => console.error("Failed to fetch updates index", err));
-        }
-    }, [open, activeTab]);
 
     // Confirmation Dialog State
     const [confirmConfig, setConfirmConfig] = useState<{
@@ -290,78 +232,10 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
         }
     };
 
-    const handleSelectUpdate = (version: string, file: string) => {
-        const lang = (i18n.language || 'en').split('-')[0];
-        // Try localized path first: /updates/{lang}/{version}.md
-        // Note: The file argument from index.json is typically "vX.X.X.md", so we might need just the version or strip 'v' if needed.
-        // But our workflow creates /updates/ko/0.0.82.md. 
-        // Let's assume the version string passed here matches the filename in language folders.
 
-        const targetVersion = version; // e.g. "0.0.82"
-        const localizedPath = `/updates/${lang}/${targetVersion}.md`;
-
-        fetch(localizedPath)
-            .then(res => {
-                if (res.ok) return res.text();
-                // Fallback to default file path provided in index.json
-                return fetch(`/updates/${file}`).then(res => {
-                    if (res.ok) return res.text();
-                    throw new Error("Update log not found");
-                });
-            })
-            .then(text => {
-                // Double check if text looks like HTML (DOCTYPE) which usually means 404 in SPA
-                if (text.trim().toLowerCase().startsWith('<!doctype html>')) {
-                    throw new Error("Invalid log content (HTML detected)");
-                }
-                setSelectedUpdate({ version, content: text });
-            })
-            .catch(err => {
-                console.error("Failed to fetch update log", err);
-                setSelectedUpdate({ version, content: `Error loading patch notes: ${err.message}` });
-            });
-    };
 
     // Simple Markdown Parser (Basic)
-    const renderMarkdown = (text: string) => {
-        if (!text) return null;
-        const lines = text.split('\n');
 
-        // Helper to parse inline styles
-        const parseInline = (line: string) => {
-            if (!line) return "";
-            // Replace **bold** with <strong>bold</strong>
-            const parts = line.split(/(\*\*.*?\*\*)/g);
-            return parts.map((part, i) => {
-                if (part.startsWith('**') && part.endsWith('**')) {
-                    return <strong key={i} className="font-bold text-foreground">{part.slice(2, -2)}</strong>;
-                }
-                return part;
-            });
-        };
-
-        return lines.map((line, i) => {
-            const trimmed = line.trim();
-            if (line.startsWith('# ')) {
-                return <h1 key={i} className="text-2xl font-bold mb-4 mt-6 border-b pb-2">{parseInline(line.replace('# ', ''))}</h1>;
-            } else if (line.startsWith('## ')) {
-                return <h2 key={i} className="text-xl font-semibold mb-3 mt-5">{parseInline(line.replace('## ', ''))}</h2>;
-            } else if (line.startsWith('### ')) {
-                return <h3 key={i} className="text-lg font-medium mb-2 mt-4">{parseInline(line.replace('### ', ''))}</h3>;
-            } else if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
-                // Remove the bullet marker
-                const content = trimmed.substring(2);
-                return <div key={i} className="flex items-start mb-1 ml-4">
-                    <span className="mr-2 text-foreground/70">•</span>
-                    <span className="text-sm text-foreground/90 leading-relaxed">{parseInline(content)}</span>
-                </div>;
-            } else if (trimmed === '') {
-                return <div key={i} className="h-2" />;
-            } else {
-                return <p key={i} className="mb-2 text-sm leading-relaxed text-muted-foreground">{parseInline(line)}</p>;
-            }
-        });
-    };
 
     useEffect(() => {
         if (!open) return;
@@ -822,56 +696,9 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                 {/* UpdateLog Tab - Separate Layout with Independent Scrolling */}
                 {activeTab === 'updatelog' && (
                     <div className="flex-1 flex flex-col h-full overflow-hidden px-10 pt-6 pb-[60px]">
-                        <div className="space-y-6 animate-in fade-in duration-300 h-full flex flex-col">
-                            <div>
-                                <h3 className="text-xl font-bold mb-4 text-foreground">{t('settings.updateLog') || "패치 노트"}</h3>
-                                <Separator className="bg-border/60" />
-                            </div>
-
-                            <div className="flex-1 flex gap-6 overflow-hidden">
-                                {/* Version List */}
-                                <div className="w-[200px] shrink-0 border-r border-border/40 pr-4 overflow-y-auto custom-scrollbar">
-                                    <div className="space-y-1">
-                                        {updates.map((update) => (
-                                            <button
-                                                key={update.version}
-                                                onClick={() => handleSelectUpdate(update.version, update.file)}
-                                                className={cn(
-                                                    "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
-                                                    selectedUpdate?.version === update.version
-                                                        ? "bg-primary/10 text-primary font-medium"
-                                                        : "hover:bg-muted text-muted-foreground hover:text-foreground"
-                                                )}
-                                            >
-                                                <div className="flex flex-col">
-                                                    <span className="font-semibold">v{update.version}</span>
-                                                    <span className="text-[10px] opacity-70 truncate">{update.date}</span>
-                                                </div>
-                                            </button>
-                                        ))}
-                                        {updates.length === 0 && (
-                                            <div className="text-sm text-muted-foreground p-2 text-center">No update logs found.</div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Content Area */}
-                                <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-                                    {selectedUpdate ? (
-                                        <div className="prose prose-sm dark:prose-invert max-w-none">
-                                            {renderMarkdown(selectedUpdate.content)}
-                                        </div>
-                                    ) : (
-                                        <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                                            Select a version to view details
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
+                        <UpdateLogTab />
                     </div>
-                )
-                }
+                )}
 
                 {/* Other Tabs - Normal ScrollArea */}
                 {

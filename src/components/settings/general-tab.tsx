@@ -469,9 +469,9 @@ export function GeneralTab({
                 {settings.developerMode && (
                     <div className="flex items-center justify-between mt-4 border-t border-border/30 pt-4">
                         <div className="space-y-0.5">
-                            <Label className="text-sm font-medium">Time Travel (Debug)</Label>
+                            <Label className="text-sm font-medium">{t('settings.timeTravel')}</Label>
                             <div className="text-xs text-muted-foreground flex items-center gap-2">
-                                Offset: {(timeOffset / 1000 / 60 / 60).toFixed(1)}h
+                                {t('settings.timeTravelOffset')}: {(timeOffset / 1000 / 60 / 60).toFixed(1)}h
                                 {timeOffset !== 0 && (
                                     <Button variant="link" size="sm" className="h-auto p-0 text-xs text-destructive" onClick={resetTime}>
                                         Reset

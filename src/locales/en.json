@@ -1,6 +1,7 @@
 {
     "settings": {
         "title": "Settings",
+        "userSettings": "User Settings",
         "general": "General",
         "appearance": {
             "title": "Appearance",
@@ -126,8 +127,15 @@
         "developerOptions": "Developer Options",
         "developerMode": "Developer Mode",
         "developerModeDesc": "Enable F12 to toggle Developer Tools.",
+        "timeTravel": "Time Travel (Debug)",
+        "timeTravelOffset": "Offset",
         "debuggerMode": "Debugger Overlay (Beta)",
         "debuggerModeDesc": "Show visual log overlay on screen",
+        "updateLog": "Patch Notes",
+        "updates": {
+            "title": "Patch Notes",
+            "versionHistory": "Version History"
+        },
         "screenshotOnlyActive": "Only capture when active",
         "widgetSettings": "Widget Settings",
         "checkboxVisibility": "Checkbox Visibility",
@@ -282,6 +290,7 @@
         "done": "Done"
     },
     "sidebar": {
+        "timetable": "Timetable",
         "timeline": "Timeline",
         "calendar": "Calendar",
         "dashboard": "Dashboard",

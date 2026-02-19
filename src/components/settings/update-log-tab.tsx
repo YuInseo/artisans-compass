@@ -1,5 +1,4 @@
 
-
 import { Separator } from "@/components/ui/separator"
 import { Clock } from "lucide-react"
 import { useState, useEffect } from "react"
@@ -18,6 +17,52 @@ interface UpdateLog {
     content?: string;
 }
 
+// Helper to fetch update content with fallback strategies
+async function fetchUpdateContent(version: string, file: string, lang: string): Promise<string | null> {
+    const primaryLang = lang.split('-')[0]; // e.g. 'ko-KR' -> 'ko'
+
+    // Define language strategies to try
+    const strategies = [
+        lang,           // e.g. 'ko-KR'
+        primaryLang,    // e.g. 'ko'
+        'en'            // Fallback to English
+    ];
+
+    // Remove duplicates and empty strings
+    const uniqueLangs = [...new Set(strategies)].filter(Boolean);
+
+    const pathStrategies: string[] = [];
+
+    for (const l of uniqueLangs) {
+        // Priority 1: Exact filename in lang folder (e.g. ko/v0.3.1.md)
+        pathStrategies.push(`/updates/${l}/${file}`);
+        // Priority 2: Version based in lang folder (e.g. ko/0.3.1.md - for legacy support)
+        pathStrategies.push(`/updates/${l}/${version}.md`);
+    }
+
+    // Finally root fallback (e.g. v0.3.1.md)
+    pathStrategies.push(`/updates/${file}`);
+
+
+
+    for (const path of pathStrategies) {
+        try {
+            // Add cache busting for content too, just in case
+            const res = await fetch(`${path}?t=${Date.now()}`);
+            if (res.ok) {
+                const text = await res.text();
+                // Validate content is not HTML (SPA fallback)
+                if (!text.trim().toLowerCase().startsWith('<!doctype html')) {
+                    return text;
+                }
+            }
+        } catch (e) {
+            // Ignore errors and continue to next strategy
+        }
+    }
+    return null;
+}
+
 export function UpdateLogTab() {
     const { t, i18n } = useTranslation();
     const [updates, setUpdates] = useState<UpdateLog[]>([]);
@@ -25,6 +70,8 @@ export function UpdateLogTab() {
 
     const handleSelectUpdate = async (version: string, file: string) => {
         const selected = updates.find(u => u.version === version);
+
+        // If content is already loaded (and not just empty string/null), show it
         if (selected?.content) {
             setSelectedUpdate(selected);
             return;
@@ -32,93 +79,72 @@ export function UpdateLogTab() {
 
         try {
             const lang = i18n.language || 'en';
-            const localizedPath = `/updates/${lang}/${version}.md`;
+            // Start loading state (optional UI improvement)
+            const text = await fetchUpdateContent(version, file, lang);
 
-            // Try localized first
-            let res = await fetch(localizedPath);
-            let text = "";
+            const content = text || "## Failed to load release notes for this version.";
 
-            if (res.ok) {
-                text = await res.text();
-                if (text.trim().toLowerCase().startsWith('<!doctype html')) {
-                    // Fallback to default
-                    res = await fetch(`/updates/${file}`);
-                    text = await res.text();
-                }
-            } else {
-                // Fallback to default
-                res = await fetch(`/updates/${file}`);
-                text = await res.text();
-            }
+            // Attempt to parse date from content if missing or if we want to ensure accuracy
+            const parsedDate = parseDateFromContent(content);
+            const finalDate = parsedDate || selected?.date || "";
 
-            if (!res.ok || text.trim().toLowerCase().startsWith('<!doctype html')) {
-                setSelectedUpdate({ ...selected!, content: "## Failed to load release notes." });
-                return;
-            }
+            // Update the single item with content AND date if we found one
+            const updatedLog = {
+                ...(selected || { version, title: "", file }),
+                date: finalDate, // Use parsed date preference, fallback to existing
+                content
+            };
 
-            const updatedLog = { ...(selected || { version, date: "", title: "", file }), content: text };
-
+            // Update the list state to reflect the new date immediately
             setUpdates(prev => prev.map(u => u.version === version ? updatedLog : u));
             setSelectedUpdate(updatedLog);
 
         } catch (e) {
             console.error("Failed to load update content", e);
             if (selected) {
-                setSelectedUpdate({ ...selected, content: "## Failed to load release notes." });
+                const fallback = { ...selected, content: "## Failed to load release notes." };
+                setUpdates(prev => prev.map(u => u.version === version ? fallback : u));
+                setSelectedUpdate(fallback);
             }
         }
     };
 
+    // Helper to parse date from markdown content
+    const parseDateFromContent = (text: string): string | null => {
+        // Match "**Date**: YYYY-MM-DD" or "Date: YYYY-MM-DD" or "날짜: YYYY-MM-DD" etc.
+        // Flexible regex to catch common patterns in different languages
+        const dateRegex = /(?:Date|날짜|日付|日時)\s*(?:[:：])?\s*(?:\*\*)?\s*(?:[:：])?\s*(\d{4}-\d{2}-\d{2})/i;
+        const match = text.match(dateRegex);
+        return match ? match[1] : null;
+    };
+
     useEffect(() => {
-        fetch('/updates/index.json')
+        // Fetch index only
+        // Add cache busting to force fresh load!
+        fetch(`/updates/index.json?t=${Date.now()}`)
             .then(res => res.json())
             .then(async (data: { version: string, date: string, title: string, file: string }[]) => {
-                // Filter out empty or missing logs
-                const lang = i18n.language || 'en';
 
-                const validUpdates = await Promise.all(data.map(async (update) => {
-                    const localizedPath = `/updates/${lang}/${update.version}.md`;
+                // Initialize the list with basic data immediately
+                setUpdates(data);
 
-                    try {
-                        // Try localized first
-                        let res = await fetch(localizedPath);
-                        let text = "";
-
-                        if (res.ok) {
-                            text = await res.text();
-                            if (text.trim().toLowerCase().startsWith('<!doctype html')) {
-                                // Fallback to default
-                                res = await fetch(`/updates/${update.file}`);
-                                text = await res.text();
-                            }
-                        } else {
-                            // Fallback to default
-                            res = await fetch(`/updates/${update.file}`);
-                            text = await res.text();
-                        }
-
-                        // Final Check
-                        if (!res.ok || text.trim().toLowerCase().startsWith('<!doctype html') || text.includes("No release notes.")) {
-                            return null;
-                        }
-
-                        return update;
-                    } catch (e) {
-                        return null;
-                    }
-                }));
-
-                const filteredUpdates = validUpdates.filter(u => u !== null) as typeof data;
-                setUpdates(filteredUpdates);
-
-                // Select first by default if nothing selected
-                if (filteredUpdates.length > 0) {
-                    const v = filteredUpdates[0].version;
-                    handleSelectUpdate(v, filteredUpdates[0].file);
+                // Auto-select the first item
+                if (data.length > 0) {
+                    const first = data[0];
+                    handleSelectUpdate(first.version, first.file);
                 }
             })
             .catch(err => console.error("Failed to fetch updates index", err));
-    }, [i18n.language]); // Refetch if language changes? Maybe.
+    }, [i18n.language]);
+
+    // Cleanup effect when language changes
+    useEffect(() => {
+        setUpdates(prev => prev.map(u => ({ ...u, content: undefined })));
+        if (selectedUpdate) {
+            handleSelectUpdate(selectedUpdate.version, selectedUpdate.file);
+        }
+    }, [i18n.language]);
+
 
     return (
         <div className="space-y-6 flex flex-col h-full animate-in fade-in duration-300">
@@ -154,7 +180,7 @@ export function UpdateLogTab() {
                                             </span>
                                         )}
                                     </span>
-                                    <span className="text-[10px] opacity-70 truncate">{update.date}</span>
+                                    <span className="text-[10px] text-muted-foreground/70">{update.date || "Unknown Date"}</span>
                                 </div>
                             </button>
                         ))}

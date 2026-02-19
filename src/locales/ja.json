@@ -1,6 +1,7 @@
 {
     "settings": {
         "title": "設定",
+        "userSettings": "ユーザー設定",
         "general": "一般",
         "appearance": {
             "title": "外観",
@@ -116,12 +117,18 @@
         "developerOptions": "開発者オプション",
         "developerMode": "開発者モード",
         "developerModeDesc": "F12キーで開発者ツールを切り替えます。",
+        "timeTravel": "タイムトラベル (デバッグ)",
+        "timeTravelOffset": "オフセット",
         "debuggerMode": "デバッグオーバーレイ (ベータ)",
         "debuggerModeDesc": "画面にログオーバーレイを表示します。",
         "startupBehavior": "起動動作",
         "autoLaunch": "起動時に自動実行",
         "autoLaunchDesc": "ログイン時にArtisans Compassを自動的に起動します。",
-        "updateLog": "アップデートログ",
+        "updateLog": "パッチノート",
+        "updates": {
+            "title": "パッチノート",
+            "versionHistory": "バージョン履歴"
+        },
         "widgetSettings": "ウィジェット設定",
         "checkboxVisibility": "チェックボックス表示",
         "indentationLines": "インデントガイド",
@@ -194,6 +201,7 @@
         "done": "完了"
     },
     "sidebar": {
+        "timetable": "タイムテーブル",
         "timeline": "タイムライン",
         "calendar": "カレンダー",
         "dashboard": "ダッシュボード",
