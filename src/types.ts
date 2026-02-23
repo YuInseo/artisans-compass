@@ -78,6 +78,8 @@ export interface AppSettings {
     customQuotes?: string[]; // User defined quotes
     timelineShowDetail?: boolean; // default: false
     showCurrentTimeIndicator?: boolean; // default: true
+    lockFutureDates?: boolean; // default: false
+    widgetTextAlignment?: 'left' | 'right'; // default: 'right'
     nightTimeStartSnapInterval?: number; // default: 30 (minutes)
     dailyRecordMode?: 'fixed' | 'dynamic'; // 'fixed' = 00:00 rollover, 'dynamic' = until app close
     runningAppsDisplayMode?: 'title' | 'process' | 'both'; // default: 'both'

@@ -455,6 +455,20 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
                 />
             </div>
 
+            {/* Lock Future Dates Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
+                <div className="space-y-0.5">
+                    <Label className="text-base font-semibold">{t('settings.timeline.lockFutureDates') || "Lock Future Dates"}</Label>
+                    <p className="text-xs text-muted-foreground opacity-80">
+                        {t('settings.timeline.lockFutureDatesDesc') || "Prevent navigating or adding events to dates beyond today."}
+                    </p>
+                </div>
+                <Switch
+                    checked={settings.lockFutureDates || false}
+                    onCheckedChange={(checked) => onSaveSettings({ ...settings, lockFutureDates: checked })}
+                />
+            </div>
+
 
 
             <div className="space-y-4">

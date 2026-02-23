@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Session } from '@/types';
+import { useDataStore } from '@/hooks/useDataStore';
 
 interface TimerWidgetProps {
     isWidgetMode: boolean;
@@ -14,6 +15,8 @@ interface TimerWidgetProps {
 
 export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove }: TimerWidgetProps) {
     const { t } = useTranslation();
+    const { settings } = useDataStore();
+    const isLeftAlign = settings?.widgetTextAlignment !== 'right'; // Default left
 
     const totalFocusTime = useMemo(() => {
         let time = 0;
@@ -48,7 +51,15 @@ export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove
 
     return (
         <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
-            <div className="p-4 bg-muted/30 border border-border/50 rounded-lg flex items-center justify-between relative overflow-hidden transition-all duration-500">
+            <div
+                className="p-4 rounded-lg flex items-center justify-between relative overflow-hidden transition-all duration-500"
+                style={{
+                    backgroundColor: isWidgetMode ? `hsl(var(--muted) / ${Math.max(0, (((settings as any)?.widgetOpacity) ?? 0.95) * 0.3)})` : `hsl(var(--muted) / 0.3)`,
+                    borderColor: isWidgetMode ? `hsl(var(--border) / ${Math.max(0, (((settings as any)?.widgetOpacity) ?? 0.95) * 0.5)})` : `hsl(var(--border) / 0.5)`,
+                    borderWidth: '1px',
+                    borderStyle: 'solid'
+                }}
+            >
                 {/* Background Pulse for Focus Mode */}
                 {liveSession && (
                     <div className="absolute -right-10 -bottom-10 w-32 h-32 bg-green-500/5 blur-[40px] rounded-full animate-pulse pointer-events-none" />
@@ -64,7 +75,7 @@ export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove
                         </div>
                     </div>
 
-                    <div className="flex flex-col items-end justify-center z-10 transition-all duration-300">
+                    <div className={cn("flex flex-col justify-center z-10 transition-all duration-300 mt-2", isLeftAlign ? "items-start -ml-2" : "items-end")}>
                         {liveSession ? (
                             <>
                                 <div className="flex items-center gap-2 mb-1">
@@ -74,7 +85,7 @@ export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove
                                     </span>
                                     <span className="text-[10px] font-bold text-green-500 uppercase tracking-wider">{t('calendar.focusing')}</span>
                                 </div>
-                                <div className={cn("text-xs font-medium text-foreground max-w-[120px] truncate text-right border-t border-border/50 pt-1 mt-1 transition-all", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")} title={liveSession.process}>
+                                <div className={cn("text-xs font-medium text-foreground max-w-[120px] truncate border-t border-border/50 pt-1 mt-1 transition-all", isLeftAlign ? "text-left" : "text-right", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")} title={liveSession.process}>
                                     {liveSession.process}
                                 </div>
                             </>
@@ -86,7 +97,7 @@ export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove
                                     </span>
                                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ready</span>
                                 </div>
-                                <div className={cn("text-xs font-medium text-muted-foreground max-w-[120px] truncate text-right border-t border-border/50 pt-1 mt-1 italic", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")}>
+                                <div className={cn("text-xs font-medium text-muted-foreground max-w-[120px] truncate border-t border-border/50 pt-1 mt-1 italic", isLeftAlign ? "text-left" : "text-right", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")}>
                                     Waiting for activity...
                                 </div>
                             </>

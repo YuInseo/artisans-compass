@@ -41,6 +41,7 @@ interface TodoEditorProps {
     };
     editorAlignment?: 'left' | 'center';
     className?: string;
+    forceProjectId?: string;
 }
 
 const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll, showIndentationGuides, editorAlignment, ...props }: any) => {
@@ -99,7 +100,7 @@ const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll
 
 // ... imports ...
 
-export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projectId, editorAlignment = 'left', className, actions: propActions }: TodoEditorProps) {
+export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projectId, editorAlignment = 'left', className, actions: propActions, forceProjectId }: TodoEditorProps) {
     const store = useTodoStore();
     const { settings } = useDataStore();
 
@@ -107,17 +108,19 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
     const actions = useMemo(() => {
         if (propActions) return propActions;
 
+        const effectiveProjectId = forceProjectId || projectId;
+
         return {
-            addTodo: (t: string, p: string | null = null, a: string | null = null) => store.addTodo(t, p, a, projectId),
-            updateTodo: (id: string, u: Partial<Todo>, s = false) => store.updateTodo(id, u, s, projectId),
-            deleteTodo: (id: string) => store.deleteTodo(id, projectId),
-            deleteTodos: (ids: string[]) => store.deleteTodos(ids, projectId),
-            indentTodo: (id: string) => store.indentTodo(id, projectId),
-            unindentTodo: (id: string) => store.unindentTodo(id, projectId),
-            moveTodo: (activeId: string, parentId: string | null, index: number) => store.moveTodo(activeId, parentId, index, projectId),
-            moveTodos: (activeIds: string[], parentId: string | null, index: number) => store.moveTodos(activeIds, parentId, index, projectId)
+            addTodo: (t: string, p: string | null = null, a: string | null = null) => store.addTodo(t, p, a, effectiveProjectId),
+            updateTodo: (id: string, u: Partial<Todo>, s = false) => store.updateTodo(id, u, s, effectiveProjectId),
+            deleteTodo: (id: string) => store.deleteTodo(id, effectiveProjectId),
+            deleteTodos: (ids: string[]) => store.deleteTodos(ids, effectiveProjectId),
+            indentTodo: (id: string) => store.indentTodo(id, effectiveProjectId),
+            unindentTodo: (id: string) => store.unindentTodo(id, effectiveProjectId),
+            moveTodo: (activeId: string, parentId: string | null, index: number) => store.moveTodo(activeId, parentId, index, effectiveProjectId),
+            moveTodos: (activeIds: string[], parentId: string | null, index: number) => store.moveTodos(activeIds, parentId, index, effectiveProjectId)
         };
-    }, [propActions, store, projectId]);
+    }, [propActions, store, projectId, forceProjectId]);
 
     const {
         addTodo,

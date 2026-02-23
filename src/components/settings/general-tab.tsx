@@ -135,6 +135,24 @@ export function GeneralTab({
                         <span className="text-sm text-foreground">{t('settings.runningApps.displayModeDesc')}</span>
                     </div>
 
+                    {/* Widget Text Alignment */}
+                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2">{t('settings.widgetTextAlignment', 'Widget Text Alignment')}</Label>
+                    <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">
+                        <Select
+                            value={settings.widgetTextAlignment || 'left'}
+                            onValueChange={(val: 'left' | 'right') => onSaveSettings({ ...settings, widgetTextAlignment: val })}
+                        >
+                            <SelectTrigger className="w-[180px] bg-background border-none">
+                                <SelectValue placeholder="Select Alignment" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="left">{t('settings.alignmentLeft', 'Left Align')}</SelectItem>
+                                <SelectItem value="right">{t('settings.alignmentRight', 'Right Align')}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <span className="text-sm text-foreground">{t('settings.widgetTextAlignmentDesc', 'Choose text alignment for the widget mode.')}</span>
+                    </div>
+
                     {/* Daily Archive Mode */}
                     <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2">{t('settings.timeline.dailyRecordMode') || "Daily Archive Mode"}</Label>
                     <div className="flex items-center gap-4 bg-muted/50 p-4 rounded-lg">

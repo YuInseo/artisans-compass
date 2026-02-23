@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 
 import { AppLayout } from '@/components/layout/AppLayout';
 import { TimelineSection } from '@/components/dashboard/TimelineSection';
-import { CalendarNav } from '@/components/dashboard/CalendarNav';
 import { DailyPanel } from '@/components/dashboard/DailyPanel';
 import { ClosingRitualModal } from '@/components/dashboard/ClosingRitualModal';
 import { InspirationModal } from '@/components/dashboard/InspirationModal';
@@ -18,6 +17,8 @@ import { Todo, Project, Session } from "@/types";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { Toaster } from "@/components/ui/sonner";
+import { TodoSidebar } from "./components/dashboard/TodoSidebar";
+import { WeeklyView } from "./components/dashboard/WeeklyView";
 
 import { ProjectList } from '@/components/dashboard/ProjectList';
 import { toast } from 'sonner';
@@ -265,6 +266,9 @@ function App() {
   const [settingsTab, setSettingsTab] = useState<'general' | 'timeline' | 'tracking' | 'integrations'>('general'); // State for initial tab
   const [focusedProject, setFocusedProject] = useState<Project | null>(null);
 
+  // Dashboard view toggle state
+  const [dashboardView, setDashboardView] = useState<'weekly' | 'daily'>('weekly');
+
   // Navigation Signal State
   const [navigationSignal, setNavigationSignal] = useState<{ date: Date, timestamp: number } | null>(null);
 
@@ -434,6 +438,8 @@ function App() {
         timelineHeight={timelineHeight}
         focusedProject={focusedProject}
         onFocusProject={setFocusedProject}
+        dashboardView={dashboardView}
+        onDashboardViewChange={setDashboardView}
         timeline={
           viewMode === 'timeline'
             ? <TimelineSection
@@ -444,8 +450,22 @@ function App() {
             />
             : <ProjectList searchQuery={searchQuery} />
         }
-        calendar={<CalendarNav onSelect={handleDateSelect} focusedProject={focusedProject} onNavigate={handleNavigate} navigationSignal={navigationSignal} />}
-        dailyPanel={<DailyPanel onEndDay={handleOpenRitual} onShowReminder={() => setShowReminder(true)} projects={projects} isSidebarOpen={isSidebarOpen} />}
+        planPanel={
+          <WeeklyView
+            currentDate={navigationSignal?.date || new Date()}
+            onDateChange={handleNavigate}
+          />
+        }
+        todoPanel={
+          <TodoSidebar
+            onSelect={handleDateSelect}
+            focusedProject={focusedProject}
+            navigationSignal={navigationSignal}
+          />
+        }
+        dailyPanel={
+          <DailyPanel onEndDay={handleOpenRitual} onShowReminder={() => setShowReminder(true)} projects={projects} isSidebarOpen={isSidebarOpen} />
+        }
       />
       <ClosingRitualModal
         isOpen={isRitualOpen}

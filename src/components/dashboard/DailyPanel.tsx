@@ -504,10 +504,17 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                     <div style={{ display: isWidgetMode ? 'contents' : 'none' }}>
                                         <div
                                             className={cn(
-                                                "h-9 border-b border-border flex items-center justify-between pl-3 pr-2 select-none mb-2 backdrop-blur-sm transition-all duration-300",
-                                                settings?.widgetHeaderAutoHide ? "opacity-0 hover:opacity-100 bg-muted/90" : "bg-muted/80"
+                                                "h-9 flex items-center justify-between pl-3 pr-2 select-none mb-2 transition-all duration-300",
+                                                settings?.widgetHeaderAutoHide ? "opacity-0 hover:opacity-100" : ""
                                             )}
-                                            style={{ WebkitAppRegion: settings?.widgetPositionLocked ? 'no-drag' : 'drag' } as any}
+                                            style={{
+                                                WebkitAppRegion: settings?.widgetPositionLocked ? 'no-drag' : 'drag',
+                                                backgroundColor: isWidgetMode ? `hsl(var(--muted) / ${Math.max(0, (settings?.widgetOpacity ?? 0.95) * (settings?.widgetHeaderAutoHide ? 0.9 : 0.8))})` : `hsl(var(--muted) / ${settings?.widgetHeaderAutoHide ? 0.9 : 0.8})`,
+                                                borderColor: isWidgetMode ? `hsl(var(--border) / ${settings?.widgetOpacity ?? 0.95})` : `hsl(var(--border))`,
+                                                borderBottomWidth: '1px',
+                                                borderBottomStyle: 'solid',
+                                                backdropFilter: isWidgetMode ? `blur(${Math.max(0, (settings?.widgetOpacity ?? 0.95) * 4)}px)` : 'blur(4px)'
+                                            } as any}
                                         >
                                             {/* Left: Project Select (Draggable Area with Interactive Children) */}
                                             <div className="flex items-center gap-2 min-w-0 flex-1 mr-2" style={{ WebkitAppRegion: settings?.widgetPositionLocked ? 'no-drag' : 'drag' } as any}>
@@ -748,7 +755,14 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                     {
                                         isWidgetMode && settings?.widgetDisplayMode === 'quote' && (
                                             <div className="mb-4 px-1 animate-in fade-in slide-in-from-top-2 group relative">
-                                                <div className="p-3 bg-muted/30 border border-border/50 rounded-lg text-center relative hover:bg-muted/50 transition-colors">
+                                                <div
+                                                    className="p-4 rounded-lg flex flex-col items-center justify-center min-h-[100px] shadow-sm relative overflow-hidden transition-all duration-500"
+                                                    style={{
+                                                        backgroundColor: `hsl(var(--muted) / ${Math.max(0, (settings?.widgetOpacity ?? 0.95) * 0.3)})`,
+                                                        borderColor: `hsl(var(--border) / ${Math.max(0, (settings?.widgetOpacity ?? 0.95) * 0.5)})`,
+                                                        borderWidth: '1px', borderStyle: 'solid'
+                                                    }}
+                                                >
                                                     {isEditingQuote ? (
                                                         <div className="flex flex-col gap-2">
                                                             <textarea

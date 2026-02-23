@@ -96,12 +96,12 @@ export function UpdateChecker() {
             <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground no-drag"
+                className="h-10 w-10 p-0 text-muted-foreground hover:text-foreground hover:bg-muted no-drag rounded-xl"
                 onClick={handleCheck}
                 title="Check for Updates"
                 style={{ WebkitAppRegion: 'no-drag' } as any}
             >
-                <RefreshCw className="w-3.5 h-3.5" />
+                <RefreshCw className="w-5 h-5" />
             </Button>
         );
     }
