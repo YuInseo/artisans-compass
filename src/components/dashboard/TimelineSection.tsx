@@ -19,9 +19,10 @@ interface TimelineSectionProps {
     focusedProject?: Project | null;
     navigationSignal?: { date: Date, timestamp: number } | null;
     onOpenSettings?: (tab: 'timeline') => void;
+    showFocusGoals?: boolean;
 }
 
-export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject, navigationSignal, onOpenSettings }: TimelineSectionProps) {
+export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject, navigationSignal, onOpenSettings, showFocusGoals }: TimelineSectionProps) {
     const { t } = useTranslation();
     const { projects, saveProjects, settings, addToHistory } = useDataStore();
     const {
@@ -126,6 +127,14 @@ export function TimelineSection({ searchQuery: _searchQuery = "", focusedProject
             scrollToDate(navigationSignal.date);
         }
     }, [navigationSignal, timelineStart]);
+
+    // Auto-scroll on returning from Focus Goals view
+    useEffect(() => {
+        // If showFocusGoals became false, meaning we went back to timeline view
+        if (showFocusGoals === false && settings?.timelineAutoScrollToToday !== false) {
+            scrollToDate(today);
+        }
+    }, [showFocusGoals, settings?.timelineAutoScrollToToday, today, timelineStart]);
 
     const scrollToToday = () => scrollToDate(today);
 

@@ -1,0 +1,1 @@
+- Improved the aesthetics of the left sidebar in the Settings modal by softening its background color (using bg-muted/10). This ensures the sidebar looks more natural and less harsh, especially when using Light Mode.

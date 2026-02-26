@@ -1,0 +1,1 @@
+- Completely removed the gray background from the left sidebar in the Settings modal. By making it transparent (`bg-transparent`), the sidebar now seamlessly blends into the main modal background, offering a much more natural and cohesive look, particularly in Light Mode.

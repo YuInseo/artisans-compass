@@ -404,8 +404,21 @@ export function TimelineViewTab({ settings, onSaveSettings }: TimelineViewTabPro
 
 
 
+                <div id="settings-auto-scroll" className="flex items-center justify-between p-4 border rounded-lg bg-card mt-4">
+                    <div className="space-y-0.5">
+                        <Label className="text-base">{t('settings.timeline.autoScrollToToday')}</Label>
+                        <p className="text-sm text-muted-foreground">
+                            {t('settings.timeline.autoScrollToTodayDesc')}
+                        </p>
+                    </div>
+                    <Switch
+                        checked={settings.timelineAutoScrollToToday !== false}
+                        onCheckedChange={(checked) => onSaveSettings({ ...settings, timelineAutoScrollToToday: checked })}
+                    />
+                </div>
+
                 {/* Drag Preview Toggle */}
-                <div className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                <div id="settings-timeline-preview" className="flex items-center justify-between p-4 border rounded-lg bg-card mt-4">
                     <div className="space-y-0.5">
                         <Label className="text-base">{t('settings.timeline.showPreview')}</Label>
                         <p className="text-sm text-muted-foreground">

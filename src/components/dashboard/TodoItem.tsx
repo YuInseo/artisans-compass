@@ -3,6 +3,7 @@ import { Todo } from '@/types';
 import { cn } from '@/lib/utils';
 import { CheckSquare, GripVertical } from 'lucide-react';
 import TextareaAutosize from 'react-textarea-autosize';
+import { useTranslation } from 'react-i18next';
 
 interface TodoItemProps {
     todo: Todo;
@@ -51,6 +52,7 @@ export const TodoItem = React.memo<TodoItemProps>(({
     'data-todo-id': dataTodoId,
     editorAlignment = 'left'
 }: TodoItemProps & { 'data-todo-id'?: string, isWidgetMode?: boolean, editorAlignment?: 'left' | 'center' }) => {
+    const { t } = useTranslation();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [localText, setLocalText] = React.useState(todo.text);
     // Adjusted padding: Large (76px) only for center mode, standard (24px) for left/widget
@@ -273,7 +275,7 @@ export const TodoItem = React.memo<TodoItemProps>(({
                         onKeyDown={handleKeyDown}
                         readOnly={isLocked}
                         minRows={1}
-                        placeholder={isLocked ? "" : "New task..."}
+                        placeholder={isLocked ? "" : t("dashboard.newTask")}
                         className={cn(
                             "bg-transparent resize-none outline-none leading-normal overflow-hidden min-h-[1.5rem] pt-0 placeholder:text-muted-foreground/30 font-medium block h-auto",
                             "w-full max-w-full select-text break-all",
@@ -299,7 +301,7 @@ export const TodoItem = React.memo<TodoItemProps>(({
                             }
                         }}
                     >
-                        {localText || <span className="text-muted-foreground/30 italic">New task...</span>}
+                        {localText || <span className="text-muted-foreground/30 italic">{t("dashboard.newTask")}</span>}
                     </div>
                 )}
             </div>

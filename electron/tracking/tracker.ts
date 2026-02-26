@@ -52,6 +52,19 @@ export function setupTracker(win: BrowserWindow) {
     STATE.logicalDate = format(new Date(), 'yyyy-MM-dd');
     console.log(`[Tracker] Logical Date initialized to: ${STATE.logicalDate}`);
 
+    // Record first open time if not present
+    import('../storage').then(mod => {
+        const yearMonth = STATE.logicalDate.slice(0, 7);
+        const logPath = mod.getDailyLogPath(yearMonth);
+        const logData = mod.readJson<Record<string, any>>(logPath, {});
+        const dayData = logData[STATE.logicalDate] || {};
+
+        if (!dayData.firstOpenedAt) {
+            console.log(`[Tracker] Setting firstOpenedAt for ${STATE.logicalDate}`);
+            mod.saveDailyLogInternal(STATE.logicalDate, { firstOpenedAt: Date.now() });
+        }
+    });
+
     // Handler moved to bottom to include screenshot reschedule
 
     // Poll Active Window using active-win

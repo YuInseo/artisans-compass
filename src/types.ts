@@ -12,6 +12,7 @@ export interface AppSettings {
     screenshotPath?: string; // Custom directory for screenshots
     timelapseDurationSeconds: number; // default: 5
     showIndentationGuides?: boolean; // default: true
+    timelineAutoScrollToToday?: boolean; // default: true
     showTimelinePreview?: boolean; // default: true
     focusGoals?: {
         monthly: string;
@@ -79,6 +80,8 @@ export interface AppSettings {
     timelineShowDetail?: boolean; // default: false
     showCurrentTimeIndicator?: boolean; // default: true
     lockFutureDates?: boolean; // default: false
+    showFirstLaunchIndicator?: boolean; // default: true
+    enableQuotes?: boolean; // default: true
     widgetTextAlignment?: 'left' | 'right'; // default: 'right'
     nightTimeStartSnapInterval?: number; // default: 30 (minutes)
     dailyRecordMode?: 'fixed' | 'dynamic'; // 'fixed' = 00:00 rollover, 'dynamic' = until app close
@@ -93,6 +96,8 @@ export interface AppSettings {
         nonWorkColor?: string;
         nighttimeColor?: string;
     };
+    showRoutinesInTimetable?: boolean; // default: true
+    showPlannedSessions?: boolean; // default: false
 }
 
 export interface Project {
@@ -168,6 +173,7 @@ export interface DailyLog {
     quote?: string;
     nightTimeStart?: number;
     plannedSessions?: PlannedSession[];
+    firstOpenedAt?: number;
 }
 
 export interface RoutineSession {

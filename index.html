@@ -10,7 +10,9 @@
     try {
       const theme = localStorage.getItem('vite-ui-theme');
       const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      if (theme === 'dark' || (!theme && isSystemDark) || (theme === 'system' && isSystemDark)) {
+      const effectiveTheme = theme || 'dark';
+
+      if (effectiveTheme === 'dark' || (effectiveTheme === 'system' && isSystemDark)) {
         document.documentElement.classList.add('dark');
         document.documentElement.style.colorScheme = 'dark';
       } else {

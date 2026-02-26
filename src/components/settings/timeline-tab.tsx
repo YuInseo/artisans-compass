@@ -469,6 +469,20 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
                 />
             </div>
 
+            {/* Show First Launch Indicator Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
+                <div className="space-y-0.5">
+                    <Label className="text-base font-semibold">{t('settings.timeline.showFirstLaunchIndicator') || "Show First Launch Time"}</Label>
+                    <p className="text-xs text-muted-foreground opacity-80">
+                        {t('settings.timeline.showFirstLaunchIndicatorDesc') || "Display the time when the app was first opened on the timetable."}
+                    </p>
+                </div>
+                <Switch
+                    checked={settings.showFirstLaunchIndicator !== false}
+                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showFirstLaunchIndicator: checked })}
+                />
+            </div>
+
 
 
             <div className="space-y-4">

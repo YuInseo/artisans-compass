@@ -78,7 +78,7 @@ export function AppearanceTab({ settings, onSaveSettings, theme, setTheme }: App
                 </div>
 
                 {/* Color Theme Selector - Only Visible in Dark Mode */}
-                {theme === 'dark' && (
+                {(theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)) && (
                     <div className="border-t border-border/50 bg-muted/20 p-4 animate-in slide-in-from-top-2 fade-in duration-200">
                         <div className="flex flex-col gap-3">
                             <h5 className="text-sm font-medium text-muted-foreground">{t('settings.appearance.colorTheme') || "Color Theme"}</h5>

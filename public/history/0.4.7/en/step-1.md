@@ -1,0 +1,1 @@
+- Fixed a bug causing the Timetable graph to inaccurately merge project sessions in the Daily Panel, stripping them of their assigned colors and making them appear gray. The filtering logic across the Daily Panel and the Archive View is now identical. Explicitly tracked project sessions are now firmly preserved under all conditions, seamlessly displaying their original colors.

@@ -108,7 +108,7 @@ function createSplashWindow() {
     transparent: true,
     resizable: false,
     webPreferences: {
-      preload: path.join(__dirname, 'splash-preload.mjs'), // We'll need to make sure this is built/copied or just use tsc
+      preload: path.join(__dirname, 'splash-preload.js'), // Built by vite config as a main entry
       contextIsolation: true,
       nodeIntegration: false
     }
@@ -119,23 +119,9 @@ function createSplashWindow() {
   // Actually, standard vite-plugin-electron might require us to put splash in public or build it.
   // For now, let's assume direct file access or simpler serving.
 
-  if (app.isPackaged) {
-    // In packaged app, we can try to serve it from resources or just use data URL for simplicity if small?
-    // Or better, let's serve it via the app protocol or file protocol if it exists in dist-electron
-    // But we just created it in 'electron/' which might not be in dist-electron by default unless we config vite.
-    // Let's rely on it being copied or just put it in a known place.
-    // A safer bet for now is to write the HTML content directly here or assume it's next to main.js? 
-    // Let's assume the user will ensure it's there. 
-    // Actually, let's use a data URL for the splash to be safe and self-contained, OR read the file payload.
-
-    // Let's try loading from resources/app.asar/electron/splash.html if we can't ensure it's in dist.
-    // Actually, simpler: define the HTML string here if it's small, or read it.
-
-    // Attempt to load from parallel directory
-    splash.loadFile(path.join(__dirname, '..', 'electron', 'splash.html'));
-  } else {
-    splash.loadFile(path.join(__dirname, '..', 'electron', 'splash.html'));
-  }
+  // We copy splash.html to dist-electron during build via copy-worker.js
+  // Therefore, in both dev and production, it resides directly alongside main.js
+  splash.loadFile(path.join(__dirname, 'splash.html'));
 
   splash.on('closed', () => {
     splash = null;

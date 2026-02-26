@@ -317,11 +317,19 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
         setSelectedIds(new Set());
     }, [addTodo]);
 
+    const hasAutoAddedRef = useRef(false);
+    if (todos.length > 0) {
+        hasAutoAddedRef.current = false;
+    }
+
     // Auto-create default todo if list is empty
     useEffect(() => {
         // Only in main dashboard mode (not widget) - AND ONLY AFTER LOADING
         if (!isWidgetMode && todos.length === 0 && store.hasLoaded) {
-            handleAdd(null, null);
+            if (!hasAutoAddedRef.current) {
+                hasAutoAddedRef.current = true;
+                handleAdd(null, null);
+            }
         }
     }, [todos.length, isWidgetMode, handleAdd, store.hasLoaded]);
 

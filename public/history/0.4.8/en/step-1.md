@@ -1,0 +1,2 @@
+- Fixed an issue where the mini Timetable displayed in Widget Mode did not correctly apply app filtering. Explicitly tracked project sessions, which previously appeared as a monotonous gray, now correctly display their rich, custom theme colors, ensuring consistency with the main dashboard view.
+- Improved the Weekly View calendar to simultaneously display both recurring routines and individually planned "drop-in" sessions (Planned Sessions). Users can now view their fixed routines alongside ad-hoc scheduled tasks comprehensively in one unified grid.

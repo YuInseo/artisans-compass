@@ -73,6 +73,7 @@ export interface DailyLogData {
     is_rest_day: boolean;
     quote?: string;
     nightTimeStart?: number;
+    firstOpenedAt?: number;
 }
 
 // --- Default Data ---

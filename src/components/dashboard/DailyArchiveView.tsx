@@ -53,9 +53,10 @@ interface DailyArchiveViewProps {
     onUpdateTodoText?: (id: string, text: string) => void;
     settings?: AppSettings | null;
     onUpdateSettings?: (settings: AppSettings) => void;
+    firstOpenedAt?: number;
 }
 
-export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, plannedSessions = [], stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false, nightTimeStart: savedNightTimeStart, onDeleteTodo, onToggleTodo, onUpdateTodoText, settings, onUpdateSettings }: DailyArchiveViewProps) {
+export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, plannedSessions = [], stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false, nightTimeStart: savedNightTimeStart, onDeleteTodo, onToggleTodo, onUpdateTodoText, settings, onUpdateSettings, firstOpenedAt }: DailyArchiveViewProps) {
     const { t } = useTranslation();
     const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
     const { carryOverTodos } = useTodoStore();
@@ -129,6 +130,25 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
 
     const [todos, setTodos] = useState<Todo[]>(filteredTodos);
     const [dynamicScreenshots, setDynamicScreenshots] = useState<string[]>(initialScreenshots);
+    const [timeTableViewMode, setTimeTableViewMode] = useState<'timetable' | 'app-usage'>('timetable');
+
+    // Filter Sessions based on settings, identically to DailyPanel
+    const filteredSessions = useMemo(() => {
+        if (!settings?.filterTimelineByWorkApps) {
+            return sessions;
+        }
+        return sessions.filter(session => {
+            if (!session.process) return false;
+
+            // Always keep sessions that directly match a known project name (e.g., explicit tracking)
+            const isProject = projects.some(p => p.name.toLowerCase() === session.process!.toLowerCase());
+            if (isProject) return true;
+
+            // Otherwise, apply workapp filtering
+            if (!settings?.workApps?.length) return false;
+            return settings.workApps.some(app => session.process!.toLowerCase().includes(app.toLowerCase()));
+        });
+    }, [sessions, settings?.filterTimelineByWorkApps, settings?.workApps, projects]);
 
 
 
@@ -682,10 +702,22 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                         "h-full min-w-0 p-0 flex flex-col bg-card overflow-hidden"
                     )}>
                         <div className="p-4 bg-card border-b border-border flex justify-between items-center shrink-0">
-                            <h3 className="text-sm font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
-                                <Clock className="w-4 h-4 text-blue-500" />
-                                {t('dashboard.timeTable')}
-                            </h3>
+                            <Button
+                                variant="ghost"
+                                className="h-auto px-2 py-1 -ml-2 hover:bg-muted/50 transition-colors group relative"
+                                onClick={() => setTimeTableViewMode(prev => prev === 'timetable' ? 'app-usage' : 'timetable')}
+                            >
+                                <h3 className="text-sm font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
+                                    <Clock className="w-4 h-4 text-blue-500" />
+                                    {timeTableViewMode === 'timetable' ? t('dashboard.timeTable') : t('calendar.appUsage')}
+
+                                    {/* Tutorial Badge */}
+                                    <span className="relative flex h-2 w-2 ml-1">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                                    </span>
+                                </h3>
+                            </Button>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -753,7 +785,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
 
                         <div className="flex-1 overflow-hidden relative">
                             <TimeTableGraph
-                                sessions={sessions}
+                                sessions={filteredSessions}
                                 date={date}
                                 projects={projects}
                                 nightTimeStart={nightTimeStart}
@@ -761,6 +793,8 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                 onUpdateSettings={handleUpdateSettings}
                                 renderMode={settings?.dailyRecordMode || 'dynamic'}
                                 plannedSessions={plannedSessions}
+                                firstOpenedAt={firstOpenedAt}
+                                viewMode={timeTableViewMode}
                             />
                         </div>
 

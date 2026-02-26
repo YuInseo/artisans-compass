@@ -3,7 +3,7 @@ import { format, differenceInSeconds, differenceInMinutes, getHours, isSameDay }
 import { AppSettings, Session, Project, PlannedSession } from '@/types';
 import { getDay } from 'date-fns';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
 import {
     ContextMenu,
     ContextMenuContent,
@@ -44,7 +44,6 @@ interface TimeTableGraphProps {
     activeProjectId?: string;
     liveSession?: Session | null;
     allLiveSession?: Session | null;
-    hideAppUsage?: boolean;
     projects?: Project[];
     nightTimeStart?: number; // 0-24 or >24 for next day
     settings?: AppSettings | null; // Restored
@@ -52,6 +51,8 @@ interface TimeTableGraphProps {
     renderMode?: 'fixed' | 'dynamic'; // New prop to control visualization behavior
     plannedSessions?: PlannedSession[]; // NEW: For overlay
     currentTime?: Date; // NEW: Allow parent to drive the clock
+    firstOpenedAt?: number;
+    viewMode?: 'timetable' | 'app-usage'; // NEW: Toggle between views without Tabs
 }
 
 export function TimeTableGraph({
@@ -65,11 +66,12 @@ export function TimeTableGraph({
     nightTimeStart = 24, // Default to 24 (Midnight)
     settings,
     onUpdateSettings,
-    hideAppUsage, // Add this
     renderMode = 'dynamic', // Default to dynamic safely,
     plannedSessions = [], // Default to empty
-    currentTime
-}: TimeTableGraphProps & { hideAppUsage?: boolean }): React.ReactNode {
+    currentTime,
+    firstOpenedAt,
+    viewMode = 'timetable'
+}: TimeTableGraphProps): React.ReactNode {
     console.log('[TimeTableGraph] Render Mode:', renderMode);
     const { t } = useTranslation();
     // const { settings } = useDataStore(); // Removed
@@ -287,8 +289,12 @@ export function TimeTableGraph({
                     let visualEndMins = session.endMins;
 
                     if (renderMode === 'dynamic') {
-                        if (plannedSessions && plannedSessions.length > 0) {
+                        if (settings?.showPlannedSessions && plannedSessions && plannedSessions.length > 0) {
                             forceSide = 'right';
+                            if (session.startMins >= MIDNIGHT_MINS) {
+                                visualStartMins = session.startMins - MIDNIGHT_MINS;
+                                visualEndMins = session.endMins - MIDNIGHT_MINS;
+                            }
                         } else if (session.startMins >= MIDNIGHT_MINS) {
                             forceSide = 'right';
                             visualStartMins = session.startMins - MIDNIGHT_MINS;
@@ -526,8 +532,8 @@ export function TimeTableGraph({
                     title: processName,
                     startDate: sDate,
                     endDate: eDate,
-                    startMins: side === 'right' ? sMins - MIDNIGHT_MINS : sMins,
-                    endMins: side === 'right' ? eMins - MIDNIGHT_MINS : eMins,
+                    startMins: sMins >= MIDNIGHT_MINS ? sMins - MIDNIGHT_MINS : sMins,
+                    endMins: sMins >= MIDNIGHT_MINS ? eMins - MIDNIGHT_MINS : eMins,
                     durationMins: eMins - sMins,
                     appDistribution: block.appDistribution,
                     type: matchedProject?.type,
@@ -543,7 +549,7 @@ export function TimeTableGraph({
             const e = block.endMins;
 
             if (renderMode === 'dynamic') {
-                const hasPlanned = plannedSessions && plannedSessions.length > 0;
+                const hasPlanned = settings?.showPlannedSessions && plannedSessions && plannedSessions.length > 0;
 
                 if (hasPlanned) {
                     // Split View: Planned (Left) vs Actual (Right)
@@ -843,16 +849,9 @@ export function TimeTableGraph({
 
     return (
         <div className="w-full h-full flex flex-col pointer-events-auto select-none">
-            <Tabs defaultValue="timetable" className="flex-1 flex flex-col min-h-0">
-                <div className="px-2 mb-2 shrink-0">
-                    <TabsList className="flex w-full bg-muted/50 p-0.5 h-8">
-                        <TabsTrigger value="timetable" className="flex-1 text-[10px] px-3 h-7 data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings.timelineLabel')}</TabsTrigger>
-                        {!hideAppUsage && <TabsTrigger value="app-usage" className="flex-1 text-[10px] px-3 h-7 data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('calendar.appUsage')}</TabsTrigger>}
-                    </TabsList>
-                </div>
-
-                <TabsContent value="timetable" className="flex-1 min-h-[200px] relative outline-none data-[state=inactive]:hidden mt-0 flex flex-col bg-transparent">
-                    <div className="flex-1 mx-2 bg-card/30 rounded-xl overflow-hidden border border-border/40 relative select-none flex flex-col mb-2">
+            {viewMode === 'timetable' && (
+                <div className="flex-1 min-h-[200px] relative outline-none flex flex-col bg-transparent">
+                    <div className="flex-1 mx-2 bg-card/30 rounded-xl border border-border/40 relative select-none flex flex-col mb-2">
                         {/* GRAPH CONTENT */}
                         <ContextMenu>
                             <ContextMenuTrigger className="flex-1 relative mx-2 my-3 block">
@@ -905,13 +904,88 @@ export function TimeTableGraph({
 
                                     return (
                                         <div
-                                            className="absolute left-8 right-0 border-t-2 border-red-500/50 border-dashed z-20 pointer-events-none flex items-center"
+                                            className="absolute left-8 right-0 z-20 pointer-events-auto flex items-center group cursor-help"
                                             style={{
                                                 top: `${topPct}%`,
                                                 transform: 'translateY(-50%)'
                                             }}
                                         >
-                                            <div className="absolute -left-1 w-2 h-2 bg-red-500 rounded-full -translate-x-1/2" />
+                                            {/* Dashed line */}
+                                            <div className="w-full border-t-2 border-red-500/50 border-dashed" />
+
+                                            {/* Hover target dot on the left */}
+                                            <div className="absolute -left-1 -translate-x-1/2 w-4 h-4 flex items-center justify-center">
+                                                <div className="w-2 h-2 bg-red-500 rounded-full" />
+                                                <div className="absolute left-full ml-1 opacity-0 group-hover:opacity-100 transition-opacity bg-red-500/10 backdrop-blur px-1.5 py-0.5 rounded text-[9px] font-bold text-red-500 font-mono border border-red-500/20 shadow-sm uppercase tracking-wider whitespace-nowrap pointer-events-none z-50">
+                                                    {format(d, 'HH:mm')} {t('calendar.currentTime') || "Current"}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* First Open Time Indicator */}
+                                {(() => {
+                                    if (!firstOpenedAt || settings?.showFirstLaunchIndicator === false) return null;
+                                    const d = date ? new Date(date) : new Date(now);
+                                    d.setHours(0, 0, 0, 0);
+
+                                    const openDate = new Date(firstOpenedAt);
+                                    if (!isSameDay(openDate, d)) return null;
+
+                                    const diffMins = differenceInMinutes(openDate, d);
+                                    if (diffMins < 0 || diffMins > TOTAL_MINUTES) return null;
+                                    const topPct = (diffMins / TOTAL_MINUTES) * 100;
+
+                                    return (
+                                        <div
+                                            className="absolute left-8 right-0 z-20 pointer-events-auto flex items-center group cursor-help"
+                                            style={{
+                                                top: `${topPct}%`,
+                                                transform: 'translateY(-50%)'
+                                            }}
+                                        >
+                                            {/* Dashed line */}
+                                            <div className="w-full border-t border-primary/50 border-dashed" />
+
+                                            {/* Hover target dot on the left */}
+                                            <div className="absolute -left-1 -translate-x-1/2 w-4 h-4 flex items-center justify-center">
+                                                <div className="w-2 h-2 bg-background border-2 border-primary rounded-full" />
+                                                <div className="absolute left-full ml-1 opacity-0 group-hover:opacity-100 transition-opacity bg-primary/10 backdrop-blur px-1.5 py-0.5 rounded text-[9px] font-bold text-primary font-mono border border-primary/20 shadow-sm uppercase tracking-wider whitespace-nowrap pointer-events-none z-50">
+                                                    {format(openDate, 'HH:mm')} {t('calendar.firstLaunch') || "First Launch"}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Night Time Start Indicator */}
+                                {(() => {
+                                    if (nightTimeStart === undefined) return null;
+
+                                    const nightMins = nightTimeStart * 60;
+                                    if (nightMins < 0 || nightMins > TOTAL_MINUTES) return null;
+
+                                    const topPct = (nightMins / TOTAL_MINUTES) * 100;
+
+                                    return (
+                                        <div
+                                            className="absolute left-8 right-0 z-10 pointer-events-auto flex items-center group cursor-help"
+                                            style={{
+                                                top: `${topPct}%`,
+                                                transform: 'translateY(-50%)'
+                                            }}
+                                        >
+                                            {/* Dashed line */}
+                                            <div className="w-full border-t border-indigo-500/40 border-dashed" />
+
+                                            {/* Hover target dot on the left */}
+                                            <div className="absolute -left-1 -translate-x-1/2 w-4 h-4 flex items-center justify-center">
+                                                <div className="w-2 h-2 bg-background border-2 border-indigo-500/80 rounded-full" />
+                                                <div className="absolute left-full ml-1 opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-500/10 backdrop-blur px-1.5 py-0.5 rounded text-[9px] font-bold text-indigo-500 font-mono border border-indigo-500/20 shadow-sm uppercase tracking-wider whitespace-nowrap pointer-events-none z-50">
+                                                    {`${nightTimeStart.toString().padStart(2, '0')}:00`} {t('settings.timeline.nightTimeStart') || "Night Time"}
+                                                </div>
+                                            </div>
                                         </div>
                                     );
                                 })()}
@@ -930,8 +1004,8 @@ export function TimeTableGraph({
                                         }[] = [];
 
                                         // A. Routine (from settings)
-                                        // Only show routine if we have a valid date to check the day of week
-                                        if (settings?.weeklyRoutine && date) {
+                                        // Only show routine if we have a valid date to check the day of week and setting is enabled
+                                        if (settings?.weeklyRoutine && date && settings?.showRoutinesInTimetable !== false) {
                                             const currentDay = getDay(date); // 0-6
                                             settings.weeklyRoutine
                                                 .filter(r => r.dayOfWeek === currentDay)
@@ -1086,6 +1160,15 @@ export function TimeTableGraph({
                                                         {t('settings.timeline.filterWorkApps')}
                                                     </ContextMenuCheckboxItem>
                                                     <ContextMenuSeparator />
+                                                    <ContextMenuCheckboxItem
+                                                        checked={settings?.showPlannedSessions}
+                                                        onCheckedChange={(checked) => {
+                                                            onUpdateSettings?.({ ...settings!, showPlannedSessions: checked });
+                                                        }}
+                                                    >
+                                                        {t('settings.timeline.showPlannedSessions')}
+                                                    </ContextMenuCheckboxItem>
+                                                    <ContextMenuSeparator />
                                                     <ContextMenuItem
                                                         onSelect={() => openModal('work', block)}
                                                         className="gap-2 cursor-pointer"
@@ -1123,6 +1206,15 @@ export function TimeTableGraph({
                                     {t('settings.timeline.filterWorkApps')}
                                 </ContextMenuCheckboxItem>
                                 <ContextMenuSeparator />
+                                <ContextMenuCheckboxItem
+                                    checked={settings?.showPlannedSessions}
+                                    onCheckedChange={(checked) => {
+                                        onUpdateSettings?.({ ...settings!, showPlannedSessions: checked });
+                                    }}
+                                >
+                                    {t('settings.timeline.showPlannedSessions')}
+                                </ContextMenuCheckboxItem>
+                                <ContextMenuSeparator />
                                 <ContextMenuItem
                                     onSelect={() => openModal('work')}
                                     className="gap-2 cursor-pointer"
@@ -1142,9 +1234,11 @@ export function TimeTableGraph({
                     </div>
                     {/* FOOTER FOR TIMETABLE: ONLY TOTAL FOCUS TIME */}
                     {TimelineFooter}
-                </TabsContent>
+                </div>
+            )}
 
-                <TabsContent value="app-usage" className="flex-1 min-h-0 outline-none data-[state=inactive]:hidden mt-0 flex flex-col">
+            {viewMode === 'app-usage' && (
+                <div className="flex-1 min-h-0 outline-none flex flex-col">
                     <div className="flex-1 min-h-0 overflow-y-auto px-2 py-1">
                         {/* App Usage List - Scrollable Area */}
                         <div className="bg-card/30 rounded-xl p-4 border border-border/40 space-y-3">
@@ -1197,8 +1291,8 @@ export function TimeTableGraph({
                     <div className="shrink-0 pt-0">
                         {AppUsageFooter}
                     </div>
-                </TabsContent>
-            </Tabs>
+                </div>
+            )}
 
             <Dialog open={isIgnoredAppsModalOpen} onOpenChange={setIsIgnoredAppsModalOpen}>
                 <DialogContent className="sm:max-w-[425px]">

@@ -26,9 +26,10 @@ interface ClosingRitualModalProps {
     currentStats: any;
     onSaveLog: (log: string) => void;
     screenshots?: string[];
-    sessions?: any[]; // Keeping as any[] as Session type is not defined in context
+    sessions?: any[];
     plannedSessions?: any[];
     projects?: Project[];
+    firstOpenedAt?: number;
 }
 
 // --- BlockNote Components for Modal ---
@@ -79,7 +80,7 @@ const LeftoverList = React.memo(({ todos, depth = 0, movedIds, selectedIds, onMo
 
 import { useTranslation } from "react-i18next";
 
-export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, projects = [], sessions = [], plannedSessions = [], screenshots = [] }: ClosingRitualModalProps) {
+export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, projects = [], sessions = [], plannedSessions = [], screenshots = [], firstOpenedAt }: ClosingRitualModalProps) {
     const { t } = useTranslation();
     const { projectTodos, activeProjectId, saveFutureTodos } = useTodoStore();
     const { settings, saveSettings } = useDataStore();
@@ -132,6 +133,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, p
     const [freshSessions, setFreshSessions] = useState<any[]>(sessions);
     const [freshPlannedSessions, setFreshPlannedSessions] = useState<any[]>(plannedSessions);
     const [freshScreenshots, setFreshScreenshots] = useState<string[]>(screenshots);
+    const [freshFirstOpenedAt, setFreshFirstOpenedAt] = useState<number | undefined>(firstOpenedAt);
 
     // Helper to get daily log from IPC
     const getDailyLog = useCallback(async (dateStr: string) => {
@@ -183,10 +185,10 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, p
             };
             loadTomorrow();
 
-            // Update local state from props when modal opens or props change
             setFreshSessions(sessions);
             setFreshPlannedSessions(plannedSessions);
             setFreshScreenshots(screenshots);
+            setFreshFirstOpenedAt(firstOpenedAt);
 
             // Fetch latest log as a backup or for other data (like quote)
             const todayStr = format(new Date(), 'yyyy-MM-dd');
@@ -195,11 +197,12 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, p
                     if (sessions.length === 0 && log.sessions) setFreshSessions(log.sessions); // Only fallback if props are empty
                     if (plannedSessions.length === 0 && log.plannedSessions) setFreshPlannedSessions(log.plannedSessions);
                     if (screenshots.length === 0 && log.screenshots) setFreshScreenshots(log.screenshots);
+                    if (firstOpenedAt === undefined && log.firstOpenedAt !== undefined) setFreshFirstOpenedAt(log.firstOpenedAt);
                     // ... other log data handling ...
                 }
             });
         }
-    }, [isOpen, activeProjectId, activeProjects, projects, sessions, plannedSessions, screenshots, getDailyLog]);
+    }, [isOpen, activeProjectId, activeProjects, projects, sessions, plannedSessions, screenshots, firstOpenedAt, getDailyLog]);
 
     // Ensure selectedProjectId is valid
     useEffect(() => {
@@ -224,12 +227,12 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, p
 
         // Helper to clean todos (remove empty/placeholders)
         const cleanTodos = (list: Todo[]): Todo[] => {
-            return list.filter(t => {
-                return t.text && t.text.trim().length > 0 && t.text !== "Untitled" && t.text !== "New task...";
-            }).map(t => ({
-                ...t,
+            return list.filter(todo => {
+                return todo.text && todo.text.trim().length > 0 && todo.text !== "Untitled" && todo.text !== "New task..." && todo.text !== t("dashboard.newTask");
+            }).map(todo => ({
+                ...todo,
                 carriedOver: true,
-                children: t.children ? cleanTodos(t.children) : []
+                children: todo.children ? cleanTodos(todo.children) : []
             }));
         };
 
@@ -466,13 +469,13 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, p
 
     const filteredLeftovers = useMemo(() => {
         const clean = (list: Todo[]): Todo[] => {
-            return list.filter(t => {
-                const hasText = t.text && t.text.trim().length > 0 && t.text !== "Untitled" && t.text !== "New task...";
-                const isCompleted = t.completed;
+            return list.filter(todo => {
+                const hasText = todo.text && todo.text.trim().length > 0 && todo.text !== "Untitled" && todo.text !== "New task..." && todo.text !== t("dashboard.newTask");
+                const isCompleted = todo.completed;
                 return hasText && !isCompleted;
-            }).map(t => ({
-                ...t,
-                children: t.children ? clean(t.children) : []
+            }).map(todo => ({
+                ...todo,
+                children: todo.children ? clean(todo.children) : []
             }));
         };
         return clean(todayTodos);
@@ -561,6 +564,7 @@ export function ClosingRitualModal({ isOpen, onClose, currentStats, onSaveLog, p
                                 sessions={freshSessions}
                                 plannedSessions={freshPlannedSessions}
                                 stats={currentStats}
+                                firstOpenedAt={freshFirstOpenedAt}
                                 hideCloseButton={true}
                                 onDeleteTodo={(id) => {
                                     // Find which project this todo belongs to

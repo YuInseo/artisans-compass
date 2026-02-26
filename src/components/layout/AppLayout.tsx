@@ -2,7 +2,7 @@ import { ReactNode, useState, useCallback, useEffect } from 'react';
 import { FocusGoalsSection } from "../dashboard/FocusGoalsSection";
 import { Button } from "@/components/ui/button";
 import { UpdateChecker } from "./UpdateChecker";
-import { LayoutDashboard, Settings, CalendarDays, Eye, GanttChart, Search, X, Check, Bell, AlertCircle, AlertTriangle, Info, Trash2, Minus, Square, FolderOpen, Plus, Loader2 } from "lucide-react";
+import { LayoutDashboard, Settings, CalendarDays, Eye, GanttChart, Search, X, Check, Bell, AlertCircle, AlertTriangle, Info, Trash2, Minus, Square, FolderOpen, Plus, Loader2, Target, MoreHorizontal } from "lucide-react";
 import { useNotificationStore } from "@/hooks/useNotificationStore";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -15,6 +15,7 @@ import { format } from "date-fns";
 
 import { Project } from "@/types";
 import { useTranslation } from 'react-i18next';
+import { AddPomodoroTaskDialog } from "../dashboard/AddPomodoroTaskDialog";
 
 
 
@@ -31,18 +32,21 @@ interface AppLayoutProps {
     focusedProject: Project | null;
     onFocusProject: (project: Project | null) => void;
 
-    dashboardView: 'weekly' | 'daily';
-    onDashboardViewChange: (view: 'weekly' | 'daily') => void;
+    dashboardView: 'weekly' | 'daily' | 'pomodoro';
+    onDashboardViewChange: (view: 'weekly' | 'daily' | 'pomodoro') => void;
 
     // Responsive Props
     isSidebarOpen: boolean;
     setIsSidebarOpen: (isOpen: boolean) => void;
+
+    pomodoroPanel?: ReactNode;
 }
 
-export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode, onViewModeChange: _onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject, onFocusProject, dashboardView, onDashboardViewChange, isSidebarOpen, setIsSidebarOpen }: AppLayoutProps) {
+export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode, onViewModeChange: _onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject, onFocusProject, dashboardView, onDashboardViewChange, isSidebarOpen, setIsSidebarOpen, pomodoroPanel }: AppLayoutProps) {
     const { t } = useTranslation();
     const { projects, saveProjects, isWidgetMode, searchQuery, setSearchQuery, addToHistory } = useDataStore();
     const [isCreating, setIsCreating] = useState(false);
+    const [isAddPomodoroTaskOpen, setIsAddPomodoroTaskOpen] = useState(false);
     // const [isSidebarOpen, setIsSidebarOpen] = useState(true); // Lifted to App.tsx
     const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
     const [sidebarWidth, setSidebarWidth] = useState(400);
@@ -140,7 +144,7 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
 
             {/* 1. App Sidebar Rail (Activity Bar) - Full Height */}
             {!isWidgetMode && (
-                <div className="w-12 h-full shrink-0 flex flex-col items-center py-4 gap-4 border-r border-border/50 bg-muted/10 z-[60] overflow-visible relative window-drag">
+                <div className="w-12 h-full shrink-0 flex flex-col items-center py-4 gap-4 border-r border-border/50 bg-muted/10 z-40 overflow-visible relative window-drag">
                     {/* View Toggles */}
                     <div className="flex flex-col items-center gap-2 w-full mt-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
                         <Button
@@ -164,6 +168,17 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                             title={t('sidebar.weeklyView', 'Weekly View')}
                         >
                             <CalendarDays className="w-5 h-5" />
+                        </Button>
+                        <Button
+                            variant={dashboardView === 'pomodoro' ? 'secondary' : 'ghost'}
+                            size="icon"
+                            className="w-10 h-10 shrink-0 rounded-xl transition-all text-muted-foreground hover:text-foreground hover:bg-muted no-drag"
+                            onClick={() => {
+                                if (dashboardView !== 'pomodoro') onDashboardViewChange('pomodoro');
+                            }}
+                            title={t('sidebar.pomodoroView', 'Pomodoro View')}
+                        >
+                            <Target className="w-5 h-5" />
                         </Button>
                     </div>
 
@@ -267,11 +282,30 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                             >
                                 {isSidebarOpen ? <GanttChart className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                             </Button>
-                            <span className="text-xs font-bold text-muted-foreground tracking-widest uppercase ml-2">Artisan's Compass</span>
+
+                            {dashboardView === 'pomodoro' ? (
+                                <div className="flex items-center gap-4 ml-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
+                                    <h2 className="text-sm font-bold font-serif">{t('dashboard.pomodoro', '포모도로')}</h2>
+                                    <div className="flex gap-1 text-muted-foreground ml-auto">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-6 w-6 hover:text-foreground"
+                                            onClick={() => setIsAddPomodoroTaskOpen(true)}
+                                            style={{ cursor: 'pointer', WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+                                        >
+                                            <Plus className="w-3.5 h-3.5" />
+                                        </Button>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6 hover:text-foreground"><MoreHorizontal className="w-3.5 h-3.5" /></Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <span className="text-xs font-bold text-muted-foreground tracking-widest uppercase ml-2">Artisan's Compass</span>
+                            )}
                         </div>
 
                         {/* Mobile Expandable Search Bar */}
-                        {isMobileSearchOpen && (
+                        {isMobileSearchOpen && dashboardView === 'daily' && (
                             <div className="lg:hidden absolute left-0 top-0 right-0 h-10 bg-muted/95 backdrop-blur-sm border-b border-border flex items-center px-4 z-[60] animate-in slide-in-from-right duration-200" style={{ WebkitAppRegion: 'no-drag' } as any}>
                                 <div className="flex-1 relative">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -309,7 +343,7 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                         {/* Small Screen: Search Button - positioned in right controls */}
 
                         {/* Large Screen: Full Search Bar */}
-                        {dashboardView !== 'weekly' && (
+                        {dashboardView === 'daily' && (
                             <div className="hidden lg:block absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[320px] no-drag z-50" style={{ WebkitAppRegion: 'no-drag' } as any}>
                                 <div className="relative group">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-blue-500 transition-colors" />
@@ -322,7 +356,11 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                                             if (!e.target.value) onFocusProject(null);
                                             if (!isSearchFocused) setIsSearchFocused(true);
                                         }}
-                                        onFocus={() => setIsSearchFocused(true)}
+                                        onFocus={(e) => {
+                                            setIsSearchFocused(true);
+                                            e.target.select();
+                                        }}
+                                        onClick={() => setIsSearchFocused(true)}
                                         onBlur={() => setTimeout(() => setIsSearchFocused(false), 200)}
                                     />
 
@@ -395,10 +433,15 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                                                                 onMouseDown={(e) => e.preventDefault()}
                                                                 onClick={(e) => {
                                                                     e.stopPropagation();
-                                                                    onFocusProject(p.id === focusedProject?.id ? null : p);
+                                                                    const isDeselecting = p.id === focusedProject?.id;
+                                                                    onFocusProject(isDeselecting ? null : p);
+                                                                    setSearchQuery(isDeselecting ? '' : p.name);
                                                                     setIsSearchFocused(false);
-                                                                    if (p.id !== focusedProject?.id) {
+                                                                    if (!isDeselecting) {
                                                                         addToHistory();
+                                                                    }
+                                                                    if (document.activeElement instanceof HTMLElement) {
+                                                                        document.activeElement.blur();
                                                                     }
                                                                 }}
                                                             >
@@ -440,7 +483,7 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
 
                         <div className="flex items-center gap-1 z-50 px-2 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as any}>
                             {/* New Project Button */}
-                            {dashboardView !== 'weekly' && (
+                            {dashboardView === 'daily' && (
                                 <Button
                                     variant="ghost"
                                     size="sm"
@@ -524,14 +567,15 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                             {/* Top Section: Full Width Project Timeline/List */}
                             {!isWidgetMode && (
                                 <div
-                                    className="shrink-0 w-full border-b border-border bg-background transition-all duration-300 ease-in-out z-10"
+                                    className="shrink-0 w-full border-b border-border bg-background transition-all duration-300 ease-in-out z-10 relative overflow-hidden"
                                     style={{ height: _timelineHeight }}
                                 >
-                                    {showFocusGoals ? (
+                                    <div className={cn("absolute inset-0 transition-opacity duration-300", showFocusGoals ? "opacity-100 z-10" : "opacity-0 pointer-events-none -z-10")}>
                                         <FocusGoalsSection />
-                                    ) : (
-                                        timeline
-                                    )}
+                                    </div>
+                                    <div className={cn("absolute inset-0 transition-opacity duration-300 flex flex-col", !showFocusGoals ? "opacity-100 z-10" : "opacity-0 pointer-events-none -z-10")}>
+                                        {timeline}
+                                    </div>
                                 </div>
                             )}
 
@@ -572,15 +616,31 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                                 </div>
                             </div>
                         </div>
-                    ) : (
+                    ) : dashboardView === 'weekly' ? (
                         <div className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
                             {planPanel}
+                        </div>
+                    ) : (
+                        <div className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
+                            {pomodoroPanel}
                         </div>
                     )}
 
                 </div>
 
             </div>
+
+            {/* Add Pomodoro Task Modal */}
+            <AddPomodoroTaskDialog
+                open={isAddPomodoroTaskOpen}
+                onOpenChange={setIsAddPomodoroTaskOpen}
+            />
+
+            {/* Add Pomodoro Task Modal */}
+            <AddPomodoroTaskDialog
+                open={isAddPomodoroTaskOpen}
+                onOpenChange={setIsAddPomodoroTaskOpen}
+            />
         </div>
     );
 }

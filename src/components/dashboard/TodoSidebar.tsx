@@ -1,6 +1,6 @@
 import { useDataStore } from "@/hooks/useDataStore";
 import { useTranslation } from "react-i18next";
-import { Target, Swords, Check, Plus, ArrowLeft } from "lucide-react";
+import { Target, Check, Plus, ArrowLeft, Trash2, Edit2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GoalSettingModal } from "./GoalSettingModal";
 import { useState, useEffect } from "react";
@@ -17,7 +17,7 @@ interface TodoSidebarProps {
 }
 
 export function TodoSidebar({ onSelect, focusedProject, navigationSignal }: TodoSidebarProps) {
-    const [viewMode, setViewMode] = useState<'calendar' | 'quest'>('calendar');
+    const [viewMode, setViewMode] = useState<'calendar' | 'quest'>('quest');
     const { t } = useTranslation();
     const { settings, saveSettings } = useDataStore();
     const [showGoalModal, setShowGoalModal] = useState(false);
@@ -152,25 +152,51 @@ export function TodoSidebar({ onSelect, focusedProject, navigationSignal }: Todo
                         {/* Quest Content */}
                         {activeQuestText ? (
                             <div className="flex-1 flex flex-col w-full h-full relative">
-                                <div className="flex-1 bg-gradient-to-br from-card via-muted/50 to-card rounded-3xl border border-border shadow-xl flex flex-col items-center justify-center p-6 text-center relative overflow-hidden group">
-                                    <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_50%_0%,hsl(var(--primary)/0.15),transparent_70%)]" />
-                                    <div className="absolute bottom-0 right-0 w-32 h-32 bg-primary/10 blur-[40px] rounded-full" />
-
+                                <div className="flex-1 bg-card dark:bg-card border border-border shadow-sm rounded-3xl flex flex-col items-center justify-center p-8 text-center relative overflow-hidden group transition-all hover:shadow-md">
                                     {activeQuestCreatedAt && (
-                                        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-[11px] font-mono text-muted-foreground uppercase tracking-widest border border-border rounded-full px-2 py-1 bg-background/50 whitespace-nowrap">
+                                        <div className="absolute top-4 left-1/2 -translate-x-1/2 text-xs font-medium text-muted-foreground bg-muted/50 px-3 py-1 rounded-full whitespace-nowrap">
                                             {t('calendar.created')} {format(activeQuestCreatedAt, 'MMM d, h:mm a')}
                                         </div>
                                     )}
 
-                                    <div className="relative mb-4 mt-6 transform group-hover:scale-110 transition-transform duration-700">
-                                        <div className="absolute inset-0 bg-primary blur-[30px] opacity-30 rounded-full animate-pulse" />
-                                        <Swords className="w-12 h-12 text-primary relative z-10 drop-shadow-[0_5px_5px_rgba(0,0,0,0.5)]" strokeWidth={1.5} />
+                                    {/* Developer Mode Actions */}
+                                    {settings?.developerMode && (
+                                        <div className="absolute top-3 right-3 flex gap-1 z-50 p-1 bg-background/80 backdrop-blur rounded-lg border border-border shadow-sm">
+                                            <Button size="icon" variant="ghost" className="h-7 w-7 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10" onClick={() => { setIsAdding(true); setNewQuestText(activeQuestText || ""); }} title="Edit Quest">
+                                                <Edit2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                            <Button size="icon" variant="ghost" className="h-7 w-7 text-amber-500 hover:text-amber-600 hover:bg-amber-500/10" onClick={async () => {
+                                                if (!settings) return;
+                                                const newDate = new Date(settings.focusGoals?.dailyQuestUpdatedAt || Date.now());
+                                                newDate.setDate(newDate.getDate() - 1);
+                                                await saveSettings({ ...settings, focusGoals: { ...settings.focusGoals, dailyQuestUpdatedAt: newDate.getTime(), monthly: settings.focusGoals?.monthly || "", weekly: settings.focusGoals?.weekly || "" } });
+                                            }} title="이전 날짜로 변경 (-1일)">
+                                                <ChevronLeft className="w-4 h-4" />
+                                            </Button>
+                                            <Button size="icon" variant="ghost" className="h-7 w-7 text-amber-500 hover:text-amber-600 hover:bg-amber-500/10" onClick={async () => {
+                                                if (!settings) return;
+                                                const newDate = new Date(settings.focusGoals?.dailyQuestUpdatedAt || Date.now());
+                                                newDate.setDate(newDate.getDate() + 1);
+                                                await saveSettings({ ...settings, focusGoals: { ...settings.focusGoals, dailyQuestUpdatedAt: newDate.getTime(), monthly: settings.focusGoals?.monthly || "", weekly: settings.focusGoals?.weekly || "" } });
+                                            }} title="이후 날짜로 변경 (+1일)">
+                                                <ChevronRight className="w-4 h-4" />
+                                            </Button>
+                                            <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={async () => {
+                                                if (!settings) return;
+                                                await saveSettings({ ...settings, focusGoals: { ...settings.focusGoals, dailyQuest: "", dailyQuestUpdatedAt: 0, monthly: settings.focusGoals?.monthly || "", weekly: settings.focusGoals?.weekly || "" } });
+                                            }} title="Reset Quest">
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                        </div>
+                                    )}
+
+                                    <div className="w-20 h-20 bg-primary/10 rounded-full flex items-center justify-center mb-6 transition-transform group-hover:scale-110 duration-500">
+                                        <Target className="w-10 h-10 text-primary" strokeWidth={2} />
                                     </div>
 
-                                    <h2 className="text-xl md:text-2xl font-black font-serif tracking-tight leading-tight text-foreground drop-shadow-lg mb-3 max-w-xs break-words">
+                                    <h2 className="text-2xl font-bold tracking-tight text-foreground mb-8 max-w-sm break-words px-4 leading-relaxed">
                                         {activeQuestText}
                                     </h2>
-                                    <div className="w-8 h-1 bg-primary/50 rounded-full mb-6" />
 
                                     {/* Completion Button */}
                                     <Button
@@ -216,21 +242,21 @@ export function TodoSidebar({ onSelect, focusedProject, navigationSignal }: Todo
                 )}
             </div>
 
-            {/* Toggle Button */}
-            <div className="shrink-0 px-4 pt-4">
+            {/* Bottom Actions */}
+            <div className="shrink-0 pt-0 pb-4 px-4 flex flex-col gap-2">
                 <Button
                     className={cn(
                         "w-full border-none shadow-sm hover:shadow-md font-bold tracking-wide transition-all duration-300",
                         viewMode === 'quest'
                             ? "bg-primary hover:bg-primary/90 text-primary-foreground"
-                            : "bg-muted hover:bg-primary hover:text-primary-foreground text-foreground"
+                            : "bg-muted/50 hover:bg-primary hover:text-primary-foreground text-foreground"
                     )}
                     size="lg"
                     onClick={() => setViewMode(viewMode === 'calendar' ? 'quest' : 'calendar')}
                 >
                     {viewMode === 'calendar' ? (
                         <>
-                            <Swords className="w-5 h-5 mr-2" />
+                            <Target className="w-5 h-5 mr-2" />
                             {t('calendar.dailyQuest')}
                         </>
                     ) : (
@@ -240,13 +266,10 @@ export function TodoSidebar({ onSelect, focusedProject, navigationSignal }: Todo
                         </>
                     )}
                 </Button>
-            </div>
 
-            {/* Goal Setting Button */}
-            <div className="shrink-0 pt-3 pb-4 px-4 border-t-0 mt-2">
                 <Button
                     variant="outline"
-                    className="w-full border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 text-primary font-bold tracking-wide shadow-sm relative"
+                    className="w-full border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 text-primary font-bold tracking-wide shadow-sm relative h-10 bg-muted/20"
                     onClick={() => setShowGoalModal(true)}
                 >
                     <Target className="w-4 h-4 mr-2" />

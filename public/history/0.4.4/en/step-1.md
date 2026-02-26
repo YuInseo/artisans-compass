@@ -1,0 +1,1 @@
+- Hid the "Color Theme" dropdown in the Settings menu when the application is in Light Mode. Since color themes (Sunset, Ocean, Midnight, etc.) are built primarily for Dark Mode, they are now strictly available only when Dark Mode is active.

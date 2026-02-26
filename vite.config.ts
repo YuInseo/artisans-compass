@@ -37,7 +37,8 @@ export default defineConfig({
               external: ['active-win', 'screenshot-desktop', 'jpeg-js'],
               input: {
                 main: path.resolve(__dirname, 'electron/main.ts'),
-                'screenshot-worker': path.resolve(__dirname, 'electron/tracking/screenshot-worker.ts')
+                'screenshot-worker': path.resolve(__dirname, 'electron/tracking/screenshot-worker.ts'),
+                'splash-preload': path.resolve(__dirname, 'electron/splash-preload.ts')
               }
             },
           },

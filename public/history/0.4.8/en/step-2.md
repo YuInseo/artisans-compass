@@ -1,0 +1,3 @@
+- Fixed a bug causing the splash screen (loading window) to appear entirely blank—missing both its icon and text—after the application was packaged and installed.
+- Cause: The splash screen's HTML file (`splash.html`) and its preload script (`splash-preload.ts`) were either omitted from the build or referenced via incorrect paths in the production build.
+- Solution: Explicitly included the splash preload script in the build configuration (`vite.config.ts`) and corrected the file loading paths in the packaged environment (`app.asar`) to ensure the splash screen renders correctly.

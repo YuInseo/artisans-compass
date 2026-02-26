@@ -1,0 +1,1 @@
+- Fixed a bug where closing the settings modal in Light Mode would cause the UI to revert to the previously selected dark color theme (e.g., Sunset). This was due to the widget theme synchronization logic incorrectly overwriting CSS variables. It now properly detects the current active light/system theme and preserves it when restoring themes outside of widget mode.

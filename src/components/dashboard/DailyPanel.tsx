@@ -1,5 +1,5 @@
-import { Session, Todo, Project, AppSettings } from "@/types";
-import { Eraser, Sparkles, AlignLeft, AlignCenter, CheckCircle, Moon, Sun, Lock, Unlock, Briefcase, ChevronDown, Settings2, Clock, Bell } from 'lucide-react';
+import { Session, Todo, Project } from "@/types";
+import { Eraser, Sparkles, CheckCircle, Moon, Sun, Lock, Unlock, Briefcase, ChevronDown, Settings2, Clock, Bell } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -38,18 +38,20 @@ import { TodoEditor } from "./TodoEditor";
 import { TimerWidget } from "./TimerWidget";
 import { TimeTableGraph } from "./TimeTableGraph";
 import { WeeklyView } from "./WeeklyView";
-import { Calendar as CalendarIcon } from "lucide-react";
+
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { themes } from "@/config/themes";
 
 
 interface DailyPanelProps {
-    onEndDay: (todos: Todo[], screenshots: string[], sessions: Session[], plannedSessions: any[]) => void;
+    onEndDay: (todos: Todo[], screenshots: string[], sessions: Session[], plannedSessions: any[], firstOpenedAt?: number) => void;
     projects?: Project[];
     isSidebarOpen?: boolean;
     onShowReminder?: () => void;
+    showFocusGoals?: boolean;
 }
 
-export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarOpen }: DailyPanelProps) {
+export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarOpen, showFocusGoals }: DailyPanelProps) {
     const { t } = useTranslation();
     const [isWidgetLocked, setIsWidgetLocked] = useState(false);
     const [isPinned, setIsPinned] = useState(false);
@@ -107,6 +109,7 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
     const { settings, isWidgetMode, setWidgetMode, saveSettings, dailyLog } = useDataStore();
 
     const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
+    const [timeTableViewMode, setTimeTableViewMode] = useState<'timetable' | 'app-usage'>('timetable');
 
     useEffect(() => {
         const handleResize = () => setWindowWidth(window.innerWidth);
@@ -263,32 +266,34 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
             // Or we temporarily update the DOM manually here, since ThemeProvider only reacts to settings change or theme change.
             // But if ThemeProvider has useEffect[settings?.themePreset]...
             // Let's manually apply the widget preset colors here.
-            import('@/config/themes').then(({ themes }) => {
-                const themeConfig = themes[targetPreset] || themes['default'];
-                const root = window.document.documentElement;
-                if (themeConfig) {
-                    Object.entries(themeConfig.colors).forEach(([key, value]) => {
-                        const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
-                        root.style.setProperty(cssVar, value);
-                    });
-                }
-            });
+            const themeConfig = themes[targetPreset] || themes['default'];
+            const root = window.document.documentElement;
+            if (themeConfig) {
+                Object.entries(themeConfig.colors).forEach(([key, value]) => {
+                    const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+                    root.style.setProperty(cssVar, value);
+                });
+            }
         } else if (!isWidgetMode) {
-            // Restore main preset if needed? ThemeProvider should handle it if settings didn't change.
-            // But if we manually overrode it above, we might need to restore.
-            // Actually, ThemeProvider runs on mount and settings change.
-            // If we manually set props, they persist until unset or overwritten.
-            // So we should re-apply main theme preset when exiting widget mode.
-            if (settings.themePreset) {
-                import('@/config/themes').then(({ themes }) => {
-                    const themeConfig = themes[settings.themePreset || 'default'] || themes['default'];
-                    const root = window.document.documentElement;
-                    if (themeConfig) {
-                        Object.entries(themeConfig.colors).forEach(([key, value]) => {
-                            const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
-                            root.style.setProperty(cssVar, value);
-                        });
-                    }
+            // Restore main preset 
+            let effectiveThemeName = theme;
+            if (theme === "system") {
+                const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+                effectiveThemeName = systemTheme;
+            }
+            const isDark = effectiveThemeName !== 'light';
+
+            let themeKey = 'light';
+            if (isDark) {
+                themeKey = settings.themePreset || 'default';
+            }
+
+            const themeConfig = themes[themeKey] || themes['default'] || themes['dark'];
+            const root = window.document.documentElement;
+            if (themeConfig) {
+                Object.entries(themeConfig.colors).forEach(([key, value]) => {
+                    const cssVar = `--${key.replace(/([A-Z])/g, '-$1').toLowerCase()}`;
+                    root.style.setProperty(cssVar, value);
                 });
             }
         }
@@ -304,8 +309,12 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
 
     const togglePin = async () => {
         const newState = !isPinned;
-        setIsPinned(newState);
-        setWidgetMode(newState);
+
+        // Entering Widget Mode: Shrink UI first, then shrink window
+        if (newState) {
+            setIsPinned(true);
+            setWidgetMode(true);
+        }
 
         let targetHeight = 800;
         let bounds = undefined;
@@ -338,6 +347,7 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
             }
         }
 
+        // Send IPC to resize window
         if ((window as any).ipcRenderer) {
             await (window as any).ipcRenderer.send('set-widget-mode', {
                 mode: newState,
@@ -346,13 +356,23 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                 bounds: bounds
             });
         }
+
+        // Exiting Widget Mode: Expand window first, then expand UI
+        if (!newState) {
+            // Give the OS window manager a tiny bit of time to resize the transparent window before rendering the heavy DOM
+            setTimeout(() => {
+                setIsPinned(false);
+                setWidgetMode(false);
+            }, 50);
+        }
     }
 
     const [sessions, setSessions] = useState<Session[]>([]);
     const [screenshots, setScreenshots] = useState<string[]>([]);
+    const [plannedSessions, setPlannedSessions] = useState<any[]>([]);
     const [manualQuote, setManualQuote] = useState<string | null>(null);
-    const [isEditingQuote, setIsEditingQuote] = useState(false);
-    const [quoteInput, setQuoteInput] = useState("");
+    const [firstOpenedAt, setFirstOpenedAt] = useState<number | null>(null);
+
     const [liveSession, setLiveSession] = useState<Session | null>(null);
     const [displayDate, setDisplayDate] = useState<string | null>(null);
 
@@ -385,12 +405,15 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
 
                 let mergedSessions: Session[] = [];
                 let mergedScreenshots: string[] = [];
+                let mergedPlanned: any[] = [];
 
                 // 1. Load data for the View Start Date (usually Logical Date/Yesterday)
                 const primaryData = await loadDate(startViewDate);
                 if (primaryData) {
                     mergedSessions = [...(primaryData.sessions || [])];
                     mergedScreenshots = [...(primaryData.screenshots || [])];
+                    mergedPlanned = [...(primaryData.plannedSessions || [])];
+                    if (primaryData.firstOpenedAt) setFirstOpenedAt(primaryData.firstOpenedAt);
                 }
 
                 // 2. If we are in FIXED mode AND we have crossed midnight (View Date != Today),
@@ -401,11 +424,13 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                     if (secondaryData) {
                         mergedSessions = [...mergedSessions, ...(secondaryData.sessions || [])];
                         mergedScreenshots = [...mergedScreenshots, ...(secondaryData.screenshots || [])];
+                        mergedPlanned = [...mergedPlanned, ...(secondaryData.plannedSessions || [])];
                     }
                 }
 
                 setSessions(mergedSessions);
                 setScreenshots(mergedScreenshots);
+                setPlannedSessions(mergedPlanned);
 
                 // If the view starts yesterday, pass that date to the graph so it anchors 00:00 to Yesterday
                 setDisplayDate(startViewDate !== todayStr ? startViewDate : null);
@@ -440,14 +465,18 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
         if (!settings?.filterTimelineByWorkApps) {
             return sessions;
         }
-        if (!settings?.workApps?.length) {
-            return [];
-        }
         return sessions.filter(session => {
             if (!session.process) return false;
-            return settings.workApps!.some(app => session.process!.toLowerCase().includes(app.toLowerCase()));
+
+            // Always keep sessions that directly match a known project name (e.g., explicit tracking)
+            const isProject = projects.some(p => p.name.toLowerCase() === session.process!.toLowerCase());
+            if (isProject) return true;
+
+            // Otherwise, apply workapp filtering
+            if (!settings?.workApps?.length) return false;
+            return settings.workApps.some(app => session.process!.toLowerCase().includes(app.toLowerCase()));
         });
-    }, [sessions, settings?.filterTimelineByWorkApps, settings?.workApps]);
+    }, [sessions, settings?.filterTimelineByWorkApps, settings?.workApps, projects]);
 
     const filteredLiveSession = useMemo(() => {
         if (!liveSession) return null;
@@ -456,14 +485,19 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
             return liveSession;
         }
 
+        const processName = liveSession.process || "";
+
+        // Always keep if it is a defined project
+        const isProject = projects.some(p => p.name.toLowerCase() === processName.toLowerCase());
+        if (isProject) return liveSession;
+
         if (!settings?.workApps?.length) {
             return null;
         }
 
-        const processName = liveSession.process || "";
-        const isWork = settings.workApps!.some(app => processName.toLowerCase().includes(app.toLowerCase()));
+        const isWork = settings.workApps.some(app => processName.toLowerCase().includes(app.toLowerCase()));
         return isWork ? liveSession : null;
-    }, [liveSession, settings?.filterTimelineByWorkApps, settings?.workApps]);
+    }, [liveSession, settings?.filterTimelineByWorkApps, settings?.workApps, projects]);
 
     return (
         <ContextMenu>
@@ -763,91 +797,48 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                         borderWidth: '1px', borderStyle: 'solid'
                                                     }}
                                                 >
-                                                    {isEditingQuote ? (
-                                                        <div className="flex flex-col gap-2">
-                                                            <textarea
-                                                                className="w-full bg-background border border-input rounded-md p-2 text-sm font-serif italic focus:ring-1 focus:ring-primary min-h-[80px]"
-                                                                value={quoteInput}
-                                                                onChange={(e) => setQuoteInput(e.target.value)}
-                                                                placeholder="Enter your daily quote..."
-                                                                onKeyDown={(e) => {
-                                                                    if (e.key === 'Enter' && !e.shiftKey) {
-                                                                        e.preventDefault();
-                                                                        // Save
-                                                                        const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                                                        if ((window as any).ipcRenderer) {
-                                                                            (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
-                                                                        }
-                                                                        setManualQuote(quoteInput);
-                                                                        setIsEditingQuote(false);
-                                                                    }
-                                                                    if (e.key === 'Escape') {
-                                                                        setIsEditingQuote(false);
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <div className="flex justify-end gap-2 text-xs">
-                                                                <button onClick={() => setIsEditingQuote(false)} className="text-muted-foreground hover:text-foreground">Cancel</button>
-                                                                <button onClick={() => {
-                                                                    const todayStr = format(new Date(), 'yyyy-MM-dd');
-                                                                    if ((window as any).ipcRenderer) {
-                                                                        (window as any).ipcRenderer.invoke('save-daily-log', todayStr, { quote: quoteInput });
-                                                                    }
-                                                                    setManualQuote(quoteInput);
-                                                                    setIsEditingQuote(false);
-                                                                }} className="text-primary hover:underline font-bold">Save</button>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div onClick={() => {
-
-                                                            setIsEditingQuote(true);
-                                                        }}
-                                                            className="cursor-pointer"
-                                                            title="Click to Edit Quote"
-                                                        >
-
-                                                            <p className={cn("text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}>
-                                                                "{manualQuote || (() => {
-                                                                    const defaultQuotes = [
-                                                                        "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
-                                                                        "완벽함이 아니라 탁월함을 추구하라.",
-                                                                        "시작이 반이다.",
-                                                                        "몰입은 최고의 휴식이다.",
-                                                                        "단순함은 궁극의 정교함이다.",
-                                                                        "가장 좋은 방법은 시작하는 것이다.",
-                                                                        "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
-                                                                        "어제보다 나은 내일을 만들어라.",
-                                                                        "작은 진전이 모여 큰 결과를 만든다.",
-                                                                        "실패는 성공으로 가는 이정표다.",
-                                                                        "코딩은 21세기의 마법이다.",
-                                                                        "디테일이 퀄리티를 만든다.",
-                                                                        "꾸준함이 재능을 이긴다.",
-                                                                        "기록하지 않으면 기억되지 않는다.",
-                                                                        "오늘의 노력이 내일의 실력이 된다.",
-                                                                        "문제는 해결책을 찾기 위해 존재한다.",
-                                                                        "배움에는 끝이 없다.",
-                                                                        "나만의 속도로 가라.",
-                                                                        "휴식도 훈련의 일부다.",
-                                                                        "상상력은 지식보다 중요하다.",
-                                                                        "도전하지 않으면 아무것도 얻을 수 없다.",
-                                                                        "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
-                                                                        "천리길도 한 걸음부터.",
-                                                                        "성공은 포기하지 않는 자의 것이다.",
-                                                                        "당신의 한계는 당신의 생각뿐이다.",
-                                                                        "지금 흘린 땀은 내일의 눈물을 닦아준다.",
-                                                                        "위대한 일은 작은 일들이 모여 이루어진다.",
-                                                                        "늦었다고 생각할 때가 가장 빠르다.",
-                                                                        "열정 없는 천재는 없다.",
-                                                                        "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
-                                                                        "당신의 작품이 당신을 말해준다."
-                                                                    ];
-                                                                    const allQuotes = [...defaultQuotes, ...(settings?.customQuotes || [])];
-                                                                    return allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
-                                                                })()}"
-                                                            </p>
-                                                        </div>
-                                                    )}
+                                                    <div>
+                                                        <p className={cn("text-sm font-medium font-serif italic text-muted-foreground whitespace-pre-line leading-relaxed", isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]")}>
+                                                            "{manualQuote || (() => {
+                                                                const defaultQuotes = [
+                                                                    "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
+                                                                    "완벽함이 아니라 탁월함을 추구하라.",
+                                                                    "시작이 반이다.",
+                                                                    "몰입은 최고의 휴식이다.",
+                                                                    "단순함은 궁극의 정교함이다.",
+                                                                    "가장 좋은 방법은 시작하는 것이다.",
+                                                                    "영감은 존재한다. 그러나 당신이 일하는 도중에 찾아온다.",
+                                                                    "어제보다 나은 내일을 만들어라.",
+                                                                    "작은 진전이 모여 큰 결과를 만든다.",
+                                                                    "실패는 성공으로 가는 이정표다.",
+                                                                    "코딩은 21세기의 마법이다.",
+                                                                    "디테일이 퀄리티를 만든다.",
+                                                                    "꾸준함이 재능을 이긴다.",
+                                                                    "기록하지 않으면 기억되지 않는다.",
+                                                                    "오늘의 노력이 내일의 실력이 된다.",
+                                                                    "문제는 해결책을 찾기 위해 존재한다.",
+                                                                    "배움에는 끝이 없다.",
+                                                                    "나만의 속도로 가라.",
+                                                                    "휴식도 훈련의 일부다.",
+                                                                    "상상력은 지식보다 중요하다.",
+                                                                    "도전하지 않으면 아무것도 얻을 수 없다.",
+                                                                    "품질은 우연이 아니다. 항상 지능적인 노력의 결과다.",
+                                                                    "천리길도 한 걸음부터.",
+                                                                    "성공은 포기하지 않는 자의 것이다.",
+                                                                    "당신의 한계는 당신의 생각뿐이다.",
+                                                                    "지금 흘린 땀은 내일의 눈물을 닦아준다.",
+                                                                    "위대한 일은 작은 일들이 모여 이루어진다.",
+                                                                    "늦었다고 생각할 때가 가장 빠르다.",
+                                                                    "열정 없는 천재는 없다.",
+                                                                    "하루 1%의 개선이 1년 뒤 37배의 성장을 만든다.",
+                                                                    "당신의 작품이 당신을 말해준다."
+                                                                ];
+                                                                const customQuotes = settings?.customQuotes || [];
+                                                                const allQuotes = customQuotes.length > 0 ? customQuotes : defaultQuotes;
+                                                                return allQuotes[new Date().getDate() % allQuotes.length] || "창의성은 실수를 허용하는 것이다.";
+                                                            })()}"
+                                                        </p>
+                                                    </div>
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
                                                             <button
@@ -903,8 +894,8 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                         isWidgetMode && settings?.widgetDisplayMode === 'timer' && (
                                             <TimerWidget
                                                 isWidgetMode={isWidgetMode}
-                                                liveSession={liveSession}
-                                                sessions={sessions}
+                                                liveSession={filteredLiveSession}
+                                                sessions={filteredSessions}
                                                 now={now}
                                                 onRemove={() => saveSettings({ ...settings, widgetDisplayMode: 'none' })}
                                             />
@@ -923,31 +914,6 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                     {t('dashboard.todayFocus')}
                                                 </h2>
                                                 <p className="text-sm text-muted-foreground font-medium mt-1 truncate max-w-[120px] sm:max-w-none">{format(new Date(), 'MMM dd, yyyy')}</p>
-                                            </div>
-
-                                            {/* Alignment Switch Group - Hidden on small screens */}
-                                            <div className="hidden sm:flex items-center gap-0.5 bg-muted/30 p-0.5 rounded-lg border border-border/50 ml-2 h-8 mb-0.5">
-                                                <button
-                                                    onClick={() => settings && saveSettings({ ...settings, editorAlignment: 'left' } as AppSettings)}
-                                                    className={cn(
-                                                        "h-6 w-8 flex items-center justify-center rounded-md transition-all text-muted-foreground hover:text-foreground",
-                                                        settings?.editorAlignment !== 'center' && "bg-background text-foreground shadow-sm font-medium"
-                                                    )}
-                                                    title={t('dashboard.alignLeft')}
-                                                >
-                                                    <AlignLeft className="w-3.5 h-3.5" />
-                                                </button>
-                                                <div className="w-px h-3 bg-border/50 mx-0.5" />
-                                                <button
-                                                    onClick={() => settings && saveSettings({ ...settings, editorAlignment: 'center' } as AppSettings)}
-                                                    className={cn(
-                                                        "h-6 w-8 flex items-center justify-center rounded-md transition-all text-muted-foreground hover:text-foreground",
-                                                        settings?.editorAlignment === 'center' && "bg-background text-foreground shadow-sm font-medium"
-                                                    )}
-                                                    title={t('dashboard.alignCenter')}
-                                                >
-                                                    <AlignCenter className="w-3.5 h-3.5" />
-                                                </button>
                                             </div>
                                         </div>
 
@@ -1027,22 +993,61 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                 ref={editorContentRef}
                                                 className={cn(
                                                     "min-h-full transition-all duration-300 ease-in-out",
-                                                    (!isWidgetMode && settings?.editorAlignment === 'center') && "max-w-5xl"
+                                                    (!isWidgetMode && settings?.editorAlignment === 'center') && "max-w-5xl",
+                                                    (!isWidgetMode && showFocusGoals) ? "grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-12 w-full" : ""
                                                 )}
                                             >
-                                                <TodoEditor
-                                                    key={`${isWidgetMode ? 'widget' : 'full'}-${settings?.editorAlignment}`}
-                                                    todos={todos}
-                                                    isWidgetMode={isWidgetMode}
-                                                    isWidgetLocked={isWidgetMode && isWidgetLocked}
-                                                    editorAlignment={settings?.editorAlignment || 'left'}
-                                                    className={isWidgetMode ? "pb-6" : "pb-40"}
-                                                />
+                                                {/* Left Column: General Work (Only in Goal View) */}
+                                                {!isWidgetMode && showFocusGoals && (
+                                                    <div className="flex flex-col md:border-r border-border/50 md:pr-6 lg:pr-12">
+                                                        <div className="flex items-center gap-2 mb-4 select-none opacity-80">
+                                                            <Briefcase className="w-4 h-4 text-primary" />
+                                                            <span className="text-sm font-semibold text-foreground">
+                                                                {t('dashboard.generalWork') || "일반 작업"}
+                                                            </span>
+                                                        </div>
+                                                        <TodoEditor
+                                                            key="general-work-split"
+                                                            todos={uniqueGeneralTodos}
+                                                            isWidgetMode={false}
+                                                            isWidgetLocked={false}
+                                                            editorAlignment="left"
+                                                            className="pb-40"
+                                                            actions={{
+                                                                addTodo: (text, parentId, afterId) => {
+                                                                    if ((window as any).ipcRenderer) return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
+                                                                    return "";
+                                                                },
+                                                                updateTodo: (id, updates) => useTodoStore.getState().updateTodo(id, updates, false, 'general'),
+                                                                deleteTodo: (id) => useTodoStore.getState().deleteTodo(id, 'general'),
+                                                                deleteTodos: (ids) => useTodoStore.getState().deleteTodos(ids, 'general'),
+                                                                indentTodo: (id) => useTodoStore.getState().indentTodo(id, 'general'),
+                                                                unindentTodo: (id) => useTodoStore.getState().unindentTodo(id, 'general'),
+                                                                moveTodo: (id, pid, idx) => useTodoStore.getState().moveTodo(id, pid, idx, 'general'),
+                                                                moveTodos: (ids, pid, idx) => useTodoStore.getState().moveTodos(ids, pid, idx, 'general'),
+                                                            }}
+                                                        />
+                                                    </div>
+                                                )}
 
-
-
-
-                                                {/* General Work Section REMOVED from here to float outside */}
+                                                {/* Right Column: Active Project (or Full Width if not Goal View) */}
+                                                <div className={cn("flex flex-col", (!isWidgetMode && showFocusGoals) && "md:pl-6 lg:pl-12")}>
+                                                    {!isWidgetMode && showFocusGoals && (
+                                                        <div className="flex items-center gap-2 mb-4 select-none opacity-80">
+                                                            <span className="text-sm font-semibold text-foreground">
+                                                                {t('dashboard.todayFocus')}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    <TodoEditor
+                                                        key={`${isWidgetMode ? 'widget' : 'full'}-${settings?.editorAlignment}`}
+                                                        todos={todos}
+                                                        isWidgetMode={isWidgetMode}
+                                                        isWidgetLocked={isWidgetMode && isWidgetLocked}
+                                                        editorAlignment={(!isWidgetMode && showFocusGoals) ? 'left' : (settings?.editorAlignment || 'left')}
+                                                        className={isWidgetMode ? "pb-6" : "pb-40"}
+                                                    />
+                                                </div>
                                             </div>
 
                                             {/* FOOTER AREA - REMOVED, moving to Right Panel */}
@@ -1060,8 +1065,8 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                     )
                                 }
 
-                                {/* General Work Floating Panel (Restored) */}
-                                {!isWidgetMode && (
+                                {/* General Work Floating Panel */}
+                                {(!isWidgetMode && !showFocusGoals) && (
                                     <div className={cn(
                                         "absolute bottom-6 z-30 pointer-events-auto transition-all duration-300 ease-in-out",
                                         isGeneralOpen ? "left-6 right-6" : "left-6"
@@ -1159,7 +1164,7 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                             <Button
                                                 variant="default"
                                                 size="lg"
-                                                onClick={() => onEndDay(todos, screenshots, sessions, dailyLog?.plannedSessions || [])}
+                                                onClick={() => onEndDay(todos, screenshots, sessions, dailyLog?.plannedSessions || [], firstOpenedAt ?? undefined)}
                                                 className="gap-2 shadow-lg rounded-full"
                                             >
                                                 <CheckCircle className="w-5 h-5" />
@@ -1187,26 +1192,24 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                 {/* Timeline & App Usage Section */}
                                                 <div className="flex-1 flex flex-col h-full bg-card/50 backdrop-blur-sm rounded-xl border border-border/50 overflow-hidden shadow-sm">
                                                     <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-muted/20 shrink-0">
-                                                        <h3 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
-                                                            <Clock className="w-3.5 h-3.5 text-primary" />
-                                                            {t('dashboard.timeTable')}
-                                                        </h3>
+                                                        <Button
+                                                            variant="ghost"
+                                                            className="h-auto px-2 py-1 -ml-2 hover:bg-muted/50 transition-colors group relative"
+                                                            onClick={() => setTimeTableViewMode(prev => prev === 'timetable' ? 'app-usage' : 'timetable')}
+                                                        >
+                                                            <h3 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
+                                                                <Clock className="w-3.5 h-3.5 text-primary" />
+                                                                {timeTableViewMode === 'timetable' ? t('dashboard.timeTable') : t('calendar.appUsage')}
+
+                                                                {/* Tutorial Badge */}
+                                                                <span className="relative flex h-2 w-2 ml-1">
+                                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
+                                                                </span>
+                                                            </h3>
+                                                        </Button>
                                                         <div className="flex items-center gap-1">
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <Button
-                                                                        variant="ghost"
-                                                                        size="icon"
-                                                                        className="h-6 w-6 text-muted-foreground hover:text-foreground"
-                                                                        onClick={() => setIsWeeklyView(true)}
-                                                                    >
-                                                                        <CalendarIcon className="w-3.5 h-3.5" />
-                                                                    </Button>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    <p>Switch to Weekly View</p>
-                                                                </TooltipContent>
-                                                            </Tooltip>
+
                                                             <Popover>
                                                                 <PopoverTrigger asChild>
                                                                     <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground">
@@ -1257,6 +1260,60 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                                                     })}
                                                                                 />
                                                                             </div>
+
+                                                                            {/* Show Routines Toggle */}
+                                                                            <div className="flex items-center justify-between">
+                                                                                <div className="space-y-0.5">
+                                                                                    <Label htmlFor="show-routines" className="text-sm font-medium">{t('settings.timeline.showRoutines') || "반복 루틴 표시"}</Label>
+                                                                                    <p className="text-xs text-muted-foreground">
+                                                                                        {t('settings.timeline.showRoutinesDesc') || "타임테이블에 반복 루틴을 보여줍니다"}
+                                                                                    </p>
+                                                                                </div>
+                                                                                <Switch
+                                                                                    id="show-routines"
+                                                                                    checked={settings?.showRoutinesInTimetable ?? true}
+                                                                                    onCheckedChange={(checked) => saveSettings({
+                                                                                        ...settings!,
+                                                                                        showRoutinesInTimetable: checked
+                                                                                    })}
+                                                                                />
+                                                                            </div>
+
+                                                                            {/* Show Planned Sessions Toggle */}
+                                                                            <div className="flex items-center justify-between">
+                                                                                <div className="space-y-0.5">
+                                                                                    <Label htmlFor="show-planned-sessions" className="text-sm font-medium">{t('settings.timeline.showPlannedSessions') || "돌발일정 표시"}</Label>
+                                                                                    <p className="text-xs text-muted-foreground">
+                                                                                        {t('settings.timeline.showPlannedSessionsDesc') || "타임테이블에 분리된 형태로 돌발일정을 함께 표시합니다."}
+                                                                                    </p>
+                                                                                </div>
+                                                                                <Switch
+                                                                                    id="show-planned-sessions"
+                                                                                    checked={settings?.showPlannedSessions ?? false}
+                                                                                    onCheckedChange={(checked) => saveSettings({
+                                                                                        ...settings!,
+                                                                                        showPlannedSessions: checked
+                                                                                    })}
+                                                                                />
+                                                                            </div>
+
+                                                                            {/* First Launch Toggle */}
+                                                                            <div className="flex items-center justify-between">
+                                                                                <div className="space-y-0.5">
+                                                                                    <Label htmlFor="first-launch-indicator" className="text-sm font-medium">{t('settings.timeline.showFirstLaunchIndicator') || "최초 실행 시각 표시"}</Label>
+                                                                                    <p className="text-xs text-muted-foreground">
+                                                                                        {t('settings.timeline.showFirstLaunchIndicatorDesc') || "타임테이블에 앱을 처음 켠 시간을 표시합니다"}
+                                                                                    </p>
+                                                                                </div>
+                                                                                <Switch
+                                                                                    id="first-launch-indicator"
+                                                                                    checked={settings?.showFirstLaunchIndicator ?? true}
+                                                                                    onCheckedChange={(checked) => saveSettings({
+                                                                                        ...settings!,
+                                                                                        showFirstLaunchIndicator: checked
+                                                                                    })}
+                                                                                />
+                                                                            </div>
                                                                         </div>
                                                                     </div>
                                                                 </PopoverContent>
@@ -1276,8 +1333,10 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                             onUpdateSettings={saveSettings}
                                                             date={displayDate ? new Date(displayDate) : new Date()}
                                                             renderMode="dynamic"
-                                                            plannedSessions={dailyLog?.plannedSessions}
+                                                            plannedSessions={plannedSessions}
                                                             currentTime={now} // Pass live time from parent
+                                                            firstOpenedAt={firstOpenedAt || undefined}
+                                                            viewMode={timeTableViewMode}
                                                         />
                                                     </div>
                                                 </div>

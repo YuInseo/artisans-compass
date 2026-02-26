@@ -68,14 +68,14 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
                 <div className="flex flex-col gap-6 py-4">
                     {/* Monthly Goal - Violet Theme */}
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between text-violet-600 dark:text-violet-400 font-bold text-sm tracking-wide uppercase">
+                        <div className="flex items-center justify-between text-muted-foreground font-bold text-sm tracking-wide uppercase">
                             <div className="flex items-center gap-2">
-                                <Calendar className="w-4 h-4" />
-                                {t('modals.goalSetting.monthly')}
+                                <Calendar className="w-4 h-4 text-primary" />
+                                <span className="text-foreground">{t('modals.goalSetting.monthly')}</span>
                             </div>
                             {/* Lock indicator */}
                             {isMonthlyLocked && (
-                                <span className="text-[10px] bg-violet-100 dark:bg-violet-900/30 px-2 py-0.5 rounded-full flex items-center gap-1 opacity-80 animate-in fade-in">
+                                <span className="text-[10px] bg-muted px-2 py-0.5 rounded-full flex items-center gap-1 opacity-80 animate-in fade-in">
                                     {t('modals.goalSetting.monthlyLocked')}
                                 </span>
                             )}
@@ -86,7 +86,7 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
                                 onChange={(e) => setMonthlyGoal(e.target.value)}
                                 placeholder={t('modals.goalSetting.monthlyPlaceholder')}
                                 disabled={!!isMonthlyLocked}
-                                className="min-h-[100px] text-lg font-medium border-violet-200 focus:border-violet-500 bg-violet-50/50 dark:bg-violet-950/20 dark:border-violet-900 resize-none disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                                className="min-h-[100px] text-lg font-medium border-2 border-border/70 hover:border-primary/50 focus:border-primary focus-visible:ring-1 focus-visible:ring-primary bg-background/50 resize-none disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-sm"
                             />
                             <div className="absolute top-0 right-0 w-1 h-full bg-violet-500 rounded-r-md opacity-20 pointer-events-none" />
                         </div>
@@ -94,14 +94,14 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
 
                     {/* Weekly Goal - Blue Theme */}
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between text-blue-600 dark:text-blue-400 font-bold text-sm tracking-wide uppercase">
+                        <div className="flex items-center justify-between text-muted-foreground font-bold text-sm tracking-wide uppercase">
                             <div className="flex items-center gap-2">
-                                <CalendarClock className="w-4 h-4" />
-                                {t('modals.goalSetting.weekly')}
+                                <CalendarClock className="w-4 h-4 text-primary" />
+                                <span className="text-foreground">{t('modals.goalSetting.weekly')}</span>
                             </div>
                             {/* Lock indicator */}
                             {isWeeklyLocked && (
-                                <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 px-2 py-0.5 rounded-full flex items-center gap-1 opacity-80 animate-in fade-in">
+                                <span className="text-[10px] bg-muted px-2 py-0.5 rounded-full flex items-center gap-1 opacity-80 animate-in fade-in">
                                     {t('modals.goalSetting.weeklyLocked')}
                                 </span>
                             )}
@@ -112,7 +112,7 @@ export function GoalSettingModal({ open, onOpenChange }: GoalSettingModalProps) 
                                 onChange={(e) => setWeeklyGoal(e.target.value)}
                                 placeholder={t('modals.goalSetting.weeklyPlaceholder')}
                                 disabled={!!isWeeklyLocked}
-                                className="min-h-[100px] text-lg font-medium border-blue-200 focus:border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-900 resize-none disabled:opacity-60 disabled:cursor-not-allowed transition-all"
+                                className="min-h-[100px] text-lg font-medium border-2 border-border/70 hover:border-primary/50 focus:border-primary focus-visible:ring-1 focus-visible:ring-primary bg-background/50 resize-none disabled:opacity-60 disabled:cursor-not-allowed transition-all shadow-sm"
                             />
                             <div className="absolute top-0 right-0 w-1 h-full bg-blue-500 rounded-r-md opacity-20 pointer-events-none" />
                         </div>

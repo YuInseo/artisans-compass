@@ -143,7 +143,7 @@ export function GeneralTab({
                             onValueChange={(val: 'left' | 'right') => onSaveSettings({ ...settings, widgetTextAlignment: val })}
                         >
                             <SelectTrigger className="w-[180px] bg-background border-none">
-                                <SelectValue placeholder="Select Alignment" />
+                                <SelectValue placeholder={t('settings.selectAlignment', 'Select Alignment')} />
                             </SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="left">{t('settings.alignmentLeft', 'Left Align')}</SelectItem>
@@ -428,6 +428,17 @@ export function GeneralTab({
                     <Switch
                         checked={settings.autoUpdate || false}
                         onCheckedChange={(checked) => onSaveSettings({ ...settings, autoUpdate: checked })}
+                    />
+                </div>
+
+                <div className="flex items-center justify-between mt-4">
+                    <div className="space-y-0.5">
+                        <Label className="text-sm font-medium">{t('settings.enableQuotes', 'Show Daily Quote')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('settings.enableQuotesDesc', 'Display an inspirational quote dialog on the first launch of the day.')}</p>
+                    </div>
+                    <Switch
+                        checked={settings.enableQuotes !== false} // default to true
+                        onCheckedChange={(checked) => onSaveSettings({ ...settings, enableQuotes: checked })}
                     />
                 </div>
             </div>

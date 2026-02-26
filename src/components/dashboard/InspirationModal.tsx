@@ -1,7 +1,8 @@
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Sparkles, ArrowRight } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
+import { useDataStore } from "@/hooks/useDataStore";
 
 const QUOTES = [
     "창의성은 실수를 허용하는 것이다. 예술은 어떤 것을 지킬지 아는 것이다.",
@@ -22,7 +23,18 @@ interface InspirationModalProps {
 }
 
 export function InspirationModal({ isOpen, onClose }: InspirationModalProps) {
-    const quote = useMemo(() => QUOTES[Math.floor(Math.random() * QUOTES.length)], []);
+    const { settings } = useDataStore();
+
+    // We want the quote to stay the same while the modal is open, but be correctly initialized
+    const [quote, setQuote] = useState("");
+
+    useEffect(() => {
+        if (isOpen) {
+            const customQuotes = settings?.customQuotes || [];
+            const quotesArray = customQuotes.length > 0 ? customQuotes : QUOTES;
+            setQuote(quotesArray[Math.floor(Math.random() * quotesArray.length)]);
+        }
+    }, [isOpen, settings?.customQuotes]);
 
     return (
         <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>

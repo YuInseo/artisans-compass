@@ -131,6 +131,7 @@ export function DailyArchiveModal({ date, isOpen, onClose, onDateChange }: Daily
                             readOnly={true}
                             settings={settings}
                             onUpdateSettings={saveSettings}
+                            firstOpenedAt={logData.firstOpenedAt}
                         />
                     ) : (
                         <div className="h-full flex flex-col items-center justify-center text-muted-foreground">

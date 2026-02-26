@@ -21,6 +21,8 @@ import { TodoSidebar } from "./components/dashboard/TodoSidebar";
 import { WeeklyView } from "./components/dashboard/WeeklyView";
 
 import { ProjectList } from '@/components/dashboard/ProjectList';
+import { PomodoroPanel } from '@/components/dashboard/PomodoroPanel';
+import { usePomodoroStore } from '@/hooks/usePomodoroStore';
 import { toast } from 'sonner';
 import { DebugOverlay } from '@/components/debug-overlay';
 import { useDebugStore } from '@/hooks/useDebugStore'; // Import for manual usage if needed
@@ -39,6 +41,14 @@ function App() {
   useEffect(() => {
     loadTodos();
   }, [loadTodos]);
+
+  // Global Pomodoro Ticker
+  useEffect(() => {
+    const timer = setInterval(() => {
+      usePomodoroStore.getState().tick();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Smart Date Change Logic
   useEffect(() => {
@@ -260,6 +270,7 @@ function App() {
   const [lastSessionSessions, setLastSessionSessions] = useState<Session[]>([]);
   const [lastSessionScreenshots, setLastSessionScreenshots] = useState<string[]>([]);
   const [lastSessionPlannedSessions, setLastSessionPlannedSessions] = useState<any[]>([]); // PlannedSession type inferred or any
+  const [lastSessionFirstOpenedAt, setLastSessionFirstOpenedAt] = useState<number | undefined>(undefined);
 
   const [viewMode, setViewMode] = useState<'timeline' | 'list'>('timeline');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -267,7 +278,7 @@ function App() {
   const [focusedProject, setFocusedProject] = useState<Project | null>(null);
 
   // Dashboard view toggle state
-  const [dashboardView, setDashboardView] = useState<'weekly' | 'daily'>('weekly');
+  const [dashboardView, setDashboardView] = useState<'weekly' | 'daily' | 'pomodoro'>('daily');
 
   // Navigation Signal State
   const [navigationSignal, setNavigationSignal] = useState<{ date: Date, timestamp: number } | null>(null);
@@ -287,12 +298,13 @@ function App() {
   const timelineHeight = (rowCount * 50) + 33; // +33 for header border
 
   // Poll for stats when opening modal (or just keep them in sync via IPC)
-  const handleOpenRitual = async (todos: Todo[] = [], screenshots: string[] = [], sessions: Session[] = [], plannedSessions: any[] = []) => {
+  const handleOpenRitual = async (todos: Todo[] = [], screenshots: string[] = [], sessions: Session[] = [], plannedSessions: any[] = [], firstOpenedAt?: number) => {
     // ... existing ...
     setLastSessionTodos(todos);
     setLastSessionSessions(sessions);
     setLastSessionScreenshots(screenshots);
     setLastSessionPlannedSessions(plannedSessions);
+    setLastSessionFirstOpenedAt(firstOpenedAt);
     // Fetch today's stats from IPC or store
     if ((window as any).ipcRenderer) {
       const now = new Date();
@@ -414,7 +426,7 @@ function App() {
   if (loading) return null;
 
   return (
-    <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+    <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       {settings && !settings.hasCompletedOnboarding && !loading && (
         <OnboardingWizard
           isOpen={true}
@@ -422,7 +434,7 @@ function App() {
         />
       )}
       <InspirationModal
-        isOpen={showInspiration && !!settings?.hasCompletedOnboarding}
+        isOpen={showInspiration && !!settings?.hasCompletedOnboarding && settings?.enableQuotes !== false}
         onClose={() => setShowInspiration(false)}
       />
       <ReminderModal
@@ -447,6 +459,7 @@ function App() {
               focusedProject={focusedProject}
               navigationSignal={navigationSignal}
               onOpenSettings={handleOpenSettings}
+              showFocusGoals={!isSidebarOpen && viewMode === 'timeline'}
             />
             : <ProjectList searchQuery={searchQuery} />
         }
@@ -464,8 +477,15 @@ function App() {
           />
         }
         dailyPanel={
-          <DailyPanel onEndDay={handleOpenRitual} onShowReminder={() => setShowReminder(true)} projects={projects} isSidebarOpen={isSidebarOpen} />
+          <DailyPanel
+            onEndDay={handleOpenRitual}
+            onShowReminder={() => setShowReminder(true)}
+            projects={projects}
+            isSidebarOpen={isSidebarOpen}
+            showFocusGoals={!isSidebarOpen && viewMode === 'timeline'}
+          />
         }
+        pomodoroPanel={<PomodoroPanel />}
       />
       <ClosingRitualModal
         isOpen={isRitualOpen}
@@ -476,6 +496,7 @@ function App() {
         sessions={lastSessionSessions}
         plannedSessions={lastSessionPlannedSessions}
         screenshots={lastSessionScreenshots}
+        firstOpenedAt={lastSessionFirstOpenedAt}
       />
       <DailyArchiveModal
         isOpen={isArchiveOpen}

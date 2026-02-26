@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { format, startOfWeek, addWeeks, subWeeks, isSameDay, addMinutes, differenceInSeconds, setHours, setMinutes, setSeconds, getDay, addDays } from 'date-fns';
-import { ChevronLeft, ChevronRight, Trash, Pencil, Calendar, Repeat, Clock, ArrowRight, Flag, Tag, X, Settings, Bell, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash, Pencil, Calendar, Repeat, Clock, ArrowRight, Flag, Tag, X, Settings2, Bell, MapPin } from 'lucide-react';
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -245,7 +245,13 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
 
     }, [settings?.weeklyRoutine, localRoutine, viewMode, viewDate, days]);
 
-    const effectivePlanned = viewMode === 'routine' ? routineSessions : weekPlanned;
+    // In calendar mode, if showRoutineOverlay is true, we want BOTH planned sessions and routine sessions.
+    // If showRoutineOverlay is false, we just want planned sessions.
+    // In routine mode, we only want routine sessions.
+    const effectivePlanned = useMemo(() => {
+        if (viewMode === 'routine') return routineSessions;
+        return showRoutineOverlay ? [...weekPlanned, ...routineSessions] : weekPlanned;
+    }, [viewMode, showRoutineOverlay, weekPlanned, routineSessions]);
 
     const handleSaveRoutine = async (session: Partial<PlannedSession>, originalStart?: number) => {
         if (!session.start || !session.title || !settings) return;
@@ -1135,8 +1141,8 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
     const portalTarget = typeof document !== 'undefined' ? document.getElementById('top-toolbar-portal') : null;
 
     const headerContent = (
-        <div className="flex items-center justify-between w-full h-full px-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
-            <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between w-full h-full px-2" style={{ WebkitAppRegion: 'drag' } as any}>
+            <div className="flex items-center gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
                 {/* Mode Toggle */}
                 <div className="flex bg-muted/30 p-1 rounded-lg border border-border/20">
                     <Button
@@ -1160,9 +1166,9 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                 </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
                 {viewMode !== 'routine' && (
-                    <h2 className="text-xl font-bold tracking-tight mr-2 whitespace-nowrap">
+                    <h2 className="text-xl font-bold tracking-tight mr-2 whitespace-nowrap" style={{ WebkitAppRegion: 'drag' } as any}>
                         {format(viewDate, 'MMMM yyyy')}
                     </h2>
                 )}
@@ -1192,12 +1198,12 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
                     <Popover>
                         <PopoverTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-accent rounded-full">
-                                <Settings className="w-4 h-4 text-muted-foreground" />
+                                <Settings2 className="w-4 h-4 text-muted-foreground" />
                             </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-56 p-2" align="end">
                             <div className="space-y-2">
-                                <div className="font-semibold text-xs text-muted-foreground px-2 py-1">View Options</div>
+                                <div className="font-semibold text-xs text-muted-foreground px-2 py-1">{t('weeklyView.viewOptions', 'View Options')}</div>
                                 <div className="flex items-center space-x-2 px-2 py-1.5 hover:bg-accent rounded-sm cursor-pointer" onClick={() => setShowRoutineOverlay(!showRoutineOverlay)}>
                                     <Checkbox
                                         id="routine-overlay"

@@ -55,7 +55,7 @@ interface SettingsModalProps {
 
 
 export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, defaultTab = 'general' }: SettingsModalProps) {
-    const { setTheme } = useTheme()
+    const { theme, setTheme } = useTheme()
     const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab);
     const [activeSection, setActiveSection] = useState<string | null>(null);
@@ -498,7 +498,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     };
 
     const renderSidebar = () => (
-        <div className="w-[210px] shrink-0 bg-muted/30 flex flex-col p-2 gap-[2px] justify-end md:justify-start select-none">
+        <div className="w-[210px] shrink-0 bg-transparent border-r border-border/20 flex flex-col p-2 gap-[2px] justify-end md:justify-start select-none">
             <div className="px-3 pt-6 pb-3 md:pt-4">
                 <h2 className="text-xs font-bold text-muted-foreground uppercase px-2 mb-1">{t('settings.userSettings')}</h2>
             </div>
@@ -614,6 +614,11 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                         label={t('settings.projectTypes')}
                     />
                     <SectionButton
+                        active={activeSection === 'settings-auto-scroll'}
+                        onClick={() => scrollToSection('settings-auto-scroll')}
+                        label={t('settings.timeline.autoScrollToToday')}
+                    />
+                    <SectionButton
                         active={activeSection === 'settings-timeline-preview'}
                         onClick={() => scrollToSection('settings-timeline-preview')}
                         label={t('settings.timeline.dragPreview')}
@@ -703,8 +708,8 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                 {/* Other Tabs - Normal ScrollArea */}
                 {
                     activeTab !== 'updatelog' && (
-                        <ScrollArea className="h-full px-10 pt-6 pb-[60px]" onScroll={handleScroll}>
-                            <div className="max-w-[700px] pb-20">
+                        <ScrollArea className="h-full w-full" onScroll={handleScroll}>
+                            <div className="max-w-[700px] px-10 pt-6 pb-[80px]">
                                 {/* Tab Content */}
                                 {activeTab === 'general' && renderGeneralTab()}
 
@@ -766,29 +771,31 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                     </div>
 
                                                     {/* Main Color Preset */}
-                                                    <div className="space-y-3 pl-4">
-                                                        <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
-                                                        <div className="grid grid-cols-2 gap-4">
-                                                            <Select
-                                                                value={settings!.themePreset || 'standard'}
-                                                                onValueChange={(val) => onSaveSettings({ ...settings!, themePreset: val as any })}
-                                                            >
-                                                                <SelectTrigger className="w-full">
-                                                                    <SelectValue placeholder="Select Color Theme" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    {Object.entries(themes).map(([key, config]) => (
-                                                                        <SelectItem key={key} value={key}>
-                                                                            {config.name}
-                                                                        </SelectItem>
-                                                                    ))}
-                                                                </SelectContent>
-                                                            </Select>
-                                                            <div className="flex items-center text-xs text-muted-foreground">
-                                                                {themes[settings!.themePreset || 'standard']?.description}
+                                                    {(theme === 'dark' || (theme === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)) && (
+                                                        <div className="space-y-3 pl-4">
+                                                            <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
+                                                            <div className="grid grid-cols-2 gap-4">
+                                                                <Select
+                                                                    value={settings!.themePreset || 'standard'}
+                                                                    onValueChange={(val) => onSaveSettings({ ...settings!, themePreset: val as any })}
+                                                                >
+                                                                    <SelectTrigger className="w-full">
+                                                                        <SelectValue placeholder="Select Color Theme" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        {Object.entries(themes).map(([key, config]) => (
+                                                                            <SelectItem key={key} value={key}>
+                                                                                {config.name}
+                                                                            </SelectItem>
+                                                                        ))}
+                                                                    </SelectContent>
+                                                                </Select>
+                                                                <div className="flex items-center text-xs text-muted-foreground">
+                                                                    {themes[settings!.themePreset || 'standard']?.description}
+                                                                </div>
                                                             </div>
                                                         </div>
-                                                    </div>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -848,29 +855,31 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                         </div>
 
                                                         {/* Widget Color Preset */}
-                                                        <div className="space-y-3 pl-4">
-                                                            <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
-                                                            <div className="grid grid-cols-2 gap-4">
-                                                                <Select
-                                                                    value={settings!.widgetThemePreset || settings!.themePreset || 'standard'}
-                                                                    onValueChange={(val) => onSaveSettings({ ...settings!, widgetThemePreset: val as any })}
-                                                                >
-                                                                    <SelectTrigger className="w-full">
-                                                                        <SelectValue placeholder="Select Widget Color Theme" />
-                                                                    </SelectTrigger>
-                                                                    <SelectContent>
-                                                                        {Object.entries(themes).map(([key, config]) => (
-                                                                            <SelectItem key={key} value={key}>
-                                                                                {config.name}
-                                                                            </SelectItem>
-                                                                        ))}
-                                                                    </SelectContent>
-                                                                </Select>
-                                                                <div className="flex items-center text-xs text-muted-foreground">
-                                                                    {themes[settings!.widgetThemePreset || settings!.themePreset || 'standard']?.description}
+                                                        {((settings!.widgetTheme || 'dark') === 'dark' || ((settings!.widgetTheme || 'dark') === 'system' && typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches)) && (
+                                                            <div className="space-y-3 pl-4">
+                                                                <h6 className="text-xs font-semibold text-muted-foreground uppercase">{t('settings.appearance.colorTheme')}</h6>
+                                                                <div className="grid grid-cols-2 gap-4">
+                                                                    <Select
+                                                                        value={settings!.widgetThemePreset || settings!.themePreset || 'standard'}
+                                                                        onValueChange={(val) => onSaveSettings({ ...settings!, widgetThemePreset: val as any })}
+                                                                    >
+                                                                        <SelectTrigger className="w-full">
+                                                                            <SelectValue placeholder="Select Widget Color Theme" />
+                                                                        </SelectTrigger>
+                                                                        <SelectContent>
+                                                                            {Object.entries(themes).map(([key, config]) => (
+                                                                                <SelectItem key={key} value={key}>
+                                                                                    {config.name}
+                                                                                </SelectItem>
+                                                                            ))}
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                    <div className="flex items-center text-xs text-muted-foreground">
+                                                                        {themes[settings!.widgetThemePreset || settings!.themePreset || 'standard']?.description}
+                                                                    </div>
                                                                 </div>
                                                             </div>
-                                                        </div>
+                                                        )}
                                                     </div>
                                                 )}
 
