@@ -1,8 +1,10 @@
 import { powerMonitor, ipcMain, BrowserWindow } from 'electron';
+import { spawn, ChildProcess } from 'node:child_process';
+import readline from 'node:readline';
 // import { WindowPoller } from './window_poller'; // Removed in favor of active-win
 import {
     readJson, getSettingsPath, getDailyLogPath, getUserDataPath,
-    DEFAULT_SETTINGS, AppSettings, Session, DailyLogData
+    DEFAULT_SETTINGS, AppSettings, Session, DailyLogData, appendSession, saveDailyLogInternal, updateAppSession
 } from '../storage';
 import { format } from 'date-fns';
 import path from 'node:path';
@@ -15,6 +17,7 @@ interface TrackingState {
     activeTitle: string;
     activeWindowPath: string;
     currentSession: Session | null;
+    currentAppSession: { start: number; end: number };
     settings: AppSettings;
     lastScreenshotTime: number;
     activeWindowId: number;
@@ -22,12 +25,16 @@ interface TrackingState {
     logicalDate: string; // New: For Dynamic Daily Archive
 }
 
+let psWorker: ChildProcess | null = null;
+let psWorkerRl: readline.Interface | null = null;
+
 const STATE: TrackingState = {
     isIdle: false,
     activeProcess: "",
     activeTitle: "",
     activeWindowPath: "",
     currentSession: null,
+    currentAppSession: { start: Date.now(), end: Date.now() },
     settings: DEFAULT_SETTINGS,
     lastScreenshotTime: 0,
     activeWindowId: 0,
@@ -35,11 +42,135 @@ const STATE: TrackingState = {
     logicalDate: format(new Date(), 'yyyy-MM-dd') // Init to today
 };
 
+const psScript = `
+$ErrorActionPreference = "SilentlyContinue"
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Diagnostics;
+
+public class ActiveWindowTracker {
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    public static extern IntPtr GetForegroundWindow();
+    
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+    
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    public static string GetActiveWindowJson() {
+        try {
+            IntPtr hwnd = GetForegroundWindow();
+            if (hwnd == IntPtr.Zero) return "{}";
+            
+            uint pid = 0;
+            GetWindowThreadProcessId(hwnd, out pid);
+            
+            Process proc = Process.GetProcessById((int)pid);
+            if (proc == null) return "{}";
+            
+            StringBuilder sb = new StringBuilder(256);
+            GetWindowText(hwnd, sb, 256);
+            
+            string title = sb.ToString().Replace("\\"", "\\\\\\"").Replace("\\n", "").Replace("\\r", "");
+            string pName = proc.ProcessName.Replace("\\"", "\\\\\\"");
+            
+            return "{\\"title\\":\\"" + title + "\\",\\"owner\\":{\\"name\\":\\"" + pName + "\\"},\\"id\\":" + pid + "}";
+        } catch {
+            return "{}";
+        }
+    }
+
+    public static void WriteBase64() {
+        string json = GetActiveWindowJson();
+        byte[] bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        string b64 = System.Convert.ToBase64String(bytes);
+        Console.WriteLine("---BEGIN---");
+        Console.WriteLine(b64);
+        Console.WriteLine("---END---");
+    }
+}
+"@ | Out-Null
+
+while ($true) {
+    [ActiveWindowTracker]::WriteBase64()
+    Start-Sleep -Milliseconds 1000
+}
+`;
+
+function ensurePowerShellWorker() {
+    if (psWorker || process.platform !== 'win32') return;
+
+    try {
+        const encoded = Buffer.from(psScript, 'utf16le').toString('base64');
+        psWorker = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded], {
+            windowsHide: true
+        });
+
+        if (psWorker.stdout) {
+            psWorkerRl = readline.createInterface({
+                input: psWorker.stdout,
+                terminal: false
+            });
+
+            let buffer = "";
+            let recording = false;
+
+            psWorkerRl.on('line', (line) => {
+                line = line.trim();
+
+                if (line === "---BEGIN---") {
+                    recording = true;
+                    buffer = "";
+                } else if (line === "---END---") {
+                    recording = false;
+                    try {
+                        const decoded = Buffer.from(buffer, 'base64').toString('utf8');
+                        const result = JSON.parse(decoded);
+
+                        if (result && result.owner) {
+                            STATE.activeProcess = result.owner.name || "";
+                            STATE.activeTitle = result.title || "";
+                            STATE.activeWindowId = result.id || 0;
+                            STATE.activeWindowPath = "";
+                        } else {
+                            // Reset state if no valid app detected
+                            STATE.activeProcess = "";
+                            STATE.activeTitle = "";
+                            STATE.activeWindowId = 0;
+                            STATE.activeWindowPath = "";
+                        }
+                    } catch (e) {
+                        // ignore JSON parse errors
+                        STATE.activeProcess = "";
+                        STATE.activeTitle = "";
+                        STATE.activeWindowId = 0;
+                        STATE.activeWindowPath = "";
+                    }
+                } else if (recording) {
+                    buffer += line;
+                }
+            });
+        }
+
+        psWorker.on('exit', () => {
+            console.log('[Tracker] PS Worker exited, respawning...');
+            psWorker = null;
+            psWorkerRl = null;
+            setTimeout(ensurePowerShellWorker, 2000);
+        });
+    } catch (e) {
+        console.error('[Tracker] Failed to start PS Worker', e);
+    }
+}
+
 // Reload settings helper
 function reloadSettings() {
     const loaded = readJson(getSettingsPath(), DEFAULT_SETTINGS);
     STATE.settings = { ...DEFAULT_SETTINGS, ...loaded };
-    console.log(`[Tracker] Settings Reloaded. Idle Threshold: ${STATE.settings.idleThresholdSeconds}s, Mode: ${STATE.settings.screenshotMode}, RecordMode: ${STATE.settings.dailyRecordMode}`);
+    console.log(`[Tracker] Settings Reloaded.Idle Threshold: ${STATE.settings.idleThresholdSeconds}s, Mode: ${STATE.settings.screenshotMode}, RecordMode: ${STATE.settings.dailyRecordMode}`);
 }
 
 export function setupTracker(win: BrowserWindow) {
@@ -50,25 +181,34 @@ export function setupTracker(win: BrowserWindow) {
 
     // Set logical date on startup
     STATE.logicalDate = format(new Date(), 'yyyy-MM-dd');
-    console.log(`[Tracker] Logical Date initialized to: ${STATE.logicalDate}`);
+    console.log(`[Tracker] Logical Date initialized to: ${STATE.logicalDate} `);
+
+    // Initialize the app session tracker start/end times
+    STATE.currentAppSession = { start: Date.now(), end: Date.now() };
+
+    // Ensure Windows tracker worker is running
+    ensurePowerShellWorker();
 
     // Record first open time if not present
-    import('../storage').then(mod => {
-        const yearMonth = STATE.logicalDate.slice(0, 7);
-        const logPath = mod.getDailyLogPath(yearMonth);
-        const logData = mod.readJson<Record<string, any>>(logPath, {});
-        const dayData = logData[STATE.logicalDate] || {};
+    const yearMonth = STATE.logicalDate.slice(0, 7);
+    const logPath = getDailyLogPath(yearMonth);
+    const logData = readJson<Record<string, any>>(logPath, {});
+    const dayData = logData[STATE.logicalDate] || {};
 
-        if (!dayData.firstOpenedAt) {
-            console.log(`[Tracker] Setting firstOpenedAt for ${STATE.logicalDate}`);
-            mod.saveDailyLogInternal(STATE.logicalDate, { firstOpenedAt: Date.now() });
-        }
-    });
+    if (!dayData.firstOpenedAt) {
+        console.log(`[Tracker] Setting firstOpenedAt for ${STATE.logicalDate}`);
+        saveDailyLogInternal(STATE.logicalDate, { firstOpenedAt: Date.now() });
+    }
 
     // Handler moved to bottom to include screenshot reschedule
 
-    // Poll Active Window using active-win
+    // Poll Active Window using active-win (Linux/Mac fallback)
     const pollActiveWindow = async () => {
+        if (process.platform === 'win32') {
+            // Handled efficiently by background PowerShell worker streams
+            return;
+        }
+
         try {
             // Dynamic import for ESM package
             const activeWin = (await import('active-win')).default;
@@ -126,6 +266,13 @@ export function setupTracker(win: BrowserWindow) {
         processSessionLogic();
     }, 1000);
 
+    // Heartbeat for App Session Tracking (App open/close)
+    setInterval(() => {
+        STATE.currentAppSession.end = Date.now();
+        updateAppSession(STATE.logicalDate, STATE.currentAppSession);
+    }, 60000); // Only run disk update every 1 minute
+
+
     // Dynamic Screenshot Scheduler
     let screenshotTimeout: NodeJS.Timeout;
     const scheduleNextScreenshot = () => {
@@ -171,16 +318,13 @@ function processSessionLogic() {
         return;
     }
 
-    const { activeProcess, activeTitle, activeWindowPath, settings } = STATE;
+    const { activeProcess, settings } = STATE;
 
-    // Improved Target Detection (Case-insensitive, Title or Process)
+    // Improved Target Detection (Case-insensitive, Process Only)
     const isTarget = settings.targetProcessPatterns.some(pattern => {
         const p = pattern.toLowerCase();
-        const matched = (activeProcess && activeProcess.toLowerCase().includes(p)) ||
-            (activeTitle && activeTitle.toLowerCase().includes(p)) ||
-            (activeWindowPath && activeWindowPath.toLowerCase().includes(p));
-        return matched;
-    }) || (settings.screenshotMode === 'process' && settings.screenshotTargetProcess && activeProcess.toLowerCase().includes(settings.screenshotTargetProcess.toLowerCase()));
+        return activeProcess && activeProcess.toLowerCase().includes(p);
+    }) || (settings.screenshotMode === 'process' && settings.screenshotTargetProcess && activeProcess && activeProcess.toLowerCase().includes(settings.screenshotTargetProcess.toLowerCase()));
 
     const now = Date.now();
 
@@ -243,15 +387,13 @@ function closeAndSaveSession(session: Session) {
         dateKey = format(sessionDate, 'yyyy-MM-dd');
     }
 
-    // Notify Frontend immediately to prevent UI 'drop' (race condition with tracking-update)
+    // Use atomic append helper for storage synchronously first
+    appendSession(dateKey, session);
+
+    // Notify Frontend immediately AFTER saving to prevent UI 'drop' race condition
     if (STATE.mainWindow && !STATE.mainWindow.isDestroyed()) {
         STATE.mainWindow.webContents.send('session-completed', session);
     }
-
-    // Use atomic append helper for storage
-    import('../storage').then(mod => {
-        mod.appendSession(dateKey, session);
-    });
 
     console.log(`Saved session: ${session.process} (${session.duration}s) to ${dateKey} (Mode: ${STATE.settings.dailyRecordMode})`);
 }
@@ -270,11 +412,16 @@ async function captureSmartScreenshot() {
 
     try {
         // 1. Get latest active window info
-        const activeWin = (await import('active-win')).default;
-        const currentWin = await activeWin();
+        let currentWin: any = null;
+        try {
+            const activeWin = (await import('active-win')).default;
+            currentWin = await activeWin();
+        } catch (e) {
+            console.warn("[Screenshot] active-win failed, falling back to state", e);
+        }
 
-        const activeProcess = currentWin?.owner.name || STATE.activeProcess;
-        log.info(`[Screenshot] Checking capture conditions. Active: ${activeProcess}, Mode: ${STATE.settings.screenshotMode}`);
+        const activeProcess = currentWin?.owner?.name || STATE.activeProcess;
+        log.info(`[Screenshot] Checking capture conditions.Active: ${activeProcess}, Mode: ${STATE.settings.screenshotMode} `);
 
         let shouldCapture = false;
 
@@ -283,10 +430,10 @@ async function captureSmartScreenshot() {
             shouldCapture = true;
         } else if (STATE.settings.screenshotMode === 'window') {
             shouldCapture = true; // Always capture active monitor
-            log.info(`[Screenshot] Active Window mode (Active Monitor): Capturing`);
+            log.info(`[Screenshot] Active Window mode(Active Monitor): Capturing`);
         } else if (STATE.settings.screenshotMode === 'active-app') {
             shouldCapture = true;
-            log.info(`[Screenshot] Active App mode: Capturing '${activeProcess}' (Unfiltered)`);
+            log.info(`[Screenshot] Active App mode: Capturing '${activeProcess}'(Unfiltered)`);
         } else if (STATE.settings.screenshotMode === 'process') {
             const targetApp = STATE.settings.screenshotTargetProcess || '';
             const normalizedActive = activeProcess.toLowerCase().replace(/\s+/g, '');
@@ -305,7 +452,7 @@ async function captureSmartScreenshot() {
                 // Background Capture Mode: Target is NOT active, but user wants to capture it anyway.
                 // We will attempt to find it in background sources.
                 shouldCapture = true;
-                log.info(`[Screenshot] Specific App (Background) requested for: '${targetApp}'`);
+                log.info(`[Screenshot] Specific App(Background) requested for: '${targetApp}'`);
             }
         }
 
@@ -375,7 +522,7 @@ async function captureSmartScreenshot() {
                         if (currentIdx >= 0 && currentIdx < sDisplays.length) {
                             const sortedScreens = sDisplays.sort((a: any, b: any) => (a.top - b.top) || (a.left - b.left));
                             workerDisplayId = sortedScreens[currentIdx].id;
-                            console.log(`[Screenshot] Smart Monitor - Matched Display Index: ${currentIdx}, ID: ${workerDisplayId}`);
+                            console.log(`[Screenshot] Smart Monitor - Matched Display Index: ${currentIdx}, ID: ${workerDisplayId} `);
                         }
                     } catch (e) {
                         console.error("[Screenshot] Failed to determine smart monitor ID:", e);
@@ -388,7 +535,7 @@ async function captureSmartScreenshot() {
                 const idParts = STATE.settings.screenshotDisplayId.split(':');
                 const displayIndex = parseInt(idParts[1], 10); // Extract index from "screen:INDEX:0"
 
-                console.log(`[Screenshot Debug] Config ID: ${STATE.settings.screenshotDisplayId}, Parsed Index: ${displayIndex}`);
+                console.log(`[Screenshot Debug] Config ID: ${STATE.settings.screenshotDisplayId}, Parsed Index: ${displayIndex} `);
 
                 if (!isNaN(displayIndex)) {
                     // @ts-ignore
@@ -415,7 +562,7 @@ async function captureSmartScreenshot() {
 
                 await fs.promises.writeFile(fullPath, imgBuffer);
                 updateDailyLog(fullPath, now);
-                log.info(`[Screenshot] Screen capture success: ${fullPath}`);
+                log.info(`[Screenshot] Screen capture success: ${fullPath} `);
             } catch (err) {
                 console.error("[Screenshot] Screen capture failed:", err);
             }
@@ -454,9 +601,9 @@ async function captureSmartScreenshot() {
                 }
 
                 if (!targetDisplay) {
-                    console.warn(`[Screenshot] No matching display found for coords x:${display.bounds.x} y:${display.bounds.y}. Available:`, displays.map((d: any) => ({ id: d.id, l: d.left, t: d.top })));
+                    console.warn(`[Screenshot] No matching display found for coords x:${display.bounds.x} y:${display.bounds.y}.Available: `, displays.map((d: any) => ({ id: d.id, l: d.left, t: d.top })));
                 } else {
-                    console.log(`[Screenshot Debug] Final Selection - Electron x:${display.bounds.x} -> Screenshot L:${targetDisplay.left} ID:${targetDisplay.id}`);
+                    console.log(`[Screenshot Debug] Final Selection - Electron x:${display.bounds.x} -> Screenshot L:${targetDisplay.left} ID:${targetDisplay.id} `);
                 }
 
                 const screenId = targetDisplay ? targetDisplay.id : display.id;
@@ -496,7 +643,7 @@ async function captureSmartScreenshot() {
         let targetSource = null;
         // Find window logic...
         const activeWinId = currentWin?.id || STATE.activeWindowId;
-        console.log(`[Screenshot] Looking for window ID: ${activeWinId} (Type: ${typeof activeWinId}), Title: ${currentWin?.title}`);
+        console.log(`[Screenshot] Looking for window ID: ${activeWinId} (Type: ${typeof activeWinId}), Title: ${currentWin?.title} `);
 
         if (useBackgroundSearch) {
             const targetProcessName = STATE.settings.screenshotTargetProcess || '';
@@ -504,23 +651,23 @@ async function captureSmartScreenshot() {
             if (targetProcessName) {
                 const lowerTarget = targetProcessName.toLowerCase().replace('.exe', '');
                 targetSource = sources.find(s => s.name.toLowerCase().includes(lowerTarget));
-                if (targetSource) console.log(`[Screenshot] Background Search found: ${targetSource.name}`);
+                if (targetSource) console.log(`[Screenshot] Background Search found: ${targetSource.name} `);
             }
         }
         else if (activeWinId) {
             const idStr = String(activeWinId);
             // 1. Precise Match with colons (window:123:0)
-            targetSource = sources.find(s => s.id.includes(`:${idStr}:`) || s.id.endsWith(`:${idStr}`));
+            targetSource = sources.find(s => s.id.includes(`:${idStr}: `) || s.id.endsWith(`:${idStr} `));
 
             // 2. Fuzzy Match (just ID)
             if (!targetSource) {
                 targetSource = sources.find(s => s.id.includes(idStr));
-                if (targetSource) console.log(`[Screenshot] Fuzzy ID match success: ${targetSource.id}`);
+                if (targetSource) console.log(`[Screenshot] Fuzzy ID match success: ${targetSource.id} `);
             }
 
             if (!targetSource) {
                 const title = currentWin?.title || STATE.activeTitle;
-                console.log(`[Screenshot] ID match failed. Available sources:`, sources.map(s => `${s.id} ("${s.name}")`).join(', '));
+                console.log(`[Screenshot] ID match failed.Available sources: `, sources.map(s => `${s.id} ("${s.name}")`).join(', '));
 
                 // 3. Title Match (Case-Insensitive, Substring)
                 if (title) {
@@ -602,7 +749,7 @@ async function createGpuWorker() {
     gpuWorkerWin!.loadFile(workerHtmlPath);
 
     gpuWorkerWin!.webContents.on('console-message', (_event, _level, message) => {
-        console.log(`[GPU Worker Remote] ${message}`);
+        console.log(`[GPU Worker Remote] ${message} `);
     });
 
     return gpuWorkerWin;

@@ -1,4 +1,10 @@
 {
+  "statistics": {
+    "dailyArchive": "DailyArchive",
+    "overview": "Overview",
+    "tasks": "Tasks",
+    "focus": "Focus"
+  },
   "settings": {
     "title": "Settings",
     "userSettings": "User Settings",
@@ -178,6 +184,8 @@
       "lockFutureDatesDesc": "Prevent navigating or adding events to dates beyond today.",
       "showFirstLaunchIndicator": "Show First Launch Time",
       "showFirstLaunchIndicatorDesc": "Display the time when the app was first opened on the timetable.",
+      "showAppOnOffIndicator": "Show App Start/Close Time",
+      "showAppOnOffIndicatorDesc": "Display the time when the app was started and closed on the timetable.",
       "autoScrollToToday": "Auto-scroll to Today",
       "autoScrollToTodayDesc": "Automatically jump to today's date when switching to Timeline view.",
       "dragPreview": "Show Drag Preview",

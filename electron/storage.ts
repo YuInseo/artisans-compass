@@ -1,4 +1,4 @@
-import { app, ipcMain } from 'electron';
+import { app, ipcMain, BrowserWindow } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import log from 'electron-log';
@@ -74,6 +74,7 @@ export interface DailyLogData {
     quote?: string;
     nightTimeStart?: number;
     firstOpenedAt?: number;
+    appSessions?: { start: number; end: number }[];
 }
 
 // --- Default Data ---
@@ -217,7 +218,8 @@ export function saveDailyLogInternal(dateStr: string, newData: any) {
         sessions: newData.sessions || dayData.sessions,
         todos: newData.todos || dayData.todos,
         screenshots: newData.screenshots || dayData.screenshots,
-        nightTimeStart: newData.nightTimeStart !== undefined ? newData.nightTimeStart : dayData.nightTimeStart
+        nightTimeStart: newData.nightTimeStart !== undefined ? newData.nightTimeStart : dayData.nightTimeStart,
+        appSessions: newData.appSessions || dayData.appSessions
     };
 
     currentData[dateStr] = mergedData;
@@ -268,6 +270,42 @@ export function saveDailyLogInternal(dateStr: string, newData: any) {
     }
 
     return saved;
+}
+
+export function updateAppSession(dateStr: string, session: { start: number; end: number }) {
+    const yearMonth = dateStr.slice(0, 7);
+    const filePath = getDailyLogPath(yearMonth);
+
+    try {
+        const currentData = readJson(filePath, {}) as Record<string, any>;
+
+        // Init day if needed
+        if (!currentData[dateStr]) {
+            currentData[dateStr] = {
+                sessions: [],
+                todos: [],
+                stats: { totalWorkSeconds: 0, questAchieved: false },
+                assets: [],
+                isRestDay: false
+            };
+        }
+
+        const dayData = currentData[dateStr];
+        if (!dayData.appSessions) dayData.appSessions = [];
+
+        // Update if existing based on exact start time match, else create
+        const existingIdx = dayData.appSessions.findIndex((s: any) => s.start === session.start);
+        if (existingIdx !== -1) {
+            dayData.appSessions[existingIdx].end = session.end; // update end time
+        } else {
+            dayData.appSessions.push(session);
+        }
+
+        return writeJson(filePath, currentData); // Do a fast write without triggering backups for every 60s update
+    } catch (error) {
+        log.error(`[Storage] Error updating app session to ${filePath}:`, error);
+        return false;
+    }
 }
 
 export function appendSession(dateStr: string, session: Session) {
@@ -326,7 +364,14 @@ export function setupStorageHandlers(getTrackerState?: () => any) {
     });
 
     ipcMain.handle('save-settings', (_, settings) => {
-        return writeJson(getSettingsPath(), settings);
+        const result = writeJson(getSettingsPath(), settings);
+
+        // Broadcast the update to all renderer processes (windows) so they stay in sync
+        BrowserWindow.getAllWindows().forEach((win) => {
+            win.webContents.send('settings-updated', settings);
+        });
+
+        return result;
     });
 
     // Projects

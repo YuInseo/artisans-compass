@@ -98,6 +98,7 @@ export interface AppSettings {
     };
     showRoutinesInTimetable?: boolean; // default: true
     showPlannedSessions?: boolean; // default: false
+    showAppOnOffIndicator?: boolean; // default: true
 }
 
 export interface Project {
@@ -174,6 +175,7 @@ export interface DailyLog {
     nightTimeStart?: number;
     plannedSessions?: PlannedSession[];
     firstOpenedAt?: number;
+    appSessions?: { start: number; end: number }[];
 }
 
 export interface RoutineSession {

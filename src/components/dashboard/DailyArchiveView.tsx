@@ -54,9 +54,10 @@ interface DailyArchiveViewProps {
     settings?: AppSettings | null;
     onUpdateSettings?: (settings: AppSettings) => void;
     firstOpenedAt?: number;
+    appSessions?: { start: number; end: number }[];
 }
 
-export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, plannedSessions = [], stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false, nightTimeStart: savedNightTimeStart, onDeleteTodo, onToggleTodo, onUpdateTodoText, settings, onUpdateSettings, firstOpenedAt }: DailyArchiveViewProps) {
+export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {}, projects = [], screenshots: initialScreenshots, sessions, plannedSessions = [], stats, onUpdateTodos, className, timelapseDurationSeconds = 5, showIndentationGuides = true, onClose, hideCloseButton = false, readOnly = false, nightTimeStart: savedNightTimeStart, onDeleteTodo, onToggleTodo, onUpdateTodoText, settings, onUpdateSettings, firstOpenedAt, appSessions }: DailyArchiveViewProps) {
     const { t } = useTranslation();
     const [selectedProjectId, setSelectedProjectId] = useState<string>("all");
     const { carryOverTodos } = useTodoStore();
@@ -144,11 +145,15 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
             const isProject = projects.some(p => p.name.toLowerCase() === session.process!.toLowerCase());
             if (isProject) return true;
 
+            // Always keep explicitly tracked apps
+            const isTracked = settings?.targetProcessPatterns?.some(pattern => session.process!.toLowerCase().includes(pattern.toLowerCase()));
+            if (isTracked) return true;
+
             // Otherwise, apply workapp filtering
             if (!settings?.workApps?.length) return false;
             return settings.workApps.some(app => session.process!.toLowerCase().includes(app.toLowerCase()));
         });
-    }, [sessions, settings?.filterTimelineByWorkApps, settings?.workApps, projects]);
+    }, [sessions, settings?.filterTimelineByWorkApps, settings?.workApps, settings?.targetProcessPatterns, projects]);
 
 
 
@@ -794,6 +799,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                 renderMode={settings?.dailyRecordMode || 'dynamic'}
                                 plannedSessions={plannedSessions}
                                 firstOpenedAt={firstOpenedAt}
+                                appSessions={appSessions}
                                 viewMode={timeTableViewMode}
                             />
                         </div>

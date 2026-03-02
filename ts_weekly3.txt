@@ -1,0 +1,2 @@
+src/components/dashboard/WeeklyView.tsx(21,10): error TS2300: Duplicate identifier 'WeeklyBulkActionBar'.
+src/components/dashboard/WeeklyView.tsx(22,10): error TS2300: Duplicate identifier 'WeeklyBulkActionBar'.

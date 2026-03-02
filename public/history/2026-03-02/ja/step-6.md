@@ -1,0 +1,1 @@
+- DailyPanel.tsxコンポーネントをUIごとに細分化し、コードの可読性を向上させました。(DailyWidgetContent, DailyHeader, DailyGeneralWorkPanel)

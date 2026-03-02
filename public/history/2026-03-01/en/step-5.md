@@ -1,0 +1,2 @@
+- **UI Improvement:** The date navigation buttons in the Statistics tab now only appear when the 'DailyArchive' tab is active.
+- **Localization:** Unified the 'Visual Recap' terminology to 'DailyArchive' across translations.

@@ -1,0 +1,1 @@
+Changed the bright blue text in the overview statistics to the default theme color (text-foreground) to reduce visual fatigue and improve consistency

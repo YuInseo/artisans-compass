@@ -134,6 +134,18 @@ const useStore = create<DataStore>()(
 
                         set({ settings: mergedSettings as AppSettings, projects, loading: false, initialized: true });
 
+                        // Setup live sync for settings
+                        if ((window as any).ipcRenderer?.onSettingsUpdated) {
+                            (window as any).ipcRenderer.onSettingsUpdated((updatedSettings: AppSettings) => {
+                                // Merge defaults again just in case
+                                const mergedUpdatedSettings = { ...DEFAULT_SETTINGS, ...updatedSettings };
+                                if (updatedSettings?.typeColors) {
+                                    mergedUpdatedSettings.typeColors = { ...DEFAULT_SETTINGS.typeColors, ...updatedSettings.typeColors };
+                                }
+                                set({ settings: mergedUpdatedSettings as AppSettings });
+                            });
+                        }
+
                         // Load todos from daily log
                         await useTodoStore.getState().loadTodos();
                     } else {

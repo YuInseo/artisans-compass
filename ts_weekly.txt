@@ -1,0 +1,7 @@
+src/components/dashboard/weekly/WeeklyGrid.tsx(1,21): error TS6133: 'addMinutes' is declared but its value is never read.
+src/components/dashboard/weekly/WeeklyGrid.tsx(1,33): error TS6133: 'format' is declared but its value is never read.
+src/components/dashboard/WeeklyView.tsx(21,1): error TS6133: 'WeeklyGrid' is declared but its value is never read.
+src/components/dashboard/WeeklyView.tsx(78,9): error TS6133: 'onMouseMove' is declared but its value is never read.
+src/components/dashboard/WeeklyView.tsx(78,22): error TS6133: 'onMouseUp' is declared but its value is never read.
+src/components/dashboard/WeeklyView.tsx(143,11): error TS2451: Cannot redeclare block-scoped variable 'getMergedSessionsForDay'.
+src/components/dashboard/WeeklyView.tsx(279,17): error TS2451: Cannot redeclare block-scoped variable 'getMergedSessionsForDay'.

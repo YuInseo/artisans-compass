@@ -2,7 +2,7 @@ import { ReactNode, useState, useCallback, useEffect } from 'react';
 import { FocusGoalsSection } from "../dashboard/FocusGoalsSection";
 import { Button } from "@/components/ui/button";
 import { UpdateChecker } from "./UpdateChecker";
-import { LayoutDashboard, Settings, CalendarDays, Eye, GanttChart, Search, X, Check, Bell, AlertCircle, AlertTriangle, Info, Trash2, Minus, Square, FolderOpen, Plus, Loader2, Target, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Settings, CalendarDays, Eye, GanttChart, Search, X, Check, Bell, AlertCircle, AlertTriangle, Info, Trash2, Minus, Square, FolderOpen, Plus, Loader2, Target, MoreHorizontal, BarChart } from "lucide-react";
 import { useNotificationStore } from "@/hooks/useNotificationStore";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,17 +32,18 @@ interface AppLayoutProps {
     focusedProject: Project | null;
     onFocusProject: (project: Project | null) => void;
 
-    dashboardView: 'weekly' | 'daily' | 'pomodoro';
-    onDashboardViewChange: (view: 'weekly' | 'daily' | 'pomodoro') => void;
+    dashboardView: 'weekly' | 'daily' | 'pomodoro' | 'statistics';
+    onDashboardViewChange: (view: 'weekly' | 'daily' | 'pomodoro' | 'statistics') => void;
 
     // Responsive Props
     isSidebarOpen: boolean;
     setIsSidebarOpen: (isOpen: boolean) => void;
 
     pomodoroPanel?: ReactNode;
+    statisticsPanel?: ReactNode;
 }
 
-export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode, onViewModeChange: _onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject, onFocusProject, dashboardView, onDashboardViewChange, isSidebarOpen, setIsSidebarOpen, pomodoroPanel }: AppLayoutProps) {
+export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode, onViewModeChange: _onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject, onFocusProject, dashboardView, onDashboardViewChange, isSidebarOpen, setIsSidebarOpen, pomodoroPanel, statisticsPanel }: AppLayoutProps) {
     const { t } = useTranslation();
     const { projects, saveProjects, isWidgetMode, searchQuery, setSearchQuery, addToHistory } = useDataStore();
     const [isCreating, setIsCreating] = useState(false);
@@ -180,6 +181,17 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                         >
                             <Target className="w-5 h-5" />
                         </Button>
+                        <Button
+                            variant={dashboardView === 'statistics' ? 'secondary' : 'ghost'}
+                            size="icon"
+                            className="w-10 h-10 shrink-0 rounded-xl transition-all text-muted-foreground hover:text-foreground hover:bg-muted no-drag"
+                            onClick={() => {
+                                if (dashboardView !== 'statistics') onDashboardViewChange('statistics');
+                            }}
+                            title={t('sidebar.statistics', 'Statistics')}
+                        >
+                            <BarChart className="w-5 h-5" />
+                        </Button>
                     </div>
 
                     {/* Extracted Buttons from Title Bar */}
@@ -284,7 +296,8 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                             </Button>
 
                             {dashboardView === 'pomodoro' ? (
-                                <div className="flex items-center gap-4 ml-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
+                                <div className="flex items-center gap-3 ml-2.5" style={{ WebkitAppRegion: 'no-drag' } as any}>
+                                    <span className="text-xs font-bold text-muted-foreground tracking-widest uppercase">Artisan's Compass</span>
                                     <h2 className="text-sm font-bold font-serif">{t('dashboard.pomodoro', '포모도로')}</h2>
                                     <div className="flex gap-1 text-muted-foreground ml-auto">
                                         <Button
@@ -300,7 +313,10 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                                     </div>
                                 </div>
                             ) : (
-                                <span className="text-xs font-bold text-muted-foreground tracking-widest uppercase ml-2">Artisan's Compass</span>
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xs font-bold text-muted-foreground tracking-widest uppercase ml-2">Artisan's Compass</span>
+                                    <div id="statistics-tabs-portal" className="flex items-center no-drag" />
+                                </div>
                             )}
                         </div>
 
@@ -588,7 +604,7 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                                             "h-full border-r border-border flex flex-col shrink-0 overflow-hidden bg-background relative z-10",
                                             !isResizing && "transition-all duration-300 ease-in-out"
                                         )}
-                                        style={{ width: isSidebarOpen ? sidebarWidth : 0 }}
+                                        style={{ width: sidebarWidth }}
                                     >
                                         <div className="h-full w-full flex flex-col min-w-[300px]">
                                             {todoPanel}
@@ -597,7 +613,7 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                                 )}
 
                                 {/* Resize Handle */}
-                                {isSidebarOpen && !isWidgetMode && (
+                                {!isWidgetMode && (
                                     <div
                                         onMouseDown={startResizing}
                                         className={cn(
@@ -620,9 +636,13 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                         <div className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
                             {planPanel}
                         </div>
-                    ) : (
+                    ) : dashboardView === 'pomodoro' ? (
                         <div className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
                             {pomodoroPanel}
+                        </div>
+                    ) : (
+                        <div className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
+                            {statisticsPanel}
                         </div>
                     )}
 

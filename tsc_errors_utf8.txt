@@ -1,0 +1,6 @@
+﻿src/components/dashboard/DailyPanel.tsx(524,22): error TS17008: JSX element 'TooltipProvider' has no corresponding closing tag.
+src/components/dashboard/DailyPanel.tsx(1302,15): error TS17002: Expected corresponding JSX closing tag for 'ContextMenuTrigger'.
+src/components/dashboard/DailyPanel.tsx(1303,11): error TS17002: Expected corresponding JSX closing tag for 'ContextMenu'.
+src/components/dashboard/DailyPanel.tsx(1304,13): error TS1005: ')' expected.
+src/components/dashboard/DailyPanel.tsx(1305,9): error TS1109: Expression expected.
+src/components/dashboard/DailyPanel.tsx(1306,5): error TS1109: Expression expected.

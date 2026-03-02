@@ -1,0 +1,1 @@
+Adjusted the size of the fire icon (quest completion indicator) on the calendar to prevent it from overlapping or overflowing outside the date box bounds.

@@ -16,7 +16,7 @@ interface TimerWidgetProps {
 export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove }: TimerWidgetProps) {
     const { t } = useTranslation();
     const { settings } = useDataStore();
-    const isLeftAlign = settings?.widgetTextAlignment !== 'right'; // Default left
+    const isLeftAlign = isWidgetMode ? true : settings?.widgetTextAlignment !== 'right'; // Default left, force left in widget mode
 
     const totalFocusTime = useMemo(() => {
         let time = 0;
@@ -75,9 +75,9 @@ export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove
                         </div>
                     </div>
 
-                    <div className={cn("flex flex-col justify-center z-10 transition-all duration-300 mt-2", isLeftAlign ? "items-start -ml-2" : "items-end")}>
+                    <div className={cn("flex flex-col justify-center z-10 transition-all duration-300 mt-2", isLeftAlign ? "items-start w-full" : "items-end")}>
                         {liveSession ? (
-                            <>
+                            <div className={cn("w-full flex-col flex", isLeftAlign ? "items-start" : "items-end")}>
                                 <div className="flex items-center gap-2 mb-1">
                                     <span className="relative flex h-2 w-2">
                                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -85,22 +85,22 @@ export function TimerWidget({ isWidgetMode, liveSession, sessions, now, onRemove
                                     </span>
                                     <span className="text-[10px] font-bold text-green-500 uppercase tracking-wider">{t('calendar.focusing')}</span>
                                 </div>
-                                <div className={cn("text-xs font-medium text-foreground max-w-[120px] truncate border-t border-border/50 pt-1 mt-1 transition-all", isLeftAlign ? "text-left" : "text-right", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")} title={liveSession.process}>
+                                <div className={cn("text-xs font-medium text-foreground w-full max-w-[120px] truncate border-t border-border/50 pt-1 mt-1 transition-all", isLeftAlign ? "text-left" : "text-right", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")} title={liveSession.process}>
                                     {liveSession.process}
                                 </div>
-                            </>
+                            </div>
                         ) : (
-                            <>
+                            <div className={cn("w-full flex-col flex", isLeftAlign ? "items-start" : "items-end")}>
                                 <div className="flex items-center gap-2 mb-1 opacity-50">
                                     <span className="relative flex h-2 w-2">
                                         <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-400"></span>
                                     </span>
                                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Ready</span>
                                 </div>
-                                <div className={cn("text-xs font-medium text-muted-foreground max-w-[120px] truncate border-t border-border/50 pt-1 mt-1 italic", isLeftAlign ? "text-left" : "text-right", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")}>
+                                <div className={cn("text-xs font-medium text-muted-foreground w-full max-w-[120px] truncate border-t border-border/50 pt-1 mt-1 italic", isLeftAlign ? "text-left" : "text-right", isWidgetMode && "drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]")}>
                                     Waiting for activity...
                                 </div>
-                            </>
+                            </div>
                         )}
                     </div>
                     <button

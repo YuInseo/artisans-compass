@@ -31,6 +31,14 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   saveSettings: (settings: any) => ipcRenderer.invoke('save-settings', settings),
   getProjects: () => ipcRenderer.invoke('get-projects'),
   saveProjects: (projects: any) => ipcRenderer.invoke('save-projects', projects),
+
+  onSettingsUpdated: (callback: (settings: any) => void) => {
+    ipcRenderer.on('settings-updated', (_event, settings) => callback(settings));
+    return () => {
+      ipcRenderer.removeAllListeners('settings-updated');
+    };
+  },
+
   getMonthlyLog: (yearMonth: string) => ipcRenderer.invoke('get-monthly-log', yearMonth),
   saveMonthlyLog: (data: { yearMonth: string, data: any }) => ipcRenderer.invoke('save-monthly-log', data),
   saveDailyLog: (dateStr: string, data: any) => ipcRenderer.invoke('save-daily-log', dateStr, data),

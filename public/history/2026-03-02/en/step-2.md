@@ -1,0 +1,1 @@
+Applied internal scrolling to the legend of the 'Detailed Focus' widget in the Overview tab to prevent UI overflow when tracking too many items (e.g. numerous apps)

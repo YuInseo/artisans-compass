@@ -160,123 +160,121 @@ export function CalendarNav({ onSelect, focusedProject, navigationSignal }: Cale
 
 
     return (
-        <div className="h-full w-full flex flex-col p-4 bg-background select-none">
-            <div className="flex-1 border border-border rounded-xl bg-card shadow-sm overflow-hidden flex flex-col p-4 min-h-[300px] relative">
-                {/* Navigation Quick Jump */}
-                <div className="flex flex-wrap gap-2 mb-3">
+        <div className="w-full flex flex-col p-4 border border-border rounded-[18px] bg-popover text-popover-foreground shadow-2xl overflow-hidden relative select-none">
+            {/* Navigation Quick Jump */}
+            <div className="flex flex-wrap gap-2 mb-3">
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-3 text-xs gap-2 border-muted-foreground/20 hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={handleGoToday}
+                >
+                    <Home className="w-3.5 h-3.5" />
+                    <span>{t('calendar.today')}: <span className="font-semibold text-foreground">{format(new Date(), 'MMM d')}</span></span>
+                </Button>
+
+                {activeProject && (
                     <Button
                         variant="outline"
                         size="sm"
-                        className="h-8 px-3 text-xs gap-2 border-muted-foreground/20 hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
-                        onClick={handleGoToday}
+                        className="h-8 px-3 text-xs gap-2 border-primary/30 hover:bg-primary/10 text-primary transition-colors"
+                        onClick={handleGoToProject}
+                        title={activeProject.name}
                     >
-                        <Home className="w-3.5 h-3.5" />
-                        <span>{t('calendar.today')}: <span className="font-semibold text-foreground">{format(new Date(), 'MMM d')}</span></span>
+                        <Target className="w-3.5 h-3.5" />
+                        <span className="max-w-[100px] truncate hidden sm:inline-block">{activeProject.name}</span>
+                        {activeProject.type && (
+                            <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm font-medium uppercase tracking-wider">
+                                {activeProject.type}
+                            </span>
+                        )}
+                        <span><span className="font-semibold">{format(parseISO(activeProject.startDate), 'MMM d')}</span></span>
                     </Button>
-
-                    {activeProject && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-3 text-xs gap-2 border-primary/30 hover:bg-primary/10 text-primary transition-colors"
-                            onClick={handleGoToProject}
-                            title={activeProject.name}
-                        >
-                            <Target className="w-3.5 h-3.5" />
-                            <span className="max-w-[100px] truncate hidden sm:inline-block">{activeProject.name}</span>
-                            {activeProject.type && (
-                                <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-sm font-medium uppercase tracking-wider">
-                                    {activeProject.type}
-                                </span>
-                            )}
-                            <span><span className="font-semibold">{format(parseISO(activeProject.startDate), 'MMM d')}</span></span>
-                        </Button>
-                    )}
-                </div>
-
-                <Calendar
-                    mode="single"
-                    selected={date}
-                    onSelect={handleSelect}
-                    month={displayedMonth}
-                    onMonthChange={setDisplayedMonth}
-                    className="w-full h-full flex flex-col"
-                    disabled={settings?.lockFutureDates ? { after: new Date() } : undefined}
-                    modifiers={{
-                        projectRange: projectRangeMatcher,
-                        selectedRange: selectedProjectRangeMatcher,
-                        sStart: selectedRangeStartMatcher,
-                        sEnd: selectedRangeEndMatcher
-                    }}
-                    modifiersClassNames={{
-                        projectRange: "bg-primary/30 !text-foreground font-bold border border-primary/40 rounded-[14px]",
-                        selectedRange: "bg-accent/30 !text-foreground font-bold border border-accent/40 rounded-[14px] z-0",
-                        sStart: "bg-accent text-accent-foreground shadow-sm rounded-[14px] z-10 font-bold",
-                        sEnd: "bg-accent text-accent-foreground shadow-sm rounded-[14px] z-10 font-bold"
-                    }}
-                    classNames={{
-                        months: "flex flex-col w-full h-full space-y-0",
-                        month: "w-full h-full flex flex-col space-y-0",
-                        caption: "flex justify-start items-center mb-6 px-4 shrink-0 relative h-10",
-                        caption_label: "text-2xl font-serif font-bold text-foreground tracking-tight pl-0",
-                        nav: "flex items-center gap-1.5 absolute right-2 top-0 bottom-0",
-                        nav_button: "h-8 w-8 bg-transparent p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-all flex items-center justify-center border border-transparent hover:border-border/50",
-                        nav_button_previous: "static",
-                        nav_button_next: "static",
-                        table: "w-full h-full border-collapse flex flex-col space-y-0.5",
-                        head_row: "grid grid-cols-7 w-full mb-2 shrink-0 px-2",
-                        head_cell: "text-muted-foreground w-full text-center font-medium text-[11px] uppercase tracking-wider opacity-50",
-                        tbody: "flex-1 flex flex-col w-full gap-0.5 px-2 pb-2",
-                        row: "grid grid-cols-7 w-full flex-1 gap-0.5 mt-0",
-                        cell: "relative p-0 text-center w-full h-full flex items-center justify-center focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-transparent",
-                        day: cn(
-                            "h-full w-full p-0 font-normal aria-selected:opacity-100 hover:bg-muted/30 transition-all duration-300 rounded-[14px] group relative flex flex-col items-center justify-start pt-1 text-sm text-muted-foreground hover:text-foreground"
-                        ),
-                        day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground shadow-md scale-[0.98] transition-transform rounded-[14px]",
-                        day_today: "bg-accent/5 text-accent font-bold rounded-[14px]",
-                        day_outside: "text-muted-foreground/20 opacity-30",
-                        day_disabled: "text-muted-foreground opacity-20",
-                        day_range_middle: "aria-selected:bg-accent/10 aria-selected:text-accent-foreground rounded-[14px] my-0",
-                        day_hidden: "invisible",
-                    }}
-                    components={{
-                        DayContent: ({ date: d }) => {
-                            const dateKey = format(d, 'yyyy-MM-dd');
-                            const log = monthlyLogs[dateKey];
-                            const isQuestAchieved = log?.stats?.questAchieved;
-                            const hasData = log && (
-                                (log.todos && log.todos.length > 0) ||
-                                (log.screenshots && log.screenshots.length > 0) ||
-                                (log.sessions && log.sessions.length > 0) ||
-                                log.closingNote
-                            );
-
-                            return (
-                                <div className="w-full h-full flex flex-col items-center relative gap-0.5">
-                                    <span className={cn("z-10 text-[13px] transition-all", isQuestAchieved ? "font-bold" : "font-medium")}>{d.getDate()}</span>
-
-                                    {/* Work day indicator (Top Right Dot) */}
-                                    {isWorkDay(d) && !isQuestAchieved && (
-                                        <div className="absolute top-3 right-3 w-1 h-1 bg-primary/20 rounded-full"></div>
-                                    )}
-
-                                    {/* Data Indicator (Bottom Dot) */}
-                                    {hasData && !isQuestAchieved && (
-                                        <div className="mt-1 w-1 h-1 rounded-full bg-primary/30 group-hover:bg-primary/50 transition-colors"></div>
-                                    )}
-
-                                    {/* Quest Achieved Checkmark */}
-                                    {isQuestAchieved && (
-                                        <div className="mt-0 z-20 text-primary animate-in zoom-in spin-in-90 duration-300 text-lg drop-shadow-sm leading-none">
-                                            🔥
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        }
-                    }}
-                />
+                )}
             </div>
+
+            <Calendar
+                mode="single"
+                selected={date}
+                onSelect={handleSelect}
+                month={displayedMonth}
+                onMonthChange={setDisplayedMonth}
+                className="w-full h-full flex flex-col"
+                disabled={settings?.lockFutureDates ? { after: new Date() } : undefined}
+                modifiers={{
+                    projectRange: projectRangeMatcher,
+                    selectedRange: selectedProjectRangeMatcher,
+                    sStart: selectedRangeStartMatcher,
+                    sEnd: selectedRangeEndMatcher
+                }}
+                modifiersClassNames={{
+                    projectRange: "bg-primary/30 !text-foreground font-bold border border-primary/40 rounded-[14px]",
+                    selectedRange: "bg-accent/30 !text-foreground font-bold border border-accent/40 rounded-[14px] z-0",
+                    sStart: "bg-accent text-accent-foreground shadow-sm rounded-[14px] z-10 font-bold",
+                    sEnd: "bg-accent text-accent-foreground shadow-sm rounded-[14px] z-10 font-bold"
+                }}
+                classNames={{
+                    months: "flex flex-col w-full space-y-0",
+                    month: "w-full flex flex-col space-y-0",
+                    caption: "flex justify-start items-center mb-5 px-3 shrink-0 relative h-10",
+                    caption_label: "text-xl font-serif font-bold text-foreground tracking-tight pl-0",
+                    nav: "flex items-center gap-1 absolute right-2 top-0 bottom-0",
+                    nav_button: "h-7 w-7 bg-transparent p-0 text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded-full transition-all flex items-center justify-center border border-transparent hover:border-border/50",
+                    nav_button_previous: "static",
+                    nav_button_next: "static",
+                    table: "w-full border-collapse flex flex-col space-y-1",
+                    head_row: "grid grid-cols-7 w-full mb-2 px-1 shrink-0",
+                    head_cell: "text-muted-foreground w-full text-center font-medium text-[10px] uppercase tracking-wider opacity-60",
+                    tbody: "w-full flex flex-col gap-1 px-1 pb-1",
+                    row: "grid grid-cols-7 w-full gap-1 mt-0",
+                    cell: "relative p-0 text-center w-full aspect-square flex items-center justify-center focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-transparent",
+                    day: cn(
+                        "w-full h-full p-0 font-normal aria-selected:opacity-100 hover:bg-muted/30 transition-all duration-300 rounded-[12px] group relative flex flex-col items-center justify-center text-[13px] text-muted-foreground hover:text-foreground"
+                    ),
+                    day_selected: "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground shadow-sm scale-[0.96] transition-transform rounded-[12px]",
+                    day_today: "bg-accent/5 text-accent font-bold rounded-[12px]",
+                    day_outside: "text-muted-foreground/30 opacity-40",
+                    day_disabled: "text-muted-foreground opacity-20",
+                    day_range_middle: "aria-selected:bg-accent/10 aria-selected:text-accent-foreground rounded-[12px] my-0",
+                    day_hidden: "invisible",
+                }}
+                components={{
+                    DayContent: ({ date: d }) => {
+                        const dateKey = format(d, 'yyyy-MM-dd');
+                        const log = monthlyLogs[dateKey];
+                        const isQuestAchieved = log?.stats?.questAchieved;
+                        const hasData = log && (
+                            (log.todos && log.todos.length > 0) ||
+                            (log.screenshots && log.screenshots.length > 0) ||
+                            (log.sessions && log.sessions.length > 0) ||
+                            log.closingNote
+                        );
+
+                        return (
+                            <div className="w-full h-full flex items-center justify-center relative">
+                                <span className={cn("z-10 transition-all", isQuestAchieved ? "font-bold" : "font-medium")}>{d.getDate()}</span>
+
+                                {/* Work day indicator (Top Right Dot) */}
+                                {isWorkDay(d) && (
+                                    <div className="absolute top-[6px] right-[6px] w-[3px] h-[3px] bg-primary/30 rounded-full"></div>
+                                )}
+
+                                {/* Data Indicator (Bottom Dot) */}
+                                {hasData && !isQuestAchieved && (
+                                    <div className="absolute bottom-[6px] w-1 h-1 rounded-full bg-primary/40 group-hover:bg-primary/60 transition-colors"></div>
+                                )}
+
+                                {/* Quest Achieved Checkmark */}
+                                {isQuestAchieved && (
+                                    <div className="absolute -bottom-0.5 -right-0.5 z-20 text-primary animate-in zoom-in spin-in-90 duration-300 text-xs drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)] leading-none pointer-events-none">
+                                        🔥
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    }
+                }}
+            />
         </div>
     );
 }

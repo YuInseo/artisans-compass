@@ -1,0 +1,1 @@
+Consolidated timetable-related settings by moving them to the Timetable tab within the User Settings dialog for easier access. Clicking the settings button on the timetable now opens directly to this tab for convenient configuration.

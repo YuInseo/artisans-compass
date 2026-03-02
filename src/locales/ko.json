@@ -1,4 +1,10 @@
 {
+  "statistics": {
+    "dailyArchive": "DailyArchive",
+    "overview": "개요",
+    "tasks": "과제",
+    "focus": "포커스"
+  },
   "settings": {
     "title": "설정",
     "userSettings": "사용자 설정",
@@ -185,6 +191,8 @@
       "lockFutureDatesDesc": "오늘 이후의 날짜로 이동하거나 일정을 추가하는 것을 방지합니다.",
       "showFirstLaunchIndicator": "최초 실행 시각 표시",
       "showFirstLaunchIndicatorDesc": "타임테이블에 앱을 처음 켠 시간을 표시합니다.",
+      "showAppOnOffIndicator": "앱 켜짐/꺼짐 시각 표시",
+      "showAppOnOffIndicatorDesc": "타임테이블에 앱을 켜고 끈 시간을 점선으로 표시합니다.",
       "autoScrollToToday": "오늘 날짜로 자동 스크롤",
       "autoScrollToTodayDesc": "타임라인 뷰로 전환할 때 오늘 날짜로 자동 이동할지 여부를 선택합니다.",
       "dragPreview": "드래그 미리보기 표시",

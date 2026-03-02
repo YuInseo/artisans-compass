@@ -1,0 +1,1 @@
+Completely redesigned the Overview screen with a 2x3 grid layout, visualizing 7-day trends (achievement, completion rate, pomos) using elegant SVG Area and Bar charts to greatly improve data readability

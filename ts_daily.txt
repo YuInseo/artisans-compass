@@ -1,0 +1,6 @@
+src/components/dashboard/daily/DailyGeneralWorkPanel.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/dashboard/daily/DailyHeader.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/dashboard/daily/DailyWidgetContent.tsx(1,1): error TS6133: 'React' is declared but its value is never read.
+src/components/dashboard/DailyPanel.tsx(2,58): error TS6133: 'ChevronDown' is declared but its value is never read.
+src/components/dashboard/DailyPanel.tsx(360,41): error TS2322: Type 'string | null' is not assignable to type 'string | undefined'.
+  Type 'null' is not assignable to type 'string | undefined'.

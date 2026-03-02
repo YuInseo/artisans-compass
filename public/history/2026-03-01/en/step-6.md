@@ -1,0 +1,2 @@
+- **New Feature:** Fully implemented the 'Tasks' tab within the Statistics view. You can now track your completed task count and completion rate, perfectly compared with 'yesterday's data.
+- **New Feature:** Added beautifully animated Donut charts visualizing your Completion Distribution and Categorized Project Completion Stats, custom-built without relying on heavy external libraries!

@@ -1,0 +1,1 @@
+Fixed an issue where the X-axis labels (0, 6, 12, 18) of the Optimal Focus Time chart were clipped by the bottom container, and improved layout to perfectly center them below each bar

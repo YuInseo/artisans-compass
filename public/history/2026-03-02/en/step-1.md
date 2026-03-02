@@ -1,0 +1,1 @@
+Refactored App.tsx by extracting core initialization and configuration logic into dedicated custom hooks, significantly improving system stability and code readability

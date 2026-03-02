@@ -428,7 +428,50 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
 
 
 
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-4" id="settings-detail-view">
+            {/* Grid Mode Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-4">
+                <div className="space-y-0.5">
+                    <Label className="text-base font-semibold">{t('settings.timeline.gridMode') || "15-Minute Snapping"}</Label>
+                    <p className="text-xs text-muted-foreground opacity-80">
+                        {t('settings.timeline.gridModeDesc') || "Snap blocks to 15m grid"}
+                    </p>
+                </div>
+                <Switch
+                    checked={settings.timelineGridMode !== 'continuous'}
+                    onCheckedChange={(checked) => onSaveSettings({ ...settings, timelineGridMode: checked ? '15min' : 'continuous' })}
+                />
+            </div>
+
+            {/* Show Routines Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
+                <div className="space-y-0.5">
+                    <Label className="text-base font-semibold">{t('settings.timeline.showRoutines') || "반복 루틴 표시"}</Label>
+                    <p className="text-xs text-muted-foreground opacity-80">
+                        {t('settings.timeline.showRoutinesDesc') || "타임테이블에 반복 루틴을 보여줍니다"}
+                    </p>
+                </div>
+                <Switch
+                    checked={settings.showRoutinesInTimetable ?? true}
+                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showRoutinesInTimetable: checked })}
+                />
+            </div>
+
+            {/* Show Planned Sessions Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
+                <div className="space-y-0.5">
+                    <Label className="text-base font-semibold">{t('settings.timeline.showPlannedSessions') || "돌발일정 표시"}</Label>
+                    <p className="text-xs text-muted-foreground opacity-80">
+                        {t('settings.timeline.showPlannedSessionsDesc') || "타임테이블에 분리된 형태로 돌발일정을 함께 표시합니다."}
+                    </p>
+                </div>
+                <Switch
+                    checked={settings.showPlannedSessions ?? false}
+                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showPlannedSessions: checked })}
+                />
+            </div>
+
+            {/* Detail View Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2" id="settings-detail-view">
                 <div className="space-y-0.5">
                     <Label className="text-base font-semibold">{t('settings.timeline.detailView') || "Detail View"}</Label>
                     <p className="text-xs text-muted-foreground opacity-80">
@@ -478,8 +521,22 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
                     </p>
                 </div>
                 <Switch
-                    checked={settings.showFirstLaunchIndicator !== false}
+                    checked={settings.showFirstLaunchIndicator ?? true}
                     onCheckedChange={(checked) => onSaveSettings({ ...settings, showFirstLaunchIndicator: checked })}
+                />
+            </div>
+
+            {/* App On/Off Indicator Toggle */}
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
+                <div className="space-y-0.5">
+                    <Label className="text-base font-semibold">{t('settings.timeline.showAppOnOffIndicator') || "앱 켜짐/꺼짐 시각 표시"}</Label>
+                    <p className="text-xs text-muted-foreground opacity-80">
+                        {t('settings.timeline.showAppOnOffIndicatorDesc') || "타임테이블에 앱을 켜고 끈 시간을 점선으로 표시합니다."}
+                    </p>
+                </div>
+                <Switch
+                    checked={settings.showAppOnOffIndicator ?? true}
+                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showAppOnOffIndicator: checked })}
                 />
             </div>
 

@@ -1,0 +1,1 @@
+Updated Focus statistics view to automatically apply the app-wide theme (Light/Dark mode) for a consistent design

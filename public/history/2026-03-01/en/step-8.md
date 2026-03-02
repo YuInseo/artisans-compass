@@ -1,0 +1,1 @@
+Update timeline graph style\n- Changed from scatter plot dots to block style (Gantt chart style) to clearly show focus time duration\n- Aligned Y-axis guidelines perfectly with time labels

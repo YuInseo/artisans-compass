@@ -1,0 +1,1 @@
+Added the ability to display app start and close times on the timeline. A thin line is now shown on the left side of the timetable indicating when the app was running, allowing you to intuitively check your app usage times throughout the day.
