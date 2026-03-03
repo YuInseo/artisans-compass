@@ -83,6 +83,7 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
         sessions,
         screenshots,
         plannedSessions,
+        appSessions,
         manualQuote,
         firstOpenedAt,
         liveSession,
@@ -493,7 +494,7 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                             plannedSessions={plannedSessions}
                                                             currentTime={now} // Pass live time from parent
                                                             firstOpenedAt={firstOpenedAt || undefined}
-                                                            appSessions={dailyLog?.appSessions || []}
+                                                            appSessions={appSessions}
                                                             viewMode={timeTableViewMode}
                                                         />
                                                     </div>

@@ -1,6 +1,6 @@
 {
   "statistics": {
-    "dailyArchive": "DailyArchive",
+    "dailyArchive": "일일 아카이브",
     "overview": "개요",
     "tasks": "과제",
     "focus": "포커스"
@@ -108,6 +108,7 @@
       "selectDisplayDesc": "캡처할 모니터를 선택하세요.",
       "screenshotLocation": "스크린샷 저장 위치",
       "screenshotLocationDesc": "이미지가 저장되는 위치입니다.",
+      "screenshotDiskUsage": "스크린샷 디스크 사용량: {{usage}} / {{total}} ({{percent}}%)",
       "change": "변경",
       "oldScreenshotsDesc": "이전 스크린샷은 이전 위치에 남아 있습니다.",
       "defaultAppData": "기본값 (AppData)",
@@ -412,6 +413,8 @@
     "pomodoro": "포모도로"
   },
   "calendar": {
+    "appStarted": "나침반 켜짐",
+    "appClosed": "나침반 꺼짐",
     "currentTime": "현재 시간",
     "firstLaunch": "최초 실행",
     "today": "오늘",

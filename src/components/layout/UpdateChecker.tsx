@@ -96,7 +96,7 @@ export function UpdateChecker() {
             <Button
                 variant="ghost"
                 size="sm"
-                className="h-10 w-10 p-0 text-muted-foreground hover:text-foreground hover:bg-muted no-drag rounded-xl"
+                className="shrink-0 h-10 w-10 p-0 text-muted-foreground hover:text-foreground hover:bg-muted no-drag rounded-xl"
                 onClick={handleCheck}
                 title="Check for Updates"
                 style={{ WebkitAppRegion: 'no-drag' } as any}
@@ -111,11 +111,11 @@ export function UpdateChecker() {
             <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 w-7 p-0 text-muted-foreground no-drag cursor-default"
+                className="shrink-0 h-10 w-10 p-0 text-muted-foreground no-drag cursor-default rounded-xl"
                 disabled
                 style={{ WebkitAppRegion: 'no-drag' } as any}
             >
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-5 h-5 animate-spin" />
             </Button>
         );
     }
@@ -125,28 +125,21 @@ export function UpdateChecker() {
             <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs font-medium text-blue-500 hover:text-blue-600 hover:bg-blue-500/10 no-drag gap-1.5"
+                className="shrink-0 h-10 w-10 p-0 text-blue-500 hover:text-blue-600 hover:bg-blue-500/10 no-drag rounded-xl"
                 onClick={handleDownload}
-                title="Download Update"
+                title={t('update.download')}
                 style={{ WebkitAppRegion: 'no-drag' } as any}
             >
-                <Download className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t('update.download')}</span>
+                <Download className="w-5 h-5" />
             </Button>
         );
     }
 
     if (status === 'downloading') {
         return (
-            <div className="flex items-center gap-2 px-2 h-7 bg-muted/50 rounded-md no-drag" title={`Downloading: ${Math.round(progress)}%`}>
-                <Loader2 className="w-3 h-3 animate-spin text-primary" />
-                <div className="w-16 h-1.5 bg-muted-foreground/20 rounded-full overflow-hidden">
-                    <div
-                        className="h-full bg-primary transition-all duration-300"
-                        style={{ width: `${progress}%` }}
-                    />
-                </div>
-                <span className="text-[10px] sm:text-xs font-mono text-muted-foreground/80 tabular-nums">{Math.round(progress)}%</span>
+            <div className="flex flex-col shrink-0 items-center justify-center w-10 h-10 bg-muted/50 rounded-xl no-drag gap-1" title={`Downloading: ${Math.round(progress)}%`}>
+                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                <span className="text-[9px] font-mono text-muted-foreground/80 tabular-nums leading-none">{Math.round(progress)}%</span>
             </div>
         );
     }
@@ -156,7 +149,7 @@ export function UpdateChecker() {
             <Button
                 variant="ghost"
                 size="sm"
-                className="h-7 px-2 text-xs font-bold text-green-600 hover:text-green-700 hover:bg-green-500/10 no-drag gap-1.5 animate-pulse relative z-50 cursor-pointer"
+                className="shrink-0 h-10 w-10 p-0 text-green-600 hover:text-green-700 hover:bg-green-500/10 no-drag rounded-xl animate-pulse relative z-50 cursor-pointer"
                 onClick={(e) => {
                     e.stopPropagation(); // Prevent bubble up
                     handleRestart();
@@ -164,8 +157,7 @@ export function UpdateChecker() {
                 title={t('update.readyTitle')}
                 style={{ WebkitAppRegion: 'no-drag' } as any}
             >
-                <PartyPopper className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{t('update.restart')}</span>
+                <PartyPopper className="w-5 h-5" />
             </Button>
         );
     }

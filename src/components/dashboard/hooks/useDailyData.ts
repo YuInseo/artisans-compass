@@ -46,6 +46,8 @@ export function useDailyData(projects: Project[], settings: any, now: Date) {
         }
     }, [projects, activeProjectId, setActiveProjectId]);
 
+    const [appSessions, setAppSessions] = useState<{ start: number; end: number }[]>([]);
+
     useEffect(() => {
         loadTodos();
 
@@ -72,6 +74,7 @@ export function useDailyData(projects: Project[], settings: any, now: Date) {
                 let mergedSessions: Session[] = [];
                 let mergedScreenshots: string[] = [];
                 let mergedPlanned: any[] = [];
+                let mergedAppSessions: { start: number; end: number }[] = [];
 
                 const primaryData = await loadDate(startViewDate);
                 if (primaryData) {
@@ -79,6 +82,7 @@ export function useDailyData(projects: Project[], settings: any, now: Date) {
                     mergedScreenshots = [...(primaryData.screenshots || [])];
                     mergedPlanned = [...(primaryData.plannedSessions || [])];
                     if (primaryData.firstOpenedAt) setFirstOpenedAt(primaryData.firstOpenedAt);
+                    mergedAppSessions = [...(primaryData.appSessions || [])];
                 }
 
                 if (settings?.dailyRecordMode === 'fixed' && startViewDate !== todayStr) {
@@ -87,12 +91,14 @@ export function useDailyData(projects: Project[], settings: any, now: Date) {
                         mergedSessions = [...mergedSessions, ...(secondaryData.sessions || [])];
                         mergedScreenshots = [...mergedScreenshots, ...(secondaryData.screenshots || [])];
                         mergedPlanned = [...mergedPlanned, ...(secondaryData.plannedSessions || [])];
+                        mergedAppSessions = [...mergedAppSessions, ...(secondaryData.appSessions || [])];
                     }
                 }
 
                 setSessions(mergedSessions);
                 setScreenshots(mergedScreenshots);
                 setPlannedSessions(mergedPlanned);
+                setAppSessions(mergedAppSessions);
                 setDisplayDate(startViewDate !== todayStr ? startViewDate : null);
             };
 
@@ -162,6 +168,7 @@ export function useDailyData(projects: Project[], settings: any, now: Date) {
         sessions,
         screenshots,
         plannedSessions,
+        appSessions,
         manualQuote,
         firstOpenedAt,
         liveSession,

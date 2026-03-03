@@ -96,40 +96,78 @@ export function PomodoroPanel() {
 
             {/* Central Area: Active Timer */}
             <div className="flex-1 flex flex-col items-center justify-center relative">
-                {pomodoro.activeTaskId ? (
-                    <div className="flex flex-col items-center animate-in zoom-in-95 duration-500">
-                        <div className="text-sm font-medium text-muted-foreground mb-8 flex items-center gap-2">
-                            <span>{activeTask?.title}</span>
-                            <span className="text-muted-foreground/30">&gt;</span>
-                        </div>
+                {(selectedTaskId || pomodoro.activeTaskId) ? (() => {
+                    const displayTaskId = selectedTaskId || pomodoro.activeTaskId;
+                    const displayTask = pomodoro.tasks.find(t => t.id === displayTaskId);
+                    const isActive = pomodoro.activeTaskId === displayTaskId;
+                    const isRunning = isActive && pomodoro.status === 'running';
 
-                        {/* Big Circle Timer */}
-                        <div className="relative w-80 h-80 rounded-full border-[12px] border-muted/30 flex items-center justify-center mb-12 shadow-inner">
-                            {/* Progress Ring Overlay (Mocked with simple arc or just rely on radial gradient / SVG) */}
-                            <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
-                                <circle
-                                    cx="50" cy="50" r="44"
-                                    fill="none" stroke="currentColor" strokeWidth="12"
-                                    className="text-blue-500 opacity-80"
-                                    strokeDasharray="276"
-                                    strokeDashoffset={276 - (276 * ((pomodoro.focusDuration - pomodoro.timeLeft) / pomodoro.focusDuration))}
-                                    strokeLinecap="round"
-                                />
-                            </svg>
-                            <div className="text-6xl font-black tracking-tight font-mono relative z-10 text-foreground">
-                                {timeString}
+                    const initialTime = (displayTask?.timerMode === 'pomodoro' && displayTask?.targetMinutes)
+                        ? displayTask.targetMinutes * 60
+                        : pomodoro.focusDuration;
+
+                    const displayTime = isActive ? pomodoro.timeLeft : initialTime;
+                    const totalDuration = isActive ? Math.max(pomodoro.focusDuration, initialTime) : initialTime;
+
+                    const minutes = Math.floor(displayTime / 60);
+                    const seconds = displayTime % 60;
+                    const displayTimeString = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+                    const progress = totalDuration > 0 ? (totalDuration - displayTime) / totalDuration : 0;
+                    const circleRadius = 154; // 160 - (12/2)
+                    const circleCircumference = 2 * Math.PI * circleRadius;
+                    const strokeDashoffset = circleCircumference - (circleCircumference * progress);
+
+                    return (
+                        <div className="flex flex-col items-center animate-in zoom-in-95 duration-500">
+                            <div className="text-sm font-medium text-muted-foreground mb-8 flex items-center gap-2">
+                                <span>{displayTask?.title}</span>
+                                <span className="text-muted-foreground/30">&gt;</span>
                             </div>
-                        </div>
 
-                        <Button
-                            variant="outline"
-                            className="rounded-full px-8 py-6 text-blue-500 border-blue-500/30 hover:bg-blue-500/10 font-medium tracking-wide"
-                            onClick={() => pomodoro.status === 'running' ? pomodoro.pause() : pomodoro.resume()}
-                        >
-                            {pomodoro.status === 'running' ? '일시 중지' : '다시 시작'}
-                        </Button>
-                    </div>
-                ) : (
+                            {/* Big Circle Timer */}
+                            <div className="relative w-80 h-80 rounded-full flex items-center justify-center mb-12 shadow-inner bg-muted/5">
+                                {/* Progress Ring Overlay */}
+                                <svg className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 320 320">
+                                    {/* Track */}
+                                    <circle
+                                        cx="160" cy="160" r={circleRadius}
+                                        fill="none" strokeWidth="12"
+                                        className="stroke-muted/30"
+                                    />
+                                    {/* Progress Ring */}
+                                    <circle
+                                        cx="160" cy="160" r={circleRadius}
+                                        fill="none" stroke="currentColor" strokeWidth="12"
+                                        className="text-blue-500 opacity-80 transition-all duration-1000 ease-linear"
+                                        strokeDasharray={circleCircumference}
+                                        strokeDashoffset={strokeDashoffset}
+                                        strokeLinecap="round"
+                                    />
+                                </svg>
+                                <div className="text-6xl font-black tracking-tight font-mono relative z-10 text-foreground">
+                                    {displayTimeString}
+                                </div>
+                            </div>
+
+                            <Button
+                                variant="outline"
+                                className="rounded-full px-8 py-6 text-blue-500 border-blue-500/30 hover:bg-blue-500/10 font-medium tracking-wide"
+                                onClick={() => {
+                                    if (isActive) {
+                                        isRunning ? pomodoro.pause() : pomodoro.resume();
+                                    } else {
+                                        if (displayTaskId) pomodoro.start(displayTaskId);
+                                    }
+                                }}
+                            >
+                                {isActive
+                                    ? (isRunning ? t('pomodoro.pause', '일시 중지') : t('pomodoro.resume', '다시 시작'))
+                                    : t('pomodoro.start', '시작')}
+                            </Button>
+                        </div>
+                    );
+                })() : (
                     <div className="text-muted-foreground flex flex-col items-center text-center opacity-50">
                         <div className="w-24 h-24 mb-6 rounded-full border-4 border-dashed border-muted-foreground/20 flex items-center justify-center">
                             <Target className="w-8 h-8" />

@@ -387,6 +387,55 @@ ipcMain.handle('get-daily-screenshots', async (_, dateStr: string) => {
   }
 });
 
+ipcMain.handle('get-screenshot-disk-usage', async () => {
+  try {
+    const settings = readJson(getSettingsPath(), DEFAULT_SETTINGS);
+
+    let baseDir = settings.screenshotPath;
+    if (!baseDir || baseDir.trim() === '') {
+      baseDir = path.join(getUserDataPath(), 'screenshots');
+    }
+
+    if (!fs.existsSync(baseDir)) {
+      try {
+        const stats = fs.statfsSync(path.dirname(baseDir));
+        const total = stats.blocks * stats.bsize;
+        const free = stats.bfree * stats.bsize;
+        return { total, free, usage: 0, path: baseDir };
+      } catch (e) {
+        return { total: 0, free: 0, usage: 0, path: baseDir };
+      }
+    }
+
+    let usage = 0;
+    const calculateSize = (dirPath: string) => {
+      try {
+        const items = fs.readdirSync(dirPath, { withFileTypes: true });
+        for (const item of items) {
+          const fullPath = path.join(dirPath, item.name);
+          if (item.isDirectory()) {
+            calculateSize(fullPath);
+          } else if (item.isFile() && /\.(jpg|jpeg|png)$/i.test(item.name)) {
+            usage += fs.statSync(fullPath).size;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to read dir for size:', dirPath, err);
+      }
+    };
+    calculateSize(baseDir);
+
+    const stats = fs.statfsSync(baseDir);
+    const total = stats.blocks * stats.bsize;
+    const free = stats.bfree * stats.bsize;
+
+    return { total, free, usage, path: baseDir };
+  } catch (error) {
+    console.error('Failed to get screenshot disk usage:', error);
+    return null;
+  }
+});
+
 ipcMain.handle('export-settings', async (_, settings: any) => {
   const { filePath } = await dialog.showSaveDialog({
     title: 'Export Settings',

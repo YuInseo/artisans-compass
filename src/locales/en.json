@@ -103,6 +103,7 @@
       "selectDisplayDesc": "Which monitor to capture.",
       "screenshotLocation": "Screenshot Location",
       "screenshotLocationDesc": "Where images are stored.",
+      "screenshotDiskUsage": "Screenshot Disk Usage: {{usage}} / {{total}} ({{percent}}%)",
       "change": "Change",
       "oldScreenshotsDesc": "Old screenshots remain in the previous location.",
       "defaultAppData": "Default (AppData)",
@@ -372,6 +373,8 @@
     "pomodoro": "Pomodoro"
   },
   "calendar": {
+    "appStarted": "Compass Started",
+    "appClosed": "Compass Closed",
     "currentTime": "CURRENT TIME",
     "firstLaunch": "FIRST LAUNCH",
     "today": "Today",

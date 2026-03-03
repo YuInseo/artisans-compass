@@ -210,6 +210,7 @@ export function StatisticsPanel({ focusedProject, navigationSignal }: Statistics
                             settings={settings}
                             onUpdateSettings={saveSettings}
                             firstOpenedAt={logData.firstOpenedAt}
+                            appSessions={logData.appSessions || []}
                         />
                     ) : null
                 ) : activeTab === 'overview' ? (

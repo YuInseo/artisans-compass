@@ -14,6 +14,7 @@ import {
 import { Info } from "lucide-react";
 import { AppSettings } from "@/types"
 import { useTranslation } from 'react-i18next';
+import { useState, useEffect } from "react";
 
 interface ScreenSource {
     id: string;
@@ -29,6 +30,21 @@ interface TrackingTabProps {
 
 export function TrackingTab({ settings, onSaveSettings, screenSources }: TrackingTabProps) {
     const { t } = useTranslation();
+    const [diskUsage, setDiskUsage] = useState<{ total: number, usage: number } | null>(null);
+
+    useEffect(() => {
+        if ((window as any).ipcRenderer?.getScreenshotDiskUsage) {
+            (window as any).ipcRenderer.getScreenshotDiskUsage().then(setDiskUsage);
+        }
+    }, [settings.screenshotPath]);
+
+    const formatBytes = (bytes: number) => {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -274,7 +290,22 @@ export function TrackingTab({ settings, onSaveSettings, screenSources }: Trackin
                                         {t('settings.tracking.change')}
                                     </Button>
                                 </div>
-                                <p className="text-[10px] text-muted-foreground text-right">
+
+                                {diskUsage && (
+                                    <div className="flex justify-between items-center text-[10.5px] mt-1 bg-muted/40 p-2 rounded border border-border/30">
+                                        <div className="flex items-center gap-1.5 text-muted-foreground/80">
+                                            <Info className="w-3 h-3" />
+                                            <span>
+                                                {t('settings.tracking.screenshotDiskUsage', {
+                                                    usage: formatBytes(diskUsage.usage),
+                                                    total: formatBytes(diskUsage.total),
+                                                    percent: diskUsage.total > 0 ? ((diskUsage.usage / diskUsage.total) * 100).toFixed(1) : '0'
+                                                })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                                <p className="text-[10px] text-muted-foreground text-right mt-1">
                                     {t('settings.tracking.oldScreenshotsDesc')}
                                 </p>
                             </div>

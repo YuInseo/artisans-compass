@@ -3,8 +3,10 @@ import { format, subDays, isSameDay, startOfWeek, endOfWeek, subWeeks, startOfMo
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useDataStore } from "@/hooks/useDataStore";
-import { ArrowUp, ArrowDown, Minus } from "lucide-react";
+import { ArrowUp, ArrowDown, Minus, ChevronLeft, ChevronRight, Plus, MoreHorizontal } from "lucide-react";
 import { usePomodoroStore } from "@/hooks/usePomodoroStore";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface FocusViewProps {
     className?: string;
@@ -88,7 +90,7 @@ function DonutChart({ data, size = 160, strokeWidth = 15, emptyText = "데이터
 
 export function FocusView({ className, date }: FocusViewProps) {
     const { t } = useTranslation();
-    const { getDailyLog } = useDataStore();
+    const { getDailyLog, projects } = useDataStore();
 
     const [donutPeriod, setDonutPeriod] = useState<'day' | 'week' | 'month'>('day');
     const [donutOffset, setDonutOffset] = useState<number>(0);
@@ -200,7 +202,21 @@ export function FocusView({ className, date }: FocusViewProps) {
 
             if (log?.sessions) {
                 log.sessions.forEach((s: any) => {
-                    const categoryName = s[donutCategoryBy] || 'Unknown';
+                    let categoryName = s[donutCategoryBy] || 'Unknown';
+
+                    if (donutCategoryBy === 'project') {
+                        // Sessions don't have projectId natively since they are tracked by process name
+                        // We must match the session's process name to a project name (case-insensitive)
+                        const processName = s.process || '';
+                        const matchedProject = projects.find((p: any) => p.name.toLowerCase() === processName.toLowerCase());
+
+                        if (matchedProject) {
+                            categoryName = matchedProject.name;
+                        } else {
+                            categoryName = 'Unknown';
+                        }
+                    }
+
                     const duration = s.durationSeconds ?? Math.round(s.duration || 0);
                     detailedStatsMap[categoryName] = (detailedStatsMap[categoryName] || 0) + duration;
                     donutTotalFocusTime += duration;
@@ -374,7 +390,7 @@ export function FocusView({ className, date }: FocusViewProps) {
             bestHour,
             yearlyData
         };
-    }, [date, todayData, yesterdayData, monthlyData, pomodoro.completedPomodoros, donutPeriod, donutOffset, donutCategoryBy]);
+    }, [date, todayData, yesterdayData, monthlyData, pomodoro.completedPomodoros, donutPeriod, donutOffset, donutCategoryBy, projects]);
 
 
     if (isLoading) {
@@ -460,25 +476,33 @@ export function FocusView({ className, date }: FocusViewProps) {
                         <div className="flex items-center justify-between w-full mb-6 relative z-30">
                             <h3 className="text-sm font-semibold tracking-tight text-foreground/90">세부 사항에 집중하세요.</h3>
                             <div className="flex gap-2 relative">
-                                <div className="relative flex items-center rounded-sm border border-border/10 hover:bg-muted/10 cursor-pointer overflow-hidden px-2">
-                                    <select value={donutCategoryBy} onChange={e => setDonutCategoryBy(e.target.value as any)} className="bg-transparent text-xs text-muted-foreground/60 outline-none appearance-none pr-3 relative cursor-pointer z-10 w-full">
-                                        <option value="process" className="bg-popover text-popover-foreground">앱</option>
-                                        <option value="project" className="bg-popover text-popover-foreground">리스트</option>
-                                    </select>
-                                    <span className="pointer-events-none absolute right-1 text-[8px] text-muted-foreground/60 z-0">∨</span>
-                                </div>
-                                <div className="relative flex items-center rounded-sm border border-border/10 hover:bg-muted/10 cursor-pointer overflow-hidden px-2">
-                                    <select value={donutPeriod} onChange={e => { setDonutPeriod(e.target.value as any); setDonutOffset(0); }} className="bg-transparent text-xs text-muted-foreground/60 outline-none appearance-none pr-3 relative cursor-pointer z-10 w-full">
-                                        <option value="day" className="bg-popover text-popover-foreground">일</option>
-                                        <option value="week" className="bg-popover text-popover-foreground">주</option>
-                                        <option value="month" className="bg-popover text-popover-foreground">월</option>
-                                    </select>
-                                    <span className="pointer-events-none absolute right-1 text-[8px] text-muted-foreground/60 z-0">∨</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-xs text-muted-foreground/60 px-2 py-0.5 rounded-sm border border-border/10">
-                                    <button onClick={() => setDonutOffset(prev => prev + 1)} className="hover:text-foreground relative z-10">&lt;</button>
+                                <Select value={donutCategoryBy} onValueChange={v => setDonutCategoryBy(v as any)}>
+                                    <SelectTrigger className="h-8 text-xs border-border/10 bg-transparent hover:bg-muted/10 w-[80px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="process">앱</SelectItem>
+                                        <SelectItem value="project">리스트</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Select value={donutPeriod} onValueChange={v => { setDonutPeriod(v as any); setDonutOffset(0); }}>
+                                    <SelectTrigger className="h-8 text-xs border-border/10 bg-transparent hover:bg-muted/10 w-[70px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="day">일</SelectItem>
+                                        <SelectItem value="week">주</SelectItem>
+                                        <SelectItem value="month">월</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground/60 rounded-md border border-border/10 bg-transparent p-0.5">
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 rounded-sm text-muted-foreground hover:bg-muted/20 hover:text-foreground" onClick={() => setDonutOffset(prev => prev + 1)}>
+                                        <ChevronLeft className="w-3.5 h-3.5" />
+                                    </Button>
                                     <span className="text-foreground/80 font-medium px-1 min-w-[34px] text-center">{stats.donutDateLabel}</span>
-                                    <button onClick={() => setDonutOffset(prev => Math.max(0, prev - 1))} className={cn("hover:text-foreground relative z-10", donutOffset === 0 && "opacity-30 pointer-events-none")}>&gt;</button>
+                                    <Button variant="ghost" size="icon" disabled={donutOffset === 0} className="h-6 w-6 rounded-sm text-muted-foreground hover:bg-muted/20 hover:text-foreground" onClick={() => setDonutOffset(prev => Math.max(0, prev - 1))}>
+                                        <ChevronRight className="w-3.5 h-3.5" />
+                                    </Button>
                                 </div>
                             </div>
                         </div>
@@ -514,9 +538,13 @@ export function FocusView({ className, date }: FocusViewProps) {
                     <div className="lg:col-span-1 bg-card/40 border border-border/40 rounded-2xl p-6 shadow-sm flex flex-col max-h-[400px] hover:bg-card/60 transition-colors">
                         <div className="flex items-center justify-between w-full mb-6 relative shrink-0">
                             <h3 className="text-sm font-semibold tracking-tight text-foreground/90">집중 기록</h3>
-                            <div className="flex gap-2 text-muted-foreground/60">
-                                <button className="hover:text-foreground">+</button>
-                                <button className="hover:text-foreground">···</button>
+                            <div className="flex items-center gap-1 text-muted-foreground/60">
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:bg-muted/30">
+                                    <Plus className="w-4 h-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:bg-muted/30">
+                                    <MoreHorizontal className="w-4 h-4" />
+                                </Button>
                             </div>
                         </div>
 
@@ -566,11 +594,22 @@ export function FocusView({ className, date }: FocusViewProps) {
                         <div className="flex items-center justify-between w-full mb-1">
                             <h3 className="text-sm font-semibold tracking-tight text-foreground/90">트렌드</h3>
                             <div className="flex gap-2 text-muted-foreground/60">
-                                <span className="text-xs px-2 flex items-center rounded-sm border border-border/10 hover:bg-muted/10 cursor-pointer">주 ∨</span>
-                                <div className="flex items-center gap-2 text-xs px-2 py-0.5 rounded-sm border border-border/10">
-                                    <button className="hover:text-foreground">&lt;</button>
-                                    <span className="text-foreground/80 font-medium">이번 주</span>
-                                    <button className="hover:text-foreground">&gt;</button>
+                                <Select value="week">
+                                    <SelectTrigger className="h-8 text-xs border-border/10 bg-transparent hover:bg-muted/10 w-[60px]" disabled>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="week">주</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <div className="flex items-center gap-1 text-xs text-muted-foreground/60 rounded-md border border-border/10 bg-transparent p-0.5">
+                                    <Button variant="ghost" size="icon" disabled className="h-6 w-6 rounded-sm text-muted-foreground hover:bg-muted/20 hover:text-foreground">
+                                        <ChevronLeft className="w-3.5 h-3.5" />
+                                    </Button>
+                                    <span className="text-foreground/80 font-medium px-1 min-w-[34px] text-center">이번 주</span>
+                                    <Button variant="ghost" size="icon" disabled className="h-6 w-6 rounded-sm text-muted-foreground hover:bg-muted/20 hover:text-foreground">
+                                        <ChevronRight className="w-3.5 h-3.5" />
+                                    </Button>
                                 </div>
                             </div>
                         </div>
@@ -625,10 +664,14 @@ export function FocusView({ className, date }: FocusViewProps) {
                     <div className="bg-card/40 border border-border/40 rounded-2xl p-6 shadow-sm flex flex-col min-h-[300px] hover:bg-card/60 transition-colors">
                         <div className="flex items-center justify-between w-full mb-6 relative z-10">
                             <h3 className="text-sm font-semibold tracking-tight text-foreground/90">타임라인</h3>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground/60 px-2 py-0.5 rounded-sm border border-border/10">
-                                <button className="hover:text-foreground">&lt;</button>
-                                <span className="text-foreground/80 font-medium">이번 주</span>
-                                <button className="hover:text-foreground">&gt;</button>
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground/60 rounded-md border border-border/10 bg-transparent p-0.5">
+                                <Button variant="ghost" size="icon" disabled className="h-6 w-6 rounded-sm text-muted-foreground hover:bg-muted/20 hover:text-foreground">
+                                    <ChevronLeft className="w-3.5 h-3.5" />
+                                </Button>
+                                <span className="text-foreground/80 font-medium px-1 min-w-[34px] text-center">이번 주</span>
+                                <Button variant="ghost" size="icon" disabled className="h-6 w-6 rounded-sm text-muted-foreground hover:bg-muted/20 hover:text-foreground">
+                                    <ChevronRight className="w-3.5 h-3.5" />
+                                </Button>
                             </div>
                         </div>
 
@@ -705,10 +748,10 @@ export function FocusView({ className, date }: FocusViewProps) {
                 {/* Optimal Focus Time (24h Bar Chart) */}
                 <div className="lg:col-span-1 bg-card/40 border border-border/40 rounded-2xl p-6 shadow-sm flex flex-col min-h-[300px] hover:bg-card/60 transition-colors">
                     <div className="flex items-center justify-between w-full mb-1">
-                        <h3 className="text-sm font-semibold tracking-tight text-foreground/90">최적의 집중 시간</h3>
+                        <h3 className="text-sm font-semibold tracking-tight text-foreground/90">{t('statistics.optimalFocusTime', '최적의 집중 시간')}</h3>
                         <button className="text-muted-foreground/60 hover:text-foreground">···</button>
                     </div>
-                    <p className="text-xs text-muted-foreground mb-6">최고 시간: <span className="font-medium text-foreground">{stats.bestHour}:00</span></p>
+                    <p className="text-xs text-muted-foreground mb-6">{t('statistics.bestTime', '최고 시간')}: <span className="font-medium text-foreground">{stats.bestHour}:00</span></p>
 
                     <div className="flex-1 flex items-end justify-between gap-0.5 min-h-[160px] relative pt-2 pb-6">
                         {stats.optimalData.map((val, i) => {
@@ -717,7 +760,7 @@ export function FocusView({ className, date }: FocusViewProps) {
                             const isBest = i === stats.bestHour && val > 0;
 
                             return (
-                                <div key={i} className="flex flex-col items-center gap-1 flex-1 h-full justify-end group">
+                                <div key={i} className="relative flex flex-col items-center gap-1 flex-1 h-full justify-end group">
                                     <div className="w-full relative flex md:items-end justify-center rounded-sm h-full">
                                         <div
                                             className={cn(

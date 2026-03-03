@@ -1,0 +1,1 @@
+* **Internationalization (i18n) Added**: Integrated multilingual support for the 'Optimal Focus Time' chart title and the best time label, ensuring the text displays correctly according to the user's language preferences.

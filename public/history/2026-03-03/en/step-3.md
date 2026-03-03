@@ -1,0 +1,1 @@
+* **Internationalization (i18n) Locale Update**: Resolved an issue where 'DailyArchive' on the tab menu was hardcoded in translation files. Updated the Korean translation to '일일 아카이브' and the Japanese text to '日次アーカイブ' for accurate localized display.

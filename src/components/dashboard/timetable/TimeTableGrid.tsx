@@ -163,6 +163,9 @@ export function TimeTableGrid({
                                 const startMins = differenceInMinutes(startDate, viewDate);
                                 const endMins = differenceInMinutes(endDate, viewDate);
 
+                                const isCurrentlyRunning = (now.getTime() - endDate.getTime()) < 120000;
+                                const showEndLine = (endMins - startMins > 1) && !isCurrentlyRunning;
+
                                 const renderLine = (mins: number, d: Date, label: string) => {
                                     if (mins < 0 || mins > TOTAL_MINUTES) return null;
                                     const topPct = (mins / TOTAL_MINUTES) * 100;
@@ -189,7 +192,7 @@ export function TimeTableGrid({
                                 return (
                                     <Fragment key={`app-session-${i}`}>
                                         {renderLine(startMins, startDate, t('calendar.appStarted') || "App Started")}
-                                        {endMins - startMins > 1 && renderLine(endMins, endDate, t('calendar.appClosed') || "App Closed")}
+                                        {showEndLine && renderLine(endMins, endDate, t('calendar.appClosed') || "App Closed")}
                                     </Fragment>
                                 );
                             })}

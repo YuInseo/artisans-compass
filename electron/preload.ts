@@ -45,6 +45,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
   getRunningApps: () => ipcRenderer.invoke('get-running-apps'),
   showNotification: (offset: { title: string, body: string }) => ipcRenderer.invoke('show-notification', offset),
+  getScreenshotDiskUsage: () => ipcRenderer.invoke('get-screenshot-disk-usage'),
 
   onTrackingUpdate: (callback: (state: any) => void) => {
     const listener = (_event: any, state: any) => callback(state);
