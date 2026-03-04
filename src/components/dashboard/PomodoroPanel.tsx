@@ -3,14 +3,23 @@ import { useState } from "react";
 import { usePomodoroStore } from "@/hooks/usePomodoroStore";
 import { useDataStore } from "@/hooks/useDataStore";
 import { Button } from "@/components/ui/button";
-import { Play, Pause, Square, Target } from "lucide-react";
+import { Play, Pause, Square, Target, Edit2, Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { AddPomodoroTaskDialog } from "./AddPomodoroTaskDialog";
+import {
+    ContextMenu,
+    ContextMenuContent,
+    ContextMenuItem,
+    ContextMenuSeparator,
+    ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 
 export function PomodoroPanel() {
     const { t } = useTranslation();
     const pomodoro = usePomodoroStore();
     const dataStore = useDataStore();
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+    const [editTaskId, setEditTaskId] = useState<string | null>(null);
 
     // Format time left (mm:ss)
     const minutes = Math.floor(pomodoro.timeLeft / 60);
@@ -32,39 +41,60 @@ export function PomodoroPanel() {
                         const isRunning = pomodoro.activeTaskId === task.id && pomodoro.status === 'running';
                         const isSelected = selectedTaskId === task.id;
                         return (
-                            <div
-                                key={task.id}
-                                className={`flex items-center justify-between p-3 rounded-lg group cursor-pointer border border-transparent transition-colors ${isSelected ? 'bg-muted/50 border-border/50 shadow-sm' : 'hover:bg-muted/30'}`}
-                                onClick={() => setSelectedTaskId(task.id)}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs bg-orange-500/10 text-orange-500">
-                                        {task.icon || '🔥'}
-                                    </div>
-                                    <span className={`font-medium text-sm ${isSelected ? 'text-foreground' : 'text-foreground/80'}`}>{task.title}</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <span className={`text-xs font-bold text-muted-foreground px-2 py-0.5 rounded-full ${isSelected ? 'bg-background shadow-sm' : 'bg-muted'}`}>{task.focusCount} 🍅</span>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        className={`h-6 w-6 rounded-full text-blue-500 hover:bg-blue-500/10 hover:text-blue-600 transition-opacity ${isRunning ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            if (isRunning) {
-                                                pomodoro.pause();
-                                            } else {
-                                                pomodoro.start(task.id);
-                                            }
-                                        }}
+                            <ContextMenu key={task.id}>
+                                <ContextMenuTrigger asChild>
+                                    <div
+                                        className={`flex items-center justify-between p-3 rounded-lg group cursor-pointer border border-transparent transition-colors ${isSelected ? 'bg-muted/50 border-border/50 shadow-sm' : 'hover:bg-muted/30'}`}
+                                        onClick={() => setSelectedTaskId(task.id)}
                                     >
-                                        {isRunning ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
-                                    </Button>
-                                </div>
-                            </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs bg-orange-500/10 text-orange-500">
+                                                {task.icon || '🔥'}
+                                            </div>
+                                            <span className={`font-medium text-sm ${isSelected ? 'text-foreground' : 'text-foreground/80'}`}>{task.title}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`text-xs font-bold text-muted-foreground px-2 py-0.5 rounded-full ${isSelected ? 'bg-background shadow-sm' : 'bg-muted'}`}>{task.focusCount} 🍅</span>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className={`h-6 w-6 rounded-full text-blue-500 hover:bg-blue-500/10 hover:text-blue-600 transition-opacity ${isRunning ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (isRunning) {
+                                                        pomodoro.pause();
+                                                    } else {
+                                                        pomodoro.start(task.id);
+                                                    }
+                                                }}
+                                            >
+                                                {isRunning ? <Pause className="w-3.5 h-3.5 fill-current" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </ContextMenuTrigger>
+                                <ContextMenuContent className="w-48">
+                                    <ContextMenuItem onClick={() => {
+                                        setEditTaskId(task.id);
+                                    }}>
+                                        <Edit2 className="h-4 w-4 mr-2" />
+                                        {t('pomodoro.edit', '편집')}
+                                    </ContextMenuItem>
+                                    <ContextMenuSeparator />
+                                    <ContextMenuItem
+                                        onClick={() => {
+                                            if (selectedTaskId === task.id) setSelectedTaskId(null);
+                                            pomodoro.deleteTask(task.id);
+                                        }}
+                                        className="text-red-500 focus:text-red-600 focus:bg-red-500/10"
+                                    >
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        {t('pomodoro.delete', '삭제')}
+                                    </ContextMenuItem>
+                                </ContextMenuContent>
+                            </ContextMenu>
                         );
                     })}
-
                 </div>
 
                 {/* Bottom Left: Global Timer Controls (if active) */}
@@ -322,6 +352,15 @@ export function PomodoroPanel() {
                     </>
                 )}
             </div>
+
+            {/* Edit Task Modal */}
+            <AddPomodoroTaskDialog
+                open={!!editTaskId}
+                onOpenChange={(open) => {
+                    if (!open) setEditTaskId(null);
+                }}
+                taskId={editTaskId}
+            />
         </div>
     );
 }

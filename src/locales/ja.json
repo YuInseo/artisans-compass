@@ -20,6 +20,9 @@
       "widgetHeaderDesc": "ウィジェットの上部に表示されるコンテンツ",
       "selectDisplay": "表示を選択",
       "none": "なし",
+      "quotesAndReminders": {
+        "title": "名言とリマインダー"
+      },
       "dailyQuote": "今日の名言",
       "focusGoals": "集中目標",
       "widgetMaxHeight": "ウィジェットの最大高さ",
@@ -76,6 +79,7 @@
       "screenshotLocation": "スクリーンショット保存場所",
       "screenshotLocationDesc": "画像が保存される場所です。",
       "screenshotDiskUsage": "スクリーンショットディスク使用量: {{usage}} / {{total}} ({{percent}}%)",
+      "calculatingDiskUsage": "ディスク使用量を計算中...",
       "change": "変更",
       "oldScreenshotsDesc": "古いスクリーンショットは以前の場所に残ります。",
       "defaultAppData": "デフォルト (AppData)",
@@ -156,6 +160,10 @@
     "daysForNew": "日 (新規プロジェクト用)",
     "timeline": {
       "title": "タイムライン設定",
+      "categoryDisplay": "ビューと表示項目",
+      "categoryIndicators": "時間インジケーターとマーカー",
+      "categoryInteraction": "インターラクションと制限",
+      "ignoredAppsColor": "無視されたアプリの色",
       "showPreview": "ドラッグプレビューを表示",
       "showPreviewDesc": "ドラッグまたはサイズ変更時に、変更後の位置を点線でプレビュー表示します。",
       "lockFutureDates": "未来の日付をロック",
@@ -223,7 +231,8 @@
     "save": "保存",
     "cancel": "キャンセル",
     "delete": "削除",
-    "edit": "編集",
+    "editTask": "集中モードを編集する",
+    "pomo": "ポモ",
     "confirm": "確認",
     "add": "追加",
     "search": "検索...",

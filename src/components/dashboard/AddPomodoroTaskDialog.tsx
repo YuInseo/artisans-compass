@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -10,9 +10,10 @@ import { Edit2, Link as LinkIcon } from "lucide-react";
 interface AddPomodoroTaskDialogProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
+    taskId?: string | null;
 }
 
-export function AddPomodoroTaskDialog({ open, onOpenChange }: AddPomodoroTaskDialogProps) {
+export function AddPomodoroTaskDialog({ open, onOpenChange, taskId }: AddPomodoroTaskDialogProps) {
     const { t } = useTranslation();
     const pomodoro = usePomodoroStore();
 
@@ -21,20 +22,44 @@ export function AddPomodoroTaskDialog({ open, onOpenChange }: AddPomodoroTaskDia
     const [targetMinutes, setTargetMinutes] = useState(60);
     const [icon, setIcon] = useState("🙂");
 
+    useEffect(() => {
+        if (open) {
+            if (taskId) {
+                const task = pomodoro.tasks.find(t => t.id === taskId);
+                if (task) {
+                    setTitle(task.title);
+                    setTimerMode(task.timerMode || 'pomodoro');
+                    setTargetMinutes(task.targetMinutes || 60);
+                    setIcon(task.icon || "🙂");
+                }
+            } else {
+                setTitle("");
+                setTimerMode('pomodoro');
+                setTargetMinutes(60);
+                setIcon("🙂");
+            }
+        }
+    }, [open, taskId, pomodoro.tasks]);
+
     const handleSave = () => {
         if (!title.trim()) return;
 
-        pomodoro.addTask({
-            title: title.trim(),
-            timerMode,
-            targetMinutes: timerMode === 'pomodoro' ? targetMinutes : undefined,
-            icon
-        });
+        if (taskId) {
+            pomodoro.updateTask(taskId, {
+                title: title.trim(),
+                timerMode,
+                targetMinutes: timerMode === 'pomodoro' ? targetMinutes : undefined,
+                icon
+            });
+        } else {
+            pomodoro.addTask({
+                title: title.trim(),
+                timerMode,
+                targetMinutes: timerMode === 'pomodoro' ? targetMinutes : undefined,
+                icon
+            });
+        }
 
-        setTitle("");
-        setTimerMode('pomodoro');
-        setTargetMinutes(60);
-        setIcon("🙂");
         onOpenChange(false);
     };
 
@@ -42,7 +67,7 @@ export function AddPomodoroTaskDialog({ open, onOpenChange }: AddPomodoroTaskDia
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
-                    <DialogTitle>{t('pomodoro.addCommonTask', '일반적으로 사용되는 집중 모드 추가하기')}</DialogTitle>
+                    <DialogTitle>{taskId ? t('pomodoro.editTask', '집중 모드 편집하기') : t('pomodoro.addCommonTask', '일반적으로 사용되는 집중 모드 추가하기')}</DialogTitle>
                 </DialogHeader>
 
                 <div className="grid gap-6 py-6 px-1">

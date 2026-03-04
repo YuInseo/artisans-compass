@@ -31,10 +31,14 @@ interface TrackingTabProps {
 export function TrackingTab({ settings, onSaveSettings, screenSources }: TrackingTabProps) {
     const { t } = useTranslation();
     const [diskUsage, setDiskUsage] = useState<{ total: number, usage: number } | null>(null);
+    const [isCalculatingDiskUsage, setIsCalculatingDiskUsage] = useState(false);
 
     useEffect(() => {
         if ((window as any).ipcRenderer?.getScreenshotDiskUsage) {
-            (window as any).ipcRenderer.getScreenshotDiskUsage().then(setDiskUsage);
+            setIsCalculatingDiskUsage(true);
+            (window as any).ipcRenderer.getScreenshotDiskUsage()
+                .then(setDiskUsage)
+                .finally(() => setIsCalculatingDiskUsage(false));
         }
     }, [settings.screenshotPath]);
 
@@ -291,16 +295,23 @@ export function TrackingTab({ settings, onSaveSettings, screenSources }: Trackin
                                     </Button>
                                 </div>
 
-                                {diskUsage && (
+                                {(diskUsage || isCalculatingDiskUsage) && (
                                     <div className="flex justify-between items-center text-[10.5px] mt-1 bg-muted/40 p-2 rounded border border-border/30">
                                         <div className="flex items-center gap-1.5 text-muted-foreground/80">
-                                            <Info className="w-3 h-3" />
+                                            {isCalculatingDiskUsage ? (
+                                                <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                            ) : (
+                                                <Info className="w-3 h-3 shrink-0" />
+                                            )}
                                             <span>
-                                                {t('settings.tracking.screenshotDiskUsage', {
-                                                    usage: formatBytes(diskUsage.usage),
-                                                    total: formatBytes(diskUsage.total),
-                                                    percent: diskUsage.total > 0 ? ((diskUsage.usage / diskUsage.total) * 100).toFixed(1) : '0'
-                                                })}
+                                                {isCalculatingDiskUsage
+                                                    ? t('settings.tracking.calculatingDiskUsage', '디스크 사용량 계산 중...')
+                                                    : diskUsage && t('settings.tracking.screenshotDiskUsage', {
+                                                        usage: formatBytes(diskUsage.usage),
+                                                        total: formatBytes(diskUsage.total),
+                                                        percent: diskUsage.total > 0 ? ((diskUsage.usage / diskUsage.total) * 100).toFixed(1) : '0'
+                                                    })
+                                                }
                                             </span>
                                         </div>
                                     </div>

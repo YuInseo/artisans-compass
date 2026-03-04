@@ -118,6 +118,28 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
     const [isIgnoredAppsOpen, setIsIgnoredAppsOpen] = useState(false);
     const [isWorkAppsListOpen, setIsWorkAppsListOpen] = useState(true);
 
+    const [isTrackedAppsOpen, setIsTrackedAppsOpen] = useState(false);
+    const [newAppInput, setNewAppInput] = useState("");
+
+    const addApp = (appName: string) => {
+        if (!settings) return;
+        if (appName && !settings.targetProcessPatterns?.includes(appName)) {
+            onSaveSettings({
+                ...settings,
+                targetProcessPatterns: [...(settings.targetProcessPatterns || []), appName]
+            });
+        }
+        setNewAppInput("");
+    };
+
+    const removeApp = (appToRemove: string) => {
+        if (!settings) return;
+        onSaveSettings({
+            ...settings,
+            targetProcessPatterns: settings.targetProcessPatterns?.filter(app => app !== appToRemove) || []
+        });
+    };
+
     // Local state for Night Time Start preview
     const [previewTime, setPreviewTime] = useState(settings.nightTimeStart || 22);
 
@@ -142,8 +164,127 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
 
 
 
+            {/* Tracked Apps Section (Collapsible) */}
+            <div className="flex flex-col bg-muted/30 rounded-lg border border-border/50 overflow-hidden" id="settings-tracked-apps-card">
+                <div
+                    className="flex items-center justify-between p-4 bg-muted/20 cursor-pointer hover:bg-muted/30 transition-colors"
+                    onClick={() => setIsTrackedAppsOpen(!isTrackedAppsOpen)}
+                >
+                    <div className="space-y-0.5">
+                        <Label className="text-base font-semibold cursor-pointer">{t('settings.trackedApps')}</Label>
+                        <p className="text-xs text-muted-foreground opacity-80">
+                            {t('settings.autoTrackingDesc')}
+                        </p>
+                    </div>
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        {isTrackedAppsOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </Button>
+                </div>
 
+                {isTrackedAppsOpen && (
+                    <div className="flex flex-col gap-4 p-4 border-t border-border/50 animate-in slide-in-from-top-2 fade-in duration-200">
 
+                        {/* 1. Tracked (Configured) Apps List */}
+                        <div className="flex flex-col gap-2">
+                            <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide">
+                                {t('settings.monitoredProcesses')}
+                            </Label>
+                            <div className="flex flex-wrap gap-2 min-h-[40px] p-3 rounded-lg bg-background border border-border/50">
+                                {settings.targetProcessPatterns?.map(app => (
+                                    <div key={app} className="flex items-center gap-1 bg-muted px-2 py-1.5 rounded text-xs font-medium border border-border">
+                                        {app}
+                                        <button
+                                            onClick={() => removeApp(app)}
+                                            className="hover:text-destructive transition-colors ml-1"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                                {(!settings.targetProcessPatterns || settings.targetProcessPatterns.length === 0) && (
+                                    <div className="text-xs text-muted-foreground italic p-1">{t('settings.runningApps.noAppsConfigured')}</div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* 2. Manual Add Input */}
+                        <div className="flex gap-2">
+                            <Input
+                                placeholder={t('settings.runningApps.placeholder')}
+                                value={newAppInput}
+                                onChange={(e) => setNewAppInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && addApp(newAppInput)}
+                                className="h-9 text-sm bg-background border-input"
+                            />
+                            <Button
+                                size="sm"
+                                onClick={() => addApp(newAppInput)}
+                                className="h-9 shrink-0"
+                            >
+                                {t('common.add')}
+                            </Button>
+                        </div>
+
+                        {/* 3. Running Apps List (with Search) */}
+                        <div className="pt-4 border-t border-border/50">
+                            <h4 className="text-sm font-semibold mb-2">{t('settings.runningApps.title')}</h4>
+                            <div className="bg-muted/40 rounded-lg p-2 border border-border/50">
+                                <Input
+                                    className="h-8 mb-2 bg-background/50 border-border/50"
+                                    placeholder={t("common.search")}
+                                    value={newAppInput}
+                                    onChange={(e) => setNewAppInput(e.target.value)}
+                                />
+                                <div className="space-y-1 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
+                                    {runningApps.length === 0 ? (
+                                        <div className="p-4 text-center text-sm text-muted-foreground">{t('settings.runningApps.scanning')}</div>
+                                    ) : (
+                                        <>
+                                            {runningApps
+                                                .filter(app => {
+                                                    const identifier = app.process || app.name;
+                                                    const isAlreadyTracked = settings.targetProcessPatterns?.includes(identifier);
+                                                    const matchesSearch = !newAppInput ||
+                                                        (app.process && app.process.toLowerCase().includes(newAppInput.toLowerCase())) ||
+                                                        (app.name && app.name.toLowerCase().includes(newAppInput.toLowerCase()));
+
+                                                    return !isAlreadyTracked && matchesSearch;
+                                                })
+                                                .map((app, idx) => (
+                                                    <div
+                                                        key={`${app.id}-${idx}`}
+                                                        className="flex items-center justify-between p-2 rounded hover:bg-muted/50 group"
+                                                    >
+                                                        <div className="flex flex-col min-w-0">
+                                                            {(settings.runningAppsDisplayMode === 'both' || settings.runningAppsDisplayMode === 'title' || !settings.runningAppsDisplayMode) && (
+                                                                <span className="text-sm font-medium truncate">{app.name}</span>
+                                                            )}
+                                                            {(settings.runningAppsDisplayMode === 'both' || settings.runningAppsDisplayMode === 'process' || !settings.runningAppsDisplayMode) && (
+                                                                <span className={cn(
+                                                                    "truncate",
+                                                                    settings.runningAppsDisplayMode === 'process' ? "text-sm font-medium" : "text-xs text-muted-foreground opacity-70"
+                                                                )}>{app.process}</span>
+                                                            )}
+                                                        </div>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => addApp(app.process || app.name)}
+                                                            className="h-7 text-xs bg-background hover:bg-primary/10 hover:text-primary border border-border/50"
+                                                        >
+                                                            {t('common.add')}
+                                                        </Button>
+                                                    </div>
+                                                ))
+                                            }
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            </div>
 
             {/* Ignored Apps Section (Non-Work Programs) */}
             <div className="flex flex-col bg-muted/30 rounded-lg border border-border/50 overflow-hidden" id="settings-ignored-apps">
@@ -428,116 +569,140 @@ export function TimetableTab({ settings, onSaveSettings, runningApps }: Timeline
 
 
 
-            {/* Grid Mode Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-4">
-                <div className="space-y-0.5">
-                    <Label className="text-base font-semibold">{t('settings.timeline.gridMode') || "15-Minute Snapping"}</Label>
-                    <p className="text-xs text-muted-foreground opacity-80">
-                        {t('settings.timeline.gridModeDesc') || "Snap blocks to 15m grid"}
-                    </p>
+            {/* Category: View & Display */}
+            <div className="flex flex-col bg-muted/30 rounded-lg border border-border/50 overflow-hidden mt-6">
+                <div className="bg-muted/50 px-4 py-2 border-b border-border/50">
+                    <h4 className="text-sm font-semibold text-foreground">{t('settings.timeline.categoryDisplay') || "타임테이블 뷰 및 표시항목"}</h4>
                 </div>
-                <Switch
-                    checked={settings.timelineGridMode !== 'continuous'}
-                    onCheckedChange={(checked) => onSaveSettings({ ...settings, timelineGridMode: checked ? '15min' : 'continuous' })}
-                />
+                <div className="flex flex-col divide-y divide-border/40">
+                    {/* Grid Mode Toggle */}
+                    <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">{t('settings.timeline.gridMode') || "15-Minute Snapping"}</Label>
+                            <p className="text-[11px] text-muted-foreground opacity-80">
+                                {t('settings.timeline.gridModeDesc') || "Snap blocks to 15m grid"}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.timelineGridMode !== 'continuous'}
+                            onCheckedChange={(checked) => onSaveSettings({ ...settings, timelineGridMode: checked ? '15min' : 'continuous' })}
+                        />
+                    </div>
+
+                    {/* Show Routines Toggle */}
+                    <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">{t('settings.timeline.showRoutines') || "반복 루틴 표시"}</Label>
+                            <p className="text-[11px] text-muted-foreground opacity-80">
+                                {t('settings.timeline.showRoutinesDesc') || "타임테이블에 반복 루틴을 보여줍니다"}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.showRoutinesInTimetable ?? true}
+                            onCheckedChange={(checked) => onSaveSettings({ ...settings, showRoutinesInTimetable: checked })}
+                        />
+                    </div>
+
+                    {/* Show Planned Sessions Toggle */}
+                    <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">{t('settings.timeline.showPlannedSessions') || "돌발일정 표시"}</Label>
+                            <p className="text-[11px] text-muted-foreground opacity-80">
+                                {t('settings.timeline.showPlannedSessionsDesc') || "타임테이블에 분리된 형태로 돌발일정을 함께 표시합니다"}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.showPlannedSessions ?? false}
+                            onCheckedChange={(checked) => onSaveSettings({ ...settings, showPlannedSessions: checked })}
+                        />
+                    </div>
+
+                    {/* Detail View Toggle */}
+                    <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors" id="settings-detail-view">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">{t('settings.timeline.detailView') || "Detail View"}</Label>
+                            <p className="text-[11px] text-muted-foreground opacity-80">
+                                {t('settings.timeline.detailViewDesc') || "Show every distinct application switch, even if brief"}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.timelineShowDetail || false}
+                            onCheckedChange={(checked) => onSaveSettings({ ...settings, timelineShowDetail: checked })}
+                        />
+                    </div>
+                </div>
             </div>
 
-            {/* Show Routines Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
-                <div className="space-y-0.5">
-                    <Label className="text-base font-semibold">{t('settings.timeline.showRoutines') || "반복 루틴 표시"}</Label>
-                    <p className="text-xs text-muted-foreground opacity-80">
-                        {t('settings.timeline.showRoutinesDesc') || "타임테이블에 반복 루틴을 보여줍니다"}
-                    </p>
+            {/* Category: Time Indicators */}
+            <div className="flex flex-col bg-muted/30 rounded-lg border border-border/50 overflow-hidden mt-6">
+                <div className="bg-muted/50 px-4 py-2 border-b border-border/50">
+                    <h4 className="text-sm font-semibold text-foreground">{t('settings.timeline.categoryIndicators') || "시간 안내선 및 마커"}</h4>
                 </div>
-                <Switch
-                    checked={settings.showRoutinesInTimetable ?? true}
-                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showRoutinesInTimetable: checked })}
-                />
+                <div className="flex flex-col divide-y divide-border/40">
+                    {/* Current Time Indicator Toggle */}
+                    <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">{t('settings.timeline.showCurrentTime') || "Show Current Time"}</Label>
+                            <p className="text-[11px] text-muted-foreground opacity-80">
+                                {t('settings.timeline.showCurrentTimeDesc') || "Display a red dotted line indicating the current time on the timeline"}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.showCurrentTimeIndicator !== false}
+                            onCheckedChange={(checked) => onSaveSettings({ ...settings, showCurrentTimeIndicator: checked })}
+                        />
+                    </div>
+
+                    {/* Show First Launch Indicator Toggle */}
+                    <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">{t('settings.timeline.showFirstLaunchIndicator') || "Show First Launch Time"}</Label>
+                            <p className="text-[11px] text-muted-foreground opacity-80">
+                                {t('settings.timeline.showFirstLaunchIndicatorDesc') || "Display the time when the app was first opened on the timetable"}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.showFirstLaunchIndicator ?? true}
+                            onCheckedChange={(checked) => onSaveSettings({ ...settings, showFirstLaunchIndicator: checked })}
+                        />
+                    </div>
+
+                    {/* App On/Off Indicator Toggle */}
+                    <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">{t('settings.timeline.showAppOnOffIndicator') || "앱 켜짐/꺼짐 시각 표시"}</Label>
+                            <p className="text-[11px] text-muted-foreground opacity-80">
+                                {t('settings.timeline.showAppOnOffIndicatorDesc') || "타임테이블에 앱을 켜고 끈 시간을 점선으로 표시합니다"}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.showAppOnOffIndicator ?? true}
+                            onCheckedChange={(checked) => onSaveSettings({ ...settings, showAppOnOffIndicator: checked })}
+                        />
+                    </div>
+                </div>
             </div>
 
-            {/* Show Planned Sessions Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
-                <div className="space-y-0.5">
-                    <Label className="text-base font-semibold">{t('settings.timeline.showPlannedSessions') || "돌발일정 표시"}</Label>
-                    <p className="text-xs text-muted-foreground opacity-80">
-                        {t('settings.timeline.showPlannedSessionsDesc') || "타임테이블에 분리된 형태로 돌발일정을 함께 표시합니다."}
-                    </p>
+            {/* Category: Interaction & Restrictions */}
+            <div className="flex flex-col bg-muted/30 rounded-lg border border-border/50 overflow-hidden mt-6">
+                <div className="bg-muted/50 px-4 py-2 border-b border-border/50">
+                    <h4 className="text-sm font-semibold text-foreground">{t('settings.timeline.categoryInteraction') || "상호작용 및 동작 제어"}</h4>
                 </div>
-                <Switch
-                    checked={settings.showPlannedSessions ?? false}
-                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showPlannedSessions: checked })}
-                />
-            </div>
-
-            {/* Detail View Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2" id="settings-detail-view">
-                <div className="space-y-0.5">
-                    <Label className="text-base font-semibold">{t('settings.timeline.detailView') || "Detail View"}</Label>
-                    <p className="text-xs text-muted-foreground opacity-80">
-                        {t('settings.timeline.detailViewDesc') || "Show every distinct application switch, even if brief."}
-                    </p>
+                <div className="flex flex-col divide-y divide-border/40">
+                    {/* Lock Future Dates Toggle */}
+                    <div className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors">
+                        <div className="space-y-0.5">
+                            <Label className="text-sm font-medium">{t('settings.timeline.lockFutureDates') || "Lock Future Dates"}</Label>
+                            <p className="text-[11px] text-muted-foreground opacity-80">
+                                {t('settings.timeline.lockFutureDatesDesc') || "Prevent navigating or adding events to dates beyond today"}
+                            </p>
+                        </div>
+                        <Switch
+                            checked={settings.lockFutureDates || false}
+                            onCheckedChange={(checked) => onSaveSettings({ ...settings, lockFutureDates: checked })}
+                        />
+                    </div>
                 </div>
-                <Switch
-                    checked={settings.timelineShowDetail || false}
-                    onCheckedChange={(checked) => onSaveSettings({ ...settings, timelineShowDetail: checked })}
-                />
-            </div>
-
-            {/* Current Time Indicator Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
-                <div className="space-y-0.5">
-                    <Label className="text-base font-semibold">{t('settings.timeline.showCurrentTime') || "Show Current Time"}</Label>
-                    <p className="text-xs text-muted-foreground opacity-80">
-                        {t('settings.timeline.showCurrentTimeDesc') || "Display a red dotted line indicating the current time on the timeline."}
-                    </p>
-                </div>
-                <Switch
-                    checked={settings.showCurrentTimeIndicator !== false}
-                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showCurrentTimeIndicator: checked })}
-                />
-            </div>
-
-            {/* Lock Future Dates Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
-                <div className="space-y-0.5">
-                    <Label className="text-base font-semibold">{t('settings.timeline.lockFutureDates') || "Lock Future Dates"}</Label>
-                    <p className="text-xs text-muted-foreground opacity-80">
-                        {t('settings.timeline.lockFutureDatesDesc') || "Prevent navigating or adding events to dates beyond today."}
-                    </p>
-                </div>
-                <Switch
-                    checked={settings.lockFutureDates || false}
-                    onCheckedChange={(checked) => onSaveSettings({ ...settings, lockFutureDates: checked })}
-                />
-            </div>
-
-            {/* Show First Launch Indicator Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
-                <div className="space-y-0.5">
-                    <Label className="text-base font-semibold">{t('settings.timeline.showFirstLaunchIndicator') || "Show First Launch Time"}</Label>
-                    <p className="text-xs text-muted-foreground opacity-80">
-                        {t('settings.timeline.showFirstLaunchIndicatorDesc') || "Display the time when the app was first opened on the timetable."}
-                    </p>
-                </div>
-                <Switch
-                    checked={settings.showFirstLaunchIndicator ?? true}
-                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showFirstLaunchIndicator: checked })}
-                />
-            </div>
-
-            {/* App On/Off Indicator Toggle */}
-            <div className="flex items-center justify-between p-4 border rounded-lg bg-card mt-2">
-                <div className="space-y-0.5">
-                    <Label className="text-base font-semibold">{t('settings.timeline.showAppOnOffIndicator') || "앱 켜짐/꺼짐 시각 표시"}</Label>
-                    <p className="text-xs text-muted-foreground opacity-80">
-                        {t('settings.timeline.showAppOnOffIndicatorDesc') || "타임테이블에 앱을 켜고 끈 시간을 점선으로 표시합니다."}
-                    </p>
-                </div>
-                <Switch
-                    checked={settings.showAppOnOffIndicator ?? true}
-                    onCheckedChange={(checked) => onSaveSettings({ ...settings, showAppOnOffIndicator: checked })}
-                />
             </div>
 
 

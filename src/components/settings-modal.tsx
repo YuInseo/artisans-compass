@@ -22,7 +22,7 @@ import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
 import { useTheme } from "@/components/theme-provider"
 import { Badge } from "@/components/ui/badge"
-import { X, Cloud, Check, Moon, Sun, Monitor, FileText, RefreshCw, History, Settings, Palette, LayoutTemplate, Shield, Database, Activity, Loader2 } from "lucide-react";
+import { X, Cloud, Check, Moon, Sun, Monitor, FileText, RefreshCw, History, Settings, Palette, LayoutTemplate, Shield, Database, Activity, Loader2, Sliders } from "lucide-react";
 import { AppSettings, AppInfo } from "@/types"
 import { useState, useEffect, useMemo } from "react"
 import { toast } from "sonner";
@@ -33,13 +33,13 @@ import { TimetableTab } from "./settings/timeline-tab";
 import { TimelineViewTab } from "./settings/timeline-view-tab";
 import { GeneralTab } from "./settings/general-tab";
 import { TrackingTab } from "./settings/tracking-tab";
+import { AdvancedTab } from "./settings/advanced-tab";
+import { QuotesRemindersTab } from "./settings/quotes-reminders-tab";
 // @ts-ignore
 import { NotionSetupDialog } from "./notion-setup-dialog"; // Import
-import { QuoteManager } from "./settings/QuoteManager";
-import { ReminderManager } from "./settings/ReminderManager";
 import { version } from "../../package.json";
 import { themes } from "@/config/themes";
-export type SettingsTab = 'general' | 'appearance' | 'quotes' | 'reminders' | 'timetable' | 'timeline' | 'calendar' | 'tracking' | 'integrations' | 'updatelog';
+export type SettingsTab = 'general' | 'appearance' | 'quotes-reminders' | 'timetable' | 'timeline' | 'calendar' | 'tracking' | 'integrations' | 'updatelog' | 'advanced';
 import { CalendarViewTab } from "./settings/calendar-view-tab";
 import { UpdateLogTab } from "./settings/update-log-tab";
 
@@ -571,17 +571,10 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
             )}
 
             <SidebarButton
-                active={activeTab === 'quotes'}
-                onClick={() => { setActiveTab('quotes'); setActiveSection(null); }}
-                label={t('settings.appearance.customQuotes.title')}
+                active={activeTab === 'quotes-reminders'}
+                onClick={() => { setActiveTab('quotes-reminders'); setActiveSection(null); }}
+                label={t('settings.appearance.quotesAndReminders.title') || "Quotes & Reminders"}
                 icon={<div className="w-4 h-4 mr-2 flex items-center justify-center font-serif text-xs font-bold">“</div>}
-            />
-
-            <SidebarButton
-                active={activeTab === 'reminders'}
-                onClick={() => { setActiveTab('reminders'); setActiveSection(null); }}
-                label={t('settings.appearance.reminders.title')}
-                icon={<div className="w-4 h-4 mr-2 flex items-center justify-center font-bold text-xs">!</div>}
             />
 
             <SidebarButton
@@ -649,6 +642,12 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                 icon={<Database className="w-4 h-4 mr-2" />}
             />
             <SidebarButton
+                active={activeTab === 'advanced'}
+                onClick={() => { setActiveTab('advanced'); setActiveSection(null); }}
+                label={t('settings.advanced') || "Advanced Settings"}
+                icon={<Sliders className="w-4 h-4 mr-2" />}
+            />
+            <SidebarButton
                 active={activeTab === 'updatelog'}
                 onClick={() => { setActiveTab('updatelog'); setActiveSection(null); }}
                 label={t('settings.updateLog') || "패치 노트"}
@@ -712,6 +711,13 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                             <div className="max-w-[700px] px-10 pt-6 pb-[80px]">
                                 {/* Tab Content */}
                                 {activeTab === 'general' && renderGeneralTab()}
+
+                                {activeTab === 'advanced' && (
+                                    <AdvancedTab
+                                        settings={settings}
+                                        onSaveSettings={onSaveSettings}
+                                    />
+                                )}
 
                                 {activeTab === 'calendar' && (
                                     <div className="space-y-6 animate-in fade-in duration-300">
@@ -914,10 +920,27 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                                                 <SelectItem value="timer">{t('dashboard.timer') || 'Focus Timer'}</SelectItem>
                                                             </SelectContent>
                                                         </Select>
-                                                        <span className="text-sm text-foreground">{t('settings.appearance.widgetHeaderDesc')}</span>
                                                     </div>
                                                 </div>
 
+                                                <div className="flex flex-col gap-3">
+                                                    <Label className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-2">{t('settings.widgetTextAlignment', 'Widget Text Alignment')}</Label>
+                                                    <div className="flex items-center gap-4 bg-muted/30 p-4 rounded-lg">
+                                                        <Select
+                                                            value={settings.widgetTextAlignment || 'left'}
+                                                            onValueChange={(val: 'left' | 'right') => onSaveSettings({ ...settings, widgetTextAlignment: val })}
+                                                        >
+                                                            <SelectTrigger className="w-[180px] bg-background border-none">
+                                                                <SelectValue placeholder={t('settings.selectAlignment', 'Select Alignment')} />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="left">{t('settings.alignmentLeft', 'Left Align')}</SelectItem>
+                                                                <SelectItem value="right">{t('settings.alignmentRight', 'Right Align')}</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <span className="text-sm text-foreground">{t('settings.widgetTextAlignmentDesc', 'Choose text alignment for the widget mode.')}</span>
+                                                    </div>
+                                                </div>
 
 
 
@@ -955,27 +978,13 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                     </>
                                 )}
 
-                                {activeTab === 'quotes' && (
+                                {activeTab === 'quotes-reminders' && (
                                     <>
                                         <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-1 mb-4">
-                                            <h3 className="text-xl font-bold text-foreground">Custom Quotes</h3>
+                                            <h3 className="text-xl font-bold text-foreground">{t('settings.appearance.quotesAndReminders.title') || "Quotes & Reminders"}</h3>
                                             <Separator className="bg-border/60 mt-2" />
                                         </div>
-                                        <div className="space-y-6 animate-in fade-in duration-300">
-                                            <QuoteManager />
-                                        </div>
-                                    </>
-                                )}
-
-                                {activeTab === 'reminders' && (
-                                    <>
-                                        <div className="sticky top-0 z-20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 pb-1 mb-4">
-                                            <h3 className="text-xl font-bold text-foreground">Reminders</h3>
-                                            <Separator className="bg-border/60 mt-2" />
-                                        </div>
-                                        <div className="space-y-6 animate-in fade-in duration-300">
-                                            <ReminderManager />
-                                        </div>
+                                        <QuotesRemindersTab />
                                     </>
                                 )}
 

@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Trash2, Plus, Quote, Edit2, Check, X } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useTranslation } from 'react-i18next';
 
 export function QuoteManager() {
@@ -53,6 +55,17 @@ export function QuoteManager() {
 
     return (
         <div className="space-y-6">
+            <div className="flex items-center justify-between bg-muted/30 p-4 rounded-xl border border-border/50">
+                <div className="space-y-0.5">
+                    <Label className="text-sm font-medium">{t('settings.enableQuotes', 'Show Daily Quote')}</Label>
+                    <p className="text-xs text-muted-foreground">{t('settings.enableQuotesDesc', 'Display an inspirational quote dialog on the first launch of the day.')}</p>
+                </div>
+                <Switch
+                    checked={settings?.enableQuotes !== false} // default to true
+                    onCheckedChange={(checked) => saveSettings({ ...settings!, enableQuotes: checked })}
+                />
+            </div>
+
             <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
                     <Input
@@ -163,6 +176,6 @@ export function QuoteManager() {
                     {t('settings.appearance.customQuotes.description') || "These quotes will appear randomly in the Inspiration Modal."}
                 </p>
             </div>
-        </div>
+        </div >
     );
 }
