@@ -8,6 +8,7 @@ import { Project } from "@/types";
 import { AddPomodoroTaskDialog } from "../dashboard/AddPomodoroTaskDialog";
 import { useSidebarResize } from "@/hooks/useSidebarResize";
 import { useExpiredProjectsSync } from "@/hooks/useExpiredProjectsSync";
+import { BaseMainView } from "@/plugins/api/ui";
 
 interface AppLayoutProps {
     timeline: ReactNode;
@@ -22,8 +23,8 @@ interface AppLayoutProps {
     focusedProject: Project | null;
     onFocusProject: (project: Project | null) => void;
 
-    dashboardView: 'weekly' | 'daily' | 'pomodoro' | 'statistics';
-    onDashboardViewChange: (view: 'weekly' | 'daily' | 'pomodoro' | 'statistics') => void;
+    dashboardView: string;
+    onDashboardViewChange: (view: string) => void;
 
     // Responsive Props
     isSidebarOpen: boolean;
@@ -31,9 +32,10 @@ interface AppLayoutProps {
 
     pomodoroPanel?: ReactNode;
     statisticsPanel?: ReactNode;
+    mainViews?: BaseMainView[];
 }
 
-export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode, onViewModeChange: _onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject, onFocusProject, dashboardView, onDashboardViewChange, isSidebarOpen, setIsSidebarOpen, pomodoroPanel, statisticsPanel }: AppLayoutProps) {
+export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode, onViewModeChange: _onViewModeChange, onOpenSettings, timelineHeight: _timelineHeight = 150, focusedProject, onFocusProject, dashboardView, onDashboardViewChange, isSidebarOpen, setIsSidebarOpen, pomodoroPanel, statisticsPanel, mainViews = [] }: AppLayoutProps) {
     const { projects, saveProjects, isWidgetMode } = useDataStore();
     const [isAddPomodoroTaskOpen, setIsAddPomodoroTaskOpen] = useState(false);
 
@@ -76,7 +78,7 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
 
                     {/* 2. Main Area (Timeline + Bottom Split) OR Plan Panel */}
                     {dashboardView === 'daily' ? (
-                        <div className={cn("flex-1 flex flex-col min-w-0 relative z-0", !isWidgetMode ? "bg-background/50 backdrop-blur-sm" : "bg-transparent")}>
+                        <div key="view-daily" className={cn("flex-1 flex flex-col min-w-0 relative z-0", !isWidgetMode ? "bg-background/50 backdrop-blur-sm" : "bg-transparent")}>
                             {/* Top Section: Full Width Project Timeline/List */}
                             {!isWidgetMode && (
                                 <div
@@ -130,16 +132,20 @@ export function AppLayout({ timeline, planPanel, todoPanel, dailyPanel, viewMode
                             </div>
                         </div>
                     ) : dashboardView === 'weekly' ? (
-                        <div className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
+                        <div key="view-weekly" className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
                             {planPanel}
                         </div>
                     ) : dashboardView === 'pomodoro' ? (
-                        <div className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
+                        <div key="view-pomodoro" className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
                             {pomodoroPanel}
                         </div>
-                    ) : (
-                        <div className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
+                    ) : dashboardView === 'statistics' ? (
+                        <div key="view-statistics" className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
                             {statisticsPanel}
+                        </div>
+                    ) : (
+                        <div key={`view-${dashboardView}`} className={cn("flex-1 flex flex-col min-w-0 relative z-0 overflow-hidden", !isWidgetMode ? "bg-background" : "bg-transparent")}>
+                            {mainViews.find(v => v.id === dashboardView)?.render()}
                         </div>
                     )}
 

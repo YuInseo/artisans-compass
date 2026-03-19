@@ -103,7 +103,6 @@ export function useTimeTableData(
 
     const sessionBlocks = useMemo(() => {
         const gridMode = settings?.timelineGridMode || '15min';
-        console.log('[TimeTableGraph] Grid Mode:', gridMode, 'Raw Envents:', eventsWithRelativeTime.length);
 
         // --- OPTION A: CONTINUOUS MODE (Legacy/Exact) ---
         if (gridMode === 'continuous') {
@@ -292,7 +291,6 @@ export function useTimeTableData(
         }
 
         // --- OPTION B: SESSION-CENTRIC SNAPPING ---
-        console.log('[TimeTableGraph] Entering Option B (Snapping)');
         // Refactored Logic: Pre-Merge -> Threshold -> Snap
         const events: RenderEvent[] = [];
         const MIDNIGHT_MINS = 1440;
@@ -350,7 +348,6 @@ export function useTimeTableData(
             });
             if (currentBlock) mergedSessions.push(currentBlock);
         }
-        console.log('[TimeTableGraph] Option B - Merged Sessions:', mergedSessions.length);
 
         // 2. FILTER & SNAP & POST-MERGE
         const snappedBlocks: any[] = [];
@@ -374,7 +371,6 @@ export function useTimeTableData(
                 durationMins: snapEnd - snapStart
             });
         });
-        console.log('[TimeTableGraph] Option B - Snapped Blocks:', snappedBlocks.length);
 
         // 2.5 POST-SNAP MERGE
         // Merge adjacent blocks that snapped to touching times (End == Start) AND have same app
@@ -420,7 +416,6 @@ export function useTimeTableData(
             }
             finalBlocks.push(current);
         }
-        console.log('[TimeTableGraph] Option B - Final Blocks:', finalBlocks.length);
 
         // 3. GENERATE RENDER EVENTS
         finalBlocks.forEach(block => {

@@ -35,7 +35,7 @@ interface DataStore {
     addToHistory: () => void;
 }
 
-const useStore = create<DataStore>()(
+export const useDataStoreInternal = create<DataStore>()(
     persist(
         (set, get) => ({
             settings: null,
@@ -246,7 +246,7 @@ const useStore = create<DataStore>()(
 );
 
 export function useDataStore() {
-    const store = useStore();
+    const store = useDataStoreInternal();
 
     useEffect(() => {
         store.loadData();

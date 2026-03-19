@@ -19,6 +19,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TodoSidebar } from "./components/dashboard/TodoSidebar";
 import { WeeklyView } from "./components/dashboard/WeeklyView";
 import { StatisticsPanel } from "@/components/dashboard/StatisticsPanel";
+import { useUIExtensions } from "@/core/ArtisansCompassProvider";
 
 import { ProjectList } from '@/components/dashboard/ProjectList';
 import { PomodoroPanel } from '@/components/dashboard/PomodoroPanel';
@@ -42,6 +43,9 @@ function App() {
   useAppKeyboardShortcuts();
   useAppTheme();
   useAppDevMode();
+
+  // Get plugin views safely at the top-level
+  const { mainViews } = useUIExtensions();
 
   const {
     isRitualOpen,
@@ -83,8 +87,8 @@ function App() {
   const [settingsTab, setSettingsTab] = useState<'general' | 'timeline' | 'tracking' | 'integrations'>('general');
   const [focusedProject, setFocusedProject] = useState<Project | null>(null);
 
-  // Dashboard view toggle state
-  const [dashboardView, setDashboardView] = useState<'weekly' | 'daily' | 'pomodoro' | 'statistics'>('daily');
+  // Dashboard view toggle state (string to support custom plugin main views)
+  const [dashboardView, setDashboardView] = useState<string>('daily');
 
   // Navigation Signal State
   const [navigationSignal, setNavigationSignal] = useState<{ date: Date, timestamp: number } | null>(null);
@@ -181,6 +185,7 @@ function App() {
             navigationSignal={navigationSignal}
           />
         }
+        mainViews={mainViews}
       />
       <ClosingRitualModal
         isOpen={isRitualOpen}

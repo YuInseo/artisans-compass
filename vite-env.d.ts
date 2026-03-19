@@ -18,6 +18,7 @@ declare global {
             getMonthlyLog: (yearMonth: string) => Promise<any>;
             saveMonthlyLog: (yearMonth: string, data: any) => Promise<boolean>;
             getUserDataPath: () => Promise<string>;
+            saveTodoImage: (data: string) => Promise<string>;
 
             onTrackingUpdate: (callback: (state: any) => void) => () => void;
         }

@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { TodoEditor } from "../TodoEditor";
-import { useTodoStore } from "@/hooks/useTodoStore";
 
 interface DailyGeneralWorkPanelProps {
     isWidgetMode: boolean;
@@ -86,19 +85,7 @@ export function DailyGeneralWorkPanel({
                                 todos={uniqueGeneralTodos}
                                 isWidgetMode={false}
                                 isWidgetLocked={false}
-                                actions={{
-                                    addTodo: (text, parentId, afterId) => {
-                                        if ((window as any).ipcRenderer) return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
-                                        return "";
-                                    },
-                                    updateTodo: (id, updates) => useTodoStore.getState().updateTodo(id, updates, false, 'general'),
-                                    deleteTodo: (id) => useTodoStore.getState().deleteTodo(id, 'general'),
-                                    deleteTodos: (ids) => useTodoStore.getState().deleteTodos(ids, 'general'),
-                                    indentTodo: (id) => useTodoStore.getState().indentTodo(id, 'general'),
-                                    unindentTodo: (id) => useTodoStore.getState().unindentTodo(id, 'general'),
-                                    moveTodo: (id, pid, idx) => useTodoStore.getState().moveTodo(id, pid, idx, 'general'),
-                                    moveTodos: (ids, pid, idx) => useTodoStore.getState().moveTodos(ids, pid, idx, 'general'),
-                                }}
+                                forceProjectId="general"
                             />
                         </div>
                     </div>

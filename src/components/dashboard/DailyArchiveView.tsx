@@ -131,7 +131,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
 
     const [todos, setTodos] = useState<Todo[]>(filteredTodos);
     const [dynamicScreenshots, setDynamicScreenshots] = useState<string[]>(initialScreenshots);
-    const [timeTableViewMode, setTimeTableViewMode] = useState<'timetable' | 'app-usage'>('timetable');
 
     // Filter Sessions based on settings, identically to DailyPanel
     const filteredSessions = useMemo(() => {
@@ -678,20 +677,17 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                                 todos={uniqueGeneralTodos}
                                                 isWidgetMode={false}
                                                 isWidgetLocked={readOnly}
-                                                actions={{
-                                                    addTodo: (text, parentId, afterId) => {
-                                                        if (!readOnly && (window as any).ipcRenderer) return useTodoStore.getState().addTodo(text, parentId, afterId, 'general');
-                                                        return "";
-                                                    },
-                                                    updateTodo: (id, updates) => { if (!readOnly) useTodoStore.getState().updateTodo(id, updates, false, 'general'); },
-                                                    deleteTodo: (id) => { if (!readOnly) useTodoStore.getState().deleteTodo(id, 'general'); },
-                                                    deleteTodos: (ids) => { if (!readOnly) useTodoStore.getState().deleteTodos(ids, 'general'); },
-
-                                                    indentTodo: (id) => { if (!readOnly) useTodoStore.getState().indentTodo(id, 'general'); },
-                                                    unindentTodo: (id) => { if (!readOnly) useTodoStore.getState().unindentTodo(id, 'general'); },
-                                                    moveTodo: (id, pid, idx) => { if (!readOnly) useTodoStore.getState().moveTodo(id, pid, idx, 'general'); },
-                                                    moveTodos: (ids, pid, idx) => { if (!readOnly) useTodoStore.getState().moveTodos(ids, pid, idx, 'general'); },
-                                                }}
+                                                actions={readOnly ? {
+                                                    addTodo: () => "",
+                                                    updateTodo: () => { },
+                                                    deleteTodo: () => { },
+                                                    deleteTodos: () => { },
+                                                    indentTodo: () => { },
+                                                    unindentTodo: () => { },
+                                                    moveTodo: () => { },
+                                                    moveTodos: () => { },
+                                                } : undefined}
+                                                forceProjectId="general"
                                             />
                                         </div>
                                     </div>
@@ -707,22 +703,14 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                         "h-full min-w-0 p-0 flex flex-col bg-card overflow-hidden"
                     )}>
                         <div className="p-4 bg-card border-b border-border flex justify-between items-center shrink-0">
-                            <Button
-                                variant="ghost"
-                                className="h-auto px-2 py-1 -ml-2 hover:bg-muted/50 transition-colors group relative"
-                                onClick={() => setTimeTableViewMode(prev => prev === 'timetable' ? 'app-usage' : 'timetable')}
+                            <div
+                                className="h-auto px-2 py-1 -ml-2 flex items-center transition-colors group relative"
                             >
                                 <h3 className="text-sm font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
                                     <Clock className="w-4 h-4 text-blue-500" />
-                                    {timeTableViewMode === 'timetable' ? t('dashboard.timeTable') : t('calendar.appUsage')}
-
-                                    {/* Tutorial Badge */}
-                                    <span className="relative flex h-2 w-2 ml-1">
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                                    </span>
+                                    {t('dashboard.timeTable')}
                                 </h3>
-                            </Button>
+                            </div>
                             <Popover>
                                 <PopoverTrigger asChild>
                                     <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -800,7 +788,6 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                 plannedSessions={plannedSessions}
                                 firstOpenedAt={firstOpenedAt}
                                 appSessions={appSessions}
-                                viewMode={timeTableViewMode}
                             />
                         </div>
 

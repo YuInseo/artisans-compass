@@ -41,7 +41,7 @@ interface DailyPanelProps {
 export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarOpen, onOpenSettings }: DailyPanelProps) {
     const { t } = useTranslation();
     const { theme, setTheme } = useTheme();
-    const { activeProjectId, setActiveProjectId, clearUntitledTodos } = useTodoStore();
+    const { activeProjectId, setActiveProjectId } = useTodoStore();
     const { settings, isWidgetMode, setWidgetMode, saveSettings, dailyLog } = useDataStore();
 
     const [now, setNow] = useState(new Date());
@@ -52,7 +52,6 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
 
     const [isWeeklyView, setIsWeeklyView] = useState(false);
     const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
-    const [timeTableViewMode, setTimeTableViewMode] = useState<'timetable' | 'app-usage'>('timetable');
 
     useEffect(() => {
         const handleResize = () => setWindowWidth(window.innerWidth);
@@ -369,7 +368,6 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                         activeProjectId={activeProjectId}
                                         setActiveProjectId={setActiveProjectId}
                                         projects={projects}
-                                        clearUntitledTodos={clearUntitledTodos}
                                         isPinned={isPinned}
                                         togglePin={togglePin}
                                     />
@@ -452,21 +450,14 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                             <div className="flex flex-col h-full gap-6">
                                                 <div className="flex-1 flex flex-col h-full bg-card/50 backdrop-blur-sm rounded-xl border border-border/50 overflow-hidden shadow-sm">
                                                     <div className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-muted/20 shrink-0">
-                                                        <Button
-                                                            variant="ghost"
-                                                            className="h-auto px-2 py-1 -ml-2 hover:bg-muted/50 transition-colors group relative"
-                                                            onClick={() => setTimeTableViewMode(prev => prev === 'timetable' ? 'app-usage' : 'timetable')}
+                                                        <div
+                                                            className="h-auto px-2 py-1 -ml-2 flex items-center transition-colors group relative"
                                                         >
                                                             <h3 className="text-xs font-bold text-foreground flex items-center gap-2 uppercase tracking-wider">
                                                                 <Clock className="w-3.5 h-3.5 text-primary" />
-                                                                {timeTableViewMode === 'timetable' ? t('dashboard.timeTable') : t('calendar.appUsage')}
-
-                                                                <span className="relative flex h-2 w-2 ml-1">
-                                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                                                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                                                                </span>
+                                                                {t('dashboard.timeTable')}
                                                             </h3>
-                                                        </Button>
+                                                        </div>
                                                         <div className="flex items-center gap-1">
                                                             <Button
                                                                 variant="ghost"
@@ -481,10 +472,8 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                     <div className="flex-1 relative min-h-0 bg-background/50">
                                                         <TimeTableGraph
                                                             sessions={filteredSessions}
-                                                            allSessions={sessions}
                                                             activeProjectId={activeProjectId}
                                                             liveSession={filteredLiveSession}
-                                                            allLiveSession={liveSession}
                                                             projects={projects}
                                                             nightTimeStart={settings?.nightTimeStart}
                                                             settings={settings}
@@ -495,7 +484,6 @@ export function DailyPanel({ onEndDay, onShowReminder, projects = [], isSidebarO
                                                             currentTime={now} // Pass live time from parent
                                                             firstOpenedAt={firstOpenedAt || undefined}
                                                             appSessions={appSessions}
-                                                            viewMode={timeTableViewMode}
                                                         />
                                                     </div>
                                                 </div>

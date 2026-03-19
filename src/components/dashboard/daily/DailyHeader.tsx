@@ -1,26 +1,34 @@
 import { format } from "date-fns";
-import { Eraser } from 'lucide-react';
+import { Eraser, Image as ImageIcon, ImageOff } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Project } from "@/types";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useState, useMemo } from "react";
+import { ActionButton } from "@/components/common/ActionButton";
+import { ToggleImageCollapseCommand } from "@/commands/ToggleImageCollapseCommand";
+import { ClearUntitledTodosCommand } from "@/commands/ClearUntitledTodosCommand";
 
 interface DailyHeaderProps {
     isWidgetMode: boolean;
     activeProjectId: string;
     setActiveProjectId: (id: string) => void;
     projects: Project[];
-    clearUntitledTodos: () => void;
     isPinned: boolean;
     togglePin: () => void;
 }
 
 export function DailyHeader({
-    isWidgetMode, activeProjectId, setActiveProjectId, projects, clearUntitledTodos, isPinned, togglePin
+    isWidgetMode, activeProjectId, setActiveProjectId, projects, isPinned, togglePin
 }: DailyHeaderProps) {
     const { t } = useTranslation();
+    const [isAllImagesCollapsed, setIsAllImagesCollapsed] = useState(false);
+
+    // Instantiate commands
+    const toggleCollapseCommand = useMemo(() => new ToggleImageCollapseCommand(), []);
+    const clearUntitledCommand = useMemo(() => new ClearUntitledTodosCommand(), []);
 
     if (isWidgetMode) return null;
 
@@ -50,22 +58,29 @@ export function DailyHeader({
                     </Select>
                 </div>
 
+
                 <div className="flex items-center gap-1">
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-9 w-9 text-muted-foreground hover:text-foreground"
-                                onClick={() => clearUntitledTodos()}
-                            >
-                                <Eraser className="w-[18px] h-[18px]" />
-                            </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                            <p>{t('dashboard.clearUntitled')}</p>
-                        </TooltipContent>
-                    </Tooltip>
+                    <ActionButton
+                        command={toggleCollapseCommand}
+                        payload={!isAllImagesCollapsed}
+                        variant="ghost"
+                        size="icon"
+                        className={cn("h-9 w-9 transition-all", isAllImagesCollapsed ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground")}
+                        onClick={() => setIsAllImagesCollapsed(!isAllImagesCollapsed)}
+                        tooltip={isAllImagesCollapsed ? 'sidebar.expandAllImages' : 'sidebar.collapseAllImages'}
+                    >
+                        {isAllImagesCollapsed ? <ImageIcon className="w-[18px] h-[18px]" /> : <ImageOff className="w-[18px] h-[18px]" />}
+                    </ActionButton>
+
+                    <ActionButton
+                        command={clearUntitledCommand}
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-muted-foreground hover:text-foreground"
+                        tooltip="dashboard.clearUntitled"
+                    >
+                        <Eraser className="w-[18px] h-[18px]" />
+                    </ActionButton>
 
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -83,6 +98,8 @@ export function DailyHeader({
                             <p>{isPinned ? t('dashboard.unpin') : t('dashboard.pin')}</p>
                         </TooltipContent>
                     </Tooltip>
+
+
                 </div>
             </div>
         </div>

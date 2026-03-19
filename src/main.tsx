@@ -34,10 +34,15 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 }
 
+import { ArtisansCompassProvider } from '@/core/ArtisansCompassProvider';
+import { TestPlugin } from '@/plugins/test-plugin';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      <ArtisansCompassProvider plugins={[TestPlugin]}>
+        <App />
+      </ArtisansCompassProvider>
     </ErrorBoundary>
   </React.StrictMode>,
 )

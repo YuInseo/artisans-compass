@@ -56,6 +56,7 @@ export interface AppSettings {
     customCSS?: string;
     customThemes?: { id: string; name: string; css: string }[];
     dailyRecordMode?: 'fixed' | 'dynamic'; // 'fixed' = 00:00 rollover, 'dynamic' = until app close
+    enabledPlugins?: string[]; // List of enabled plugin IDs
 }
 
 export interface Session {
@@ -112,7 +113,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     enableSpellCheck: false,
     customThemes: [],
     customCSS: "",
-    dailyRecordMode: 'fixed'
+    dailyRecordMode: 'fixed',
+    enabledPlugins: []
 };
 
 // --- Storage Paths ---
@@ -431,6 +433,74 @@ export function setupStorageHandlers(getTrackerState?: () => any) {
 
     // Also expose a helper to get data path for debugging
     ipcMain.handle('get-user-data-path', () => getUserDataPath());
+
+    // Plugins
+    ipcMain.handle('get-plugins-dir', () => {
+        return path.join(getUserDataPath(), 'plugins');
+    });
+
+    ipcMain.handle('get-plugins', async () => {
+        const pluginsDir = path.join(getUserDataPath(), 'plugins');
+        if (!fs.existsSync(pluginsDir)) {
+            fs.mkdirSync(pluginsDir, { recursive: true });
+            return [];
+        }
+
+        const plugins = [];
+        const dirs = fs.readdirSync(pluginsDir, { withFileTypes: true });
+
+        for (const dir of dirs) {
+            if (dir.isDirectory()) {
+                const manifestPath = path.join(pluginsDir, dir.name, 'manifest.json');
+                if (fs.existsSync(manifestPath)) {
+                    try {
+                        const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+                        manifest.dirName = dir.name;
+
+                        // Read main file (default to main.js)
+                        const mainFile = manifest.main || 'main.js';
+                        const mainPath = path.join(pluginsDir, dir.name, mainFile);
+
+                        if (fs.existsSync(mainPath)) {
+                            manifest.code = fs.readFileSync(mainPath, 'utf-8');
+                            plugins.push(manifest);
+                        } else {
+                            log.warn(`[Plugins] Main file not found for plugin: ${manifest.name}`);
+                        }
+                    } catch (e) {
+                        log.error(`[Plugins] Failed to read plugin manifest in ${dir.name}`, e);
+                    }
+                }
+            }
+        }
+        return plugins;
+    });
+
+    // Todo Images
+    ipcMain.handle('save-todo-image', async (_, data: string) => {
+        try {
+            // Ensure directory exists
+            const imagesDir = path.join(getUserDataPath(), 'todo_images');
+            if (!fs.existsSync(imagesDir)) {
+                fs.mkdirSync(imagesDir, { recursive: true });
+            }
+
+            // Create a unique filename based on timestamp and a random string
+            const filename = `img_${Date.now()}_${Math.random().toString(36).substring(2, 9)}.png`;
+            const filePath = path.join(imagesDir, filename);
+
+            // Assuming data is a base64 string
+            const base64Data = data.replace(/^data:image\/\w+;base64,/, "");
+            const buffer = Buffer.from(base64Data, 'base64');
+
+            fs.writeFileSync(filePath, buffer);
+
+            return `local-image://${filePath}`;
+        } catch (error) {
+            log.error(`[Storage] Error saving todo image:`, error);
+            throw error;
+        }
+    });
 
     // App History
     ipcMain.handle('get-app-history', () => {

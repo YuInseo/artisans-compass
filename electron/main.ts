@@ -56,9 +56,10 @@ process.on('uncaughtException', (error) => {
   log.error('Uncaught Exception:', error);
 });
 
-// Register custom protocol 'app://' as privileged/standard
+// Register custom protocol 'app://' and 'local-image://' as privileged/standard
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'app', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
+  { scheme: 'app', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
+  { scheme: 'local-image', privileges: { secure: true, standard: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: true } }
 ]);
 
 // Set App User Model ID for Windows Notifications
@@ -724,6 +725,50 @@ app.whenReady().then(async () => {
     }
   });
 
+  // Dedicated 'local-image' protocol handler for Todo images
+  protocol.handle('local-image', async (req) => {
+    let rawPath = req.url.replace(/^local-image:\/\//i, '');
+    try { rawPath = decodeURIComponent(rawPath); } catch (err) { }
+    let normalizedPath = path.normalize(rawPath);
+
+    // Fix missing colons for Windows drive letters: "c\Users" or "C/Users" -> "C:\Users"
+    if (process.platform === 'win32' && normalizedPath.match(/^[a-zA-Z][\\/]/)) {
+      normalizedPath = normalizedPath.slice(0, 1) + ':' + normalizedPath.slice(1);
+    }
+
+    // Ensure it's a valid drive letter on Windows if starts with C:\ or similar
+    if (process.platform === 'win32' && normalizedPath.match(/^\\[a-zA-Z]:\\/)) {
+      normalizedPath = normalizedPath.slice(1);
+    }
+
+    // Fix: Sometimes it parses file:///C:\ as local-image://C:\
+    if (normalizedPath.startsWith('/') && normalizedPath[2] === ':') {
+      normalizedPath = normalizedPath.slice(1);
+    }
+
+    try {
+      if (fs.existsSync(normalizedPath)) {
+        const data = fs.readFileSync(normalizedPath);
+        const ext = path.extname(normalizedPath).toLowerCase();
+        let contentType = 'image/png';
+        if (ext === '.jpg' || ext === '.jpeg') contentType = 'image/jpeg';
+        else if (ext === '.gif') contentType = 'image/gif';
+        else if (ext === '.svg') contentType = 'image/svg+xml';
+        else if (ext === '.webp') contentType = 'image/webp';
+
+        return new Response(data, {
+          headers: { 'content-type': contentType }
+        });
+      } else {
+        console.error('[LocalImage] File does not exist:', normalizedPath);
+        return new Response('File not found', { status: 404 });
+      }
+    } catch (e) {
+      console.error('[LocalImage] Error serving image file:', e);
+      return new Response('Internal Error', { status: 500 });
+    }
+  });
+
   // --- Menu Setup ---
   const { recoverFromScreenshots } = await import('./recovery');
 
@@ -805,8 +850,18 @@ app.whenReady().then(async () => {
 });
 
 ipcMain.handle('open-external', async (_, url: string) => {
-  if (url && (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('mailto:'))) {
-    await shell.openExternal(url);
+  if (url && (url.startsWith('http:') || url.startsWith('https:') || url.startsWith('mailto:') || url.startsWith('file:'))) {
+    if (url.startsWith('file:')) {
+      // Normalize to a proper path for shell.openPath if needed, but openExternal also works for file:// on some OS, openPath is better for directories.
+      let p = url.replace(/^file:\/\//i, '');
+      // Handle windows paths
+      if (process.platform === 'win32' && p.match(/^\/[a-zA-Z]:/)) {
+        p = p.substring(1);
+      }
+      await shell.openPath(decodeURIComponent(p));
+    } else {
+      await shell.openExternal(url);
+    }
   }
 });
 

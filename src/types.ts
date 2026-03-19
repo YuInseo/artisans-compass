@@ -99,6 +99,7 @@ export interface AppSettings {
     showRoutinesInTimetable?: boolean; // default: true
     showPlannedSessions?: boolean; // default: false
     showAppOnOffIndicator?: boolean; // default: true
+    enabledPlugins?: string[]; // List of enabled plugin IDs
 }
 
 export interface Project {
@@ -157,6 +158,10 @@ export interface Todo {
     isCollapsed?: boolean;
     createdAt?: number; // Timestamp
     carriedOver?: boolean;
+    type?: 'text' | 'image';
+    images?: string[]; // Array of local paths or base64 data to attached images
+    imageWidth?: number; // Custom width for image blocks
+    imageAlt?: string; // Caption or ALT text for the image
 }
 
 export interface DailyLog {

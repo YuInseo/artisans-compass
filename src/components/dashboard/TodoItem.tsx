@@ -1,9 +1,10 @@
 import React, { useRef, useEffect } from 'react';
 import { Todo } from '@/types';
 import { cn } from '@/lib/utils';
-import { CheckSquare, GripVertical } from 'lucide-react';
+import { CheckSquare, GripVertical, X, Download, Trash2, ZoomIn, MessageSquareText, Eye, EyeOff } from 'lucide-react';
 import TextareaAutosize from 'react-textarea-autosize';
 import { useTranslation } from 'react-i18next';
+import { ImageModal } from './ImageModal';
 
 interface TodoItemProps {
     todo: Todo;
@@ -26,6 +27,7 @@ interface TodoItemProps {
     onSelectClick?: (id: string, shiftKey: boolean) => void;
     onSelectAll?: () => void;
     spellCheck?: boolean;
+    onAddImages?: (paths: string[], insertAfterId: string) => void;
 }
 
 export const TodoItem = React.memo<TodoItemProps>(({
@@ -48,12 +50,13 @@ export const TodoItem = React.memo<TodoItemProps>(({
     onSelectClick,
     onSelectAll,
     spellCheck = false,
+    onAddImages,
     isWidgetMode = false,
     'data-todo-id': dataTodoId,
     editorAlignment = 'left'
 }: TodoItemProps & { 'data-todo-id'?: string, isWidgetMode?: boolean, editorAlignment?: 'left' | 'center' }) => {
     const { t } = useTranslation();
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement | HTMLDivElement>(null);
     const [localText, setLocalText] = React.useState(todo.text);
     // Adjusted padding: Large (76px) only for center mode, standard (24px) for left/widget
     const BASE_PADDING = (isWidgetMode || editorAlignment === 'left') ? 24 : 76;
@@ -61,6 +64,45 @@ export const TodoItem = React.memo<TodoItemProps>(({
     // Sync local state with prop, but ONLY if not focused (to prevent overwriting user input)
     const isFocused = focusedId === todo.id;
     const isFocusedRef = useRef(isFocused);
+    const [isUploading, setIsUploading] = React.useState(false);
+    const [isImageModalOpen, setIsImageModalOpen] = React.useState(false);
+    const [resizingWidth, setResizingWidth] = React.useState<number | null>(null);
+    const [isCaptionVisible, setIsCaptionVisible] = React.useState(!!todo.text);
+    const [isImageCollapsed, setIsImageCollapsed] = React.useState(todo.isCollapsed || false);
+    const imageContainerRef = useRef<HTMLDivElement>(null);
+
+    const handleResizeStart = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (isLocked) return;
+
+        const startX = e.pageX;
+        const startWidth = imageContainerRef.current?.getBoundingClientRect().width || 0;
+
+        // Disable text selection globally during drag using Tailwind's robust class
+        document.body.classList.add('select-none');
+
+        const handleMouseMove = (mouseMoveEvent: MouseEvent) => {
+            window.getSelection()?.removeAllRanges(); // Force clear any selection blue boxes
+            const deltaX = mouseMoveEvent.pageX - startX;
+            setResizingWidth(Math.max(100, Math.min(startWidth + deltaX, window.innerWidth - 100)));
+        };
+
+        const handleMouseUp = (mouseUpEvent: MouseEvent) => {
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.body.classList.remove('select-none'); // Restore text selection
+
+            const finalDeltaX = mouseUpEvent.pageX - startX;
+            const finalWidth = Math.max(100, startWidth + finalDeltaX);
+            onUpdate(todo.id, { imageWidth: finalWidth });
+            setResizingWidth(null);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+    };
 
     useEffect(() => {
         isFocusedRef.current = isFocused;
@@ -76,6 +118,10 @@ export const TodoItem = React.memo<TodoItemProps>(({
         }
     }, [todo.text]);
 
+    useEffect(() => {
+        setIsImageCollapsed(todo.isCollapsed || false);
+    }, [todo.isCollapsed]);
+
     // Auto-focus logic
     useEffect(() => {
         if (!isLocked && !isDragging && focusedId === todo.id && textareaRef.current) {
@@ -84,9 +130,11 @@ export const TodoItem = React.memo<TodoItemProps>(({
                 if (document.activeElement !== textareaRef.current && textareaRef.current) {
                     const el = textareaRef.current;
                     el.focus();
-                    // Move cursor to end
-                    const len = el.value.length;
-                    el.setSelectionRange(len, len);
+                    // Move cursor to end if input type
+                    if ('setSelectionRange' in el && typeof el.setSelectionRange === 'function' && 'value' in el) {
+                        const len = (el as HTMLTextAreaElement).value.length;
+                        (el as HTMLTextAreaElement).setSelectionRange(len, len);
+                    }
                 }
             });
         }
@@ -165,6 +213,83 @@ export const TodoItem = React.memo<TodoItemProps>(({
         }
     };
 
+    const handleImageUpload = async (file: File) => {
+        if (!file.type.startsWith('image/')) return;
+
+        try {
+            setIsUploading(true);
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                const base64Data = e.target?.result as string;
+                if (!base64Data) return;
+
+                try {
+                    const savedPath = await (window as any).ipcRenderer.saveTodoImage(base64Data);
+                    if (onAddImages) {
+                        onAddImages([savedPath], todo.id);
+                    } else {
+                        const currentImages = todo.images || [];
+                        onUpdate(todo.id, { images: [...currentImages, savedPath] });
+                    }
+                } catch (error) {
+                    console.error("Failed to save image locally", error);
+                } finally {
+                    setIsUploading(false);
+                }
+            };
+            reader.readAsDataURL(file);
+        } catch (error) {
+            console.error("Error processing image file", error);
+            setIsUploading(false);
+        }
+    }
+
+    const handlePaste = (e: React.ClipboardEvent) => {
+        if (isLocked) return;
+        const items = e.clipboardData?.items;
+        if (!items) return;
+
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                e.preventDefault(); // Stop text paste
+                const file = items[i].getAsFile();
+                if (file) handleImageUpload(file);
+                break;
+            }
+        }
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        if (isLocked) return;
+
+        // Prevent default to allow drop
+        e.preventDefault();
+        e.stopPropagation();
+
+        const items = e.dataTransfer.items;
+        if (!items) return;
+
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+                const file = items[i].getAsFile();
+                if (file) handleImageUpload(file);
+                // We don't break here to allow dropping multiple images at once
+            }
+        }
+    };
+
+    const handleDragOver = (e: React.DragEvent) => {
+        if (isLocked) return;
+        // Allows drop
+        e.preventDefault();
+    };
+
+    const removeImage = (indexToRemove: number) => {
+        if (isLocked || !todo.images) return;
+        const newImages = todo.images.filter((_, idx) => idx !== indexToRemove);
+        onUpdate(todo.id, { images: newImages });
+    };
+
     // const toggleCollapse = () => { ... } // Removed
 
     const toggleComplete = () => {
@@ -220,42 +345,225 @@ export const TodoItem = React.memo<TodoItemProps>(({
             {isLocked && <div className="w-3" />}
 
             {/* Checkbox */}
-            <div className={cn(
-                "h-6 flex items-center justify-center shrink-0 mr-2 transition-opacity duration-200 opacity-100", // Always visible
-                "relative"
-            )}>
+            {todo.type !== 'image' && (
+                <div className={cn(
+                    "h-6 flex items-center justify-center shrink-0 mr-2 transition-opacity duration-200 opacity-100", // Always visible
+                    "relative"
+                )}>
 
-                <button
-                    onClick={toggleComplete}
-                    onPointerDown={(e) => e.stopPropagation()}
-                    className={cn(
-                        "w-4 h-4 flex items-center justify-center rounded-[4px] transition-colors focus:outline-none",
-                        todo.completed
-                            ? "bg-primary border-2 border-primary text-primary-foreground hover:bg-primary/90"
-                            : "border-2 bg-card border-muted-foreground/60 bg-transparent hover:border-muted-foreground/80 hover:bg-muted/10"
-                    )}
-                    title={todo.completed ? "Mark as incomplete" : "Mark as complete"}
-                >
-                    {todo.completed ? (
-                        <CheckSquare className="w-3 h-3" strokeWidth={3} />
-                    ) : (
-                        null
-                    )}
-                </button>
-            </div>
+                    <button
+                        onClick={toggleComplete}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        className={cn(
+                            "w-4 h-4 flex items-center justify-center rounded-[4px] transition-colors focus:outline-none",
+                            todo.completed
+                                ? "bg-primary border-2 border-primary text-primary-foreground hover:bg-primary/90"
+                                : "border-2 bg-card border-muted-foreground/60 bg-transparent hover:border-muted-foreground/80 hover:bg-muted/10"
+                        )}
+                        title={todo.completed ? "Mark as incomplete" : "Mark as complete"}
+                    >
+                        {todo.completed ? (
+                            <CheckSquare className="w-3 h-3" strokeWidth={3} />
+                        ) : (
+                            null
+                        )}
+                    </button>
+                </div>
+            )}
 
             {/* Content */}
             <div
-                className="flex-1 min-w-0 flex cursor-text"
+                className="flex-1 min-w-0 flex flex-col cursor-text"
+
                 onClick={(e) => {
                     if (!isLocked && e.target === e.currentTarget) {
                         onFocus(todo.id);
                     }
                 }}
+                onPaste={handlePaste}
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
             >
-                {focusedId === todo.id ? (
+                {todo.type === 'image' && todo.images && todo.images.length > 0 ? (
+                    <div
+                        className={cn("relative group/img my-3 outline-none rounded-lg flex flex-col items-center", focusedId === todo.id ? "ring-2 ring-primary ring-offset-1 ring-offset-background" : "")}
+                        tabIndex={0}
+                        ref={(node) => {
+                            if (node) {
+                                (textareaRef as any).current = node;
+                                (imageContainerRef as any).current = node;
+                            }
+                        }}
+                        onKeyDown={(e) => handleKeyDown(e as any)}
+                        style={{
+                            width: resizingWidth !== null ? `${resizingWidth}px` : (isImageCollapsed ? 'auto' : (todo.imageWidth ? `${todo.imageWidth}px` : '100%')),
+                            maxWidth: '100%'
+                        }}
+                    >
+                        {/* Collapsed/Expanded View */}
+                        {!isImageCollapsed ? (
+                            <>
+                                <img
+                                    src={todo.images[0]}
+                                    className="w-full h-auto rounded-lg object-contain shadow-sm cursor-pointer select-none"
+                                    style={{
+                                        height: todo.imageWidth || resizingWidth ? 'auto' : undefined,
+                                    }}
+                                    draggable={false}
+                                    alt="Image block"
+                                    onDoubleClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsImageModalOpen(true);
+                                    }}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsImageModalOpen(true);
+                                    }}
+                                />
+                                <div
+                                    className="absolute top-3 right-3 flex items-center h-8 bg-[#2f2f2f]/95 backdrop-blur-md text-[#a5a5a5] rounded-[6px] px-1 opacity-0 group-hover/img:opacity-100 transition-opacity z-10 shadow-lg border border-white/10"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                >
+                                    <button
+                                        className="h-6 w-7 flex items-center justify-center hover:bg-[#454545] hover:text-white rounded-sm transition-colors"
+                                        title="Collapse Image"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsImageCollapsed(true);
+                                            onUpdate(todo.id, { isCollapsed: true });
+                                        }}
+                                    >
+                                        <EyeOff size={14} />
+                                    </button>
+                                    <button
+                                        className={cn(
+                                            "h-6 w-7 flex items-center justify-center hover:bg-[#454545] rounded-sm transition-colors",
+                                            isCaptionVisible ? "text-white bg-[#454545]" : "hover:text-white"
+                                        )}
+                                        title="Toggle Caption"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsCaptionVisible(!isCaptionVisible);
+                                        }}
+                                    >
+                                        <MessageSquareText size={14} />
+                                    </button>
+                                    <button
+                                        className="h-6 w-7 flex items-center justify-center hover:bg-[#454545] hover:text-white rounded-sm transition-colors"
+                                        title="Open Original"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsImageModalOpen(true);
+                                        }}
+                                    >
+                                        <ZoomIn size={14} />
+                                    </button>
+                                    <button
+                                        className="h-6 w-7 flex items-center justify-center hover:bg-[#454545] hover:text-white rounded-sm transition-colors"
+                                        title="Download"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            const a = document.createElement('a');
+                                            a.href = todo.images![0];
+                                            a.download = `image-${Date.now()}.png`;
+                                            document.body.appendChild(a);
+                                            a.click();
+                                            document.body.removeChild(a);
+                                        }}
+                                    >
+                                        <Download size={14} />
+                                    </button>
+
+                                    {!isLocked && (
+                                        <button
+                                            className="h-6 w-7 flex items-center justify-center hover:bg-red-500/80 hover:text-white rounded-sm transition-colors ml-1"
+                                            title="Delete Block"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onDelete(todo.id);
+                                            }}
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Right-side Resize Handle */}
+                                {!isLocked && (
+                                    <div
+                                        className="absolute top-0 right-0 w-4 h-full cursor-col-resize opacity-0 group-hover/img:opacity-100 flex items-center justify-center -mr-2 z-20 select-none"
+                                        onMouseDown={handleResizeStart}
+                                        onDragStart={(e) => e.preventDefault()}
+                                    >
+                                        <div className="w-1.5 h-12 bg-white/50 rounded-full shadow-sm pointer-events-none" />
+                                    </div>
+                                )}
+                            </>
+                        ) : (
+                            <div
+                                className="w-full flex items-center gap-2 py-2 px-3 bg-muted/30 border border-border/50 rounded-md cursor-pointer hover:bg-muted/50 transition-colors"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsImageCollapsed(false);
+                                    onUpdate(todo.id, { isCollapsed: false });
+                                }}
+                            >
+                                <Eye size={16} className="text-muted-foreground" />
+                                <span className="text-sm font-medium text-muted-foreground flex-1">
+                                    {todo.text ? `이미지 접힘: ${todo.text}` : '이미지 접힘 (1장)'}
+                                </span>
+                                <div
+                                    className="flex items-center gap-1"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                >
+                                    <button
+                                        className="h-6 w-7 flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground rounded-sm transition-colors"
+                                        title="Expand Image"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsImageCollapsed(false);
+                                            onUpdate(todo.id, { isCollapsed: false });
+                                        }}
+                                    >
+                                        <Eye size={14} />
+                                    </button>
+                                    {!isLocked && (
+                                        <button
+                                            className="h-6 w-7 flex items-center justify-center text-muted-foreground hover:bg-red-500/20 hover:text-red-500 rounded-sm transition-colors"
+                                            title="Delete Block"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onDelete(todo.id);
+                                            }}
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Image Caption Area */}
+                        {!isLocked && isCaptionVisible && (
+                            <div className="mt-1.5 w-full flex justify-center transition-all duration-200">
+                                <TextareaAutosize
+                                    value={localText}
+                                    onChange={(e) => setLocalText(e.target.value)}
+                                    onBlur={() => {
+                                        if (localText !== todo.text) {
+                                            onUpdate(todo.id, { text: localText }, false);
+                                        }
+                                    }}
+                                    minRows={1}
+                                    placeholder="캡션 작성"
+                                    className="bg-transparent resize-none outline-none leading-normal overflow-hidden h-auto text-sm text-center text-muted-foreground placeholder:text-muted-foreground/40 block w-full max-w-[90%]"
+                                />
+                            </div>
+                        )}
+                    </div>
+                ) : todo.type !== 'image' && focusedId === todo.id ? (
                     <TextareaAutosize
-                        ref={textareaRef}
+                        ref={textareaRef as any}
                         spellCheck={spellCheck}
                         value={localText}
                         onChange={(e) => {
@@ -284,7 +592,7 @@ export const TodoItem = React.memo<TodoItemProps>(({
                             isWidgetMode && "drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
                         )}
                     />
-                ) : (
+                ) : todo.type !== 'image' ? (
                     <div
                         className={cn(
                             "bg-transparent leading-normal min-h-[1.5rem] pt-0 font-medium block h-auto whitespace-pre-wrap break-words break-all",
@@ -303,8 +611,52 @@ export const TodoItem = React.memo<TodoItemProps>(({
                     >
                         {localText || <span className="text-muted-foreground/30 italic">{t("dashboard.newTask")}</span>}
                     </div>
+                ) : null}
+
+                {/* Images Container */}
+                {todo.type !== 'image' && todo.images && todo.images.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-2 select-none mb-1">
+                        {todo.images.map((imgSrc, idx) => (
+                            <div key={idx} className="relative group/img">
+                                <img
+                                    src={imgSrc}
+                                    className="max-h-32 md:max-h-64 rounded-md object-contain cursor-pointer shadow-sm border border-border/40 bg-zinc-950/20"
+                                    alt="Todo attachment"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.open(imgSrc, '_blank');
+                                    }}
+                                />
+                                {!isLocked && (
+                                    <div onPointerDown={(e) => e.stopPropagation()}>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                removeImage(idx);
+                                            }}
+                                            className="absolute -top-2 -right-2 bg-destructive/90 text-destructive-foreground hover:bg-destructive p-0.5 rounded-full opacity-0 group-hover/img:opacity-100 transition-opacity drop-shadow-md z-10"
+                                        >
+                                            <X size={12} strokeWidth={3} />
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {isUploading && (
+                    <div className="text-xs text-muted-foreground mt-1 animate-pulse">
+                        Uploading image...
+                    </div>
                 )}
             </div>
+
+            {isImageModalOpen && todo.images && todo.images.length > 0 && (
+                <ImageModal
+                    src={todo.images[0]}
+                    onClose={() => setIsImageModalOpen(false)}
+                />
+            )}
         </div>
     );
 });

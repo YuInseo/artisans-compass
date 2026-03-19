@@ -100,13 +100,11 @@ export function FocusView({ className, date }: FocusViewProps) {
     const [monthlyData, setMonthlyData] = useState<Record<string, any>>({});
     const [todayData, setTodayData] = useState<any>(null);
     const [yesterdayData, setYesterdayData] = useState<any>(null);
-    const [isLoading, setIsLoading] = useState(true);
 
     // Fetch data for the last 365 days + selected date
     useEffect(() => {
         let isMounted = true;
         const fetchRecentLogs = async () => {
-            setIsLoading(true);
             const today = new Date();
             const monthsToFetch = new Set<string>();
 
@@ -119,14 +117,19 @@ export function FocusView({ className, date }: FocusViewProps) {
 
             const data: Record<string, any> = {};
             if ((window as any).ipcRenderer) {
-                for (const ym of Array.from(monthsToFetch)) {
+                const fetchPromises = Array.from(monthsToFetch).map(async (ym) => {
                     try {
-                        const monthLog = await (window as any).ipcRenderer.invoke('get-monthly-log', ym);
-                        Object.assign(data, monthLog);
+                        return await (window as any).ipcRenderer.invoke('get-monthly-log', ym);
                     } catch (e) {
                         console.error('Failed to fetch monthly log for', ym, e);
+                        return {};
                     }
-                }
+                });
+
+                const results = await Promise.all(fetchPromises);
+                results.forEach((monthLog) => {
+                    Object.assign(data, monthLog);
+                });
             }
 
             if (isMounted) {
@@ -145,8 +148,6 @@ export function FocusView({ className, date }: FocusViewProps) {
                 // Merge with monthly data if missing, preferring memory for today
                 setTodayData(todayLog || data[todayStr] || {});
                 setYesterdayData(yesterdayLog || data[yesterdayStr] || {});
-
-                setIsLoading(false);
             }
         };
 
@@ -393,15 +394,7 @@ export function FocusView({ className, date }: FocusViewProps) {
     }, [date, todayData, yesterdayData, monthlyData, pomodoro.completedPomodoros, donutPeriod, donutOffset, donutCategoryBy, projects]);
 
 
-    if (isLoading) {
-        return (
-            <div className={cn("w-full h-full flex items-center justify-center p-8", className)}>
-                <div className="animate-pulse flex flex-col items-center">
-                    <div className="h-8 rounded w-48 bg-muted mb-4"></div>
-                </div>
-            </div>
-        );
-    }
+
 
     return (
         <div className={cn("w-full h-full p-6 md:p-8 overflow-y-auto custom-scrollbar bg-background text-foreground font-sans", className)}>

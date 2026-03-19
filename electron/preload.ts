@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   saveMonthlyLog: (data: { yearMonth: string, data: any }) => ipcRenderer.invoke('save-monthly-log', data),
   saveDailyLog: (dateStr: string, data: any) => ipcRenderer.invoke('save-daily-log', dateStr, data),
   getUserDataPath: () => ipcRenderer.invoke('get-user-data-path'),
+  saveTodoImage: (data: string) => ipcRenderer.invoke('save-todo-image', data),
   getRunningApps: () => ipcRenderer.invoke('get-running-apps'),
   showNotification: (offset: { title: string, body: string }) => ipcRenderer.invoke('show-notification', offset),
   getScreenshotDiskUsage: () => ipcRenderer.invoke('get-screenshot-disk-usage'),

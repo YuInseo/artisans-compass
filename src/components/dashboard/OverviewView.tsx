@@ -2,6 +2,7 @@ import { cn } from "@/lib/utils";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useOverviewStats } from "./hooks/useOverviewStats";
 import { SmoothAreaChart, SimpleBarChart } from "./overview/OverviewCharts";
+import { useUIRegistryStore } from "@/core/UIRegistry";
 
 interface OverviewViewProps {
     className?: string;
@@ -10,6 +11,7 @@ interface OverviewViewProps {
 export function OverviewView({ className }: OverviewViewProps) {
     const { projects } = useDataStore();
     const { isLoading, stats } = useOverviewStats(projects);
+    const dashboardWidgets = useUIRegistryStore(state => state.dashboardWidgets);
 
     if (isLoading) {
         return (
@@ -166,6 +168,19 @@ export function OverviewView({ className }: OverviewViewProps) {
                     </div>
 
                 </div>
+
+                {/* Custom Plugin Widgets */}
+                {dashboardWidgets.map(widget => (
+                    <div key={widget.id} className="bg-card/40 border border-border/40 rounded-2xl p-6 shadow-sm flex flex-col hover:bg-card/60 transition-colors col-span-1 min-h-[300px]">
+                        <div className="flex items-center justify-between w-full mb-6">
+                            <h3 className="text-sm font-semibold tracking-tight text-foreground/90">{widget.title}</h3>
+                        </div>
+                        <div className="flex-1 w-full pl-2">
+                            {widget.render()}
+                        </div>
+                    </div>
+                ))}
+
             </div>
         </div>
     );

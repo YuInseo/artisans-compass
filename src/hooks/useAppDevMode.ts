@@ -37,9 +37,11 @@ export function useAppDevMode() {
         const proxyLog = (level: 'info' | 'warn' | 'error' | 'debug', originalMethod: any, ...args: any[]) => {
             // Call original first
             originalMethod.apply(console, args);
-            // Then add to store (non-blocking)
+            // Then add to store (non-blocking and deferred to avoid setState during render warnings)
             try {
-                addLog(level, args[0], 'frontend', ...args.slice(1));
+                setTimeout(() => {
+                    addLog(level, args[0], 'frontend', ...args.slice(1));
+                }, 0);
             } catch (e) {
                 // Prevent infinite loops if logging fails
             }

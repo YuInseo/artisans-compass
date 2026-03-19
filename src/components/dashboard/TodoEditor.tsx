@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { Todo } from "@/types";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { useDataStore } from "@/hooks/useDataStore";
+import { useArtisansCompass } from "@/core/ArtisansCompassProvider";
 import { cn } from "@/lib/utils";
 import { TodoItem } from "./TodoItem";
 import {
@@ -103,24 +104,43 @@ const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll
 export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projectId, editorAlignment = 'left', className, actions: propActions, forceProjectId }: TodoEditorProps) {
     const store = useTodoStore();
     const { settings } = useDataStore();
+    const { commandManager, undo, redo } = useArtisansCompass();
 
-    // Use provided actions or fallback to store actions
+    // Use provided actions or fallback to command dispatch
     const actions = useMemo(() => {
         if (propActions) return propActions;
 
         const effectiveProjectId = forceProjectId || projectId;
 
         return {
-            addTodo: (t: string, p: string | null = null, a: string | null = null) => store.addTodo(t, p, a, effectiveProjectId),
-            updateTodo: (id: string, u: Partial<Todo>, s = false) => store.updateTodo(id, u, s, effectiveProjectId),
-            deleteTodo: (id: string) => store.deleteTodo(id, effectiveProjectId),
-            deleteTodos: (ids: string[]) => store.deleteTodos(ids, effectiveProjectId),
-            indentTodo: (id: string) => store.indentTodo(id, effectiveProjectId),
-            unindentTodo: (id: string) => store.unindentTodo(id, effectiveProjectId),
-            moveTodo: (activeId: string, parentId: string | null, index: number) => store.moveTodo(activeId, parentId, index, effectiveProjectId),
-            moveTodos: (activeIds: string[], parentId: string | null, index: number) => store.moveTodos(activeIds, parentId, index, effectiveProjectId)
+            addTodo: (t: string, p: string | null = null, a: string | null = null) => {
+                const id = crypto.randomUUID();
+                commandManager.execute('cmd.addTodo', { id, text: t, parentId: p, afterId: a, projectId: effectiveProjectId });
+                return id;
+            },
+            updateTodo: (id: string, u: Partial<Todo>) => {
+                commandManager.execute('cmd.updateTodo', { id, updates: u, projectId: effectiveProjectId });
+            },
+            deleteTodo: (id: string) => {
+                commandManager.execute('cmd.deleteTodo', { id, projectId: effectiveProjectId });
+            },
+            deleteTodos: (ids: string[]) => {
+                // To keep it simple, if deleting multiple, run DeleteTodoCommand? 
+                // Wait, DeleteTodoCommand can take an array? 
+                // Let's implement DeleteTodosCommand or handle loop?
+                // For now, TodoStore still has deleteTodos.
+                ids.forEach(id => commandManager.execute('cmd.deleteTodo', { id, projectId: effectiveProjectId }));
+            },
+            indentTodo: (id: string) => commandManager.execute('cmd.indentTodo', { id, projectId: effectiveProjectId }),
+            unindentTodo: (id: string) => commandManager.execute('cmd.unindentTodo', { id, projectId: effectiveProjectId }),
+            moveTodo: (activeId: string, parentId: string | null, index: number) => {
+                commandManager.execute('cmd.moveTodos', { activeIds: [activeId], parentId, index, projectId: effectiveProjectId });
+            },
+            moveTodos: (activeIds: string[], parentId: string | null, index: number) => {
+                commandManager.execute('cmd.moveTodos', { activeIds, parentId, index, projectId: effectiveProjectId });
+            }
         };
-    }, [propActions, store, projectId, forceProjectId]);
+    }, [propActions, commandManager, projectId, forceProjectId]);
 
     const {
         addTodo,
@@ -317,6 +337,19 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
         setSelectedIds(new Set());
     }, [addTodo]);
 
+    const handleAddImages = useCallback((paths: string[], insertAfterId: string) => {
+        let currentAfterId = insertAfterId;
+
+        const location = findNodeLocation(todos, insertAfterId);
+        const parentId = location ? location.parentId : null;
+
+        paths.forEach((path) => {
+            const newId = addTodo("", parentId, currentAfterId);
+            updateTodo(newId, { type: 'image', images: [path] }, true);
+            currentAfterId = newId;
+        });
+    }, [todos, addTodo, updateTodo]);
+
     const hasAutoAddedRef = useRef(false);
     if (todos.length > 0) {
         hasAutoAddedRef.current = false;
@@ -338,7 +371,11 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
 
         // Prevent deletion of the last remaining item
         if (flat.length === 1 && flat[0].id === id) {
-            updateTodo(id, { text: "" });
+            if (flat[0].type === 'image') {
+                updateTodo(id, { text: "", type: 'text', images: [], isCollapsed: false });
+            } else {
+                updateTodo(id, { text: "" });
+            }
             return;
         }
 
@@ -553,19 +590,19 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
                 if (e.key === 'z') {
                     e.preventDefault();
                     if (e.shiftKey) {
-                        store.redo();
+                        redo();
                     } else {
-                        store.undo();
+                        undo();
                     }
                 } else if (e.key === 'y') {
                     e.preventDefault();
-                    store.redo();
+                    redo();
                 }
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds, deleteTodo, store]);
+    }, [selectedIds, deleteTodo, undo, redo]);
 
     // Track pointer Y for auto-scroll independent of events
     const pointerY = useRef(0);
@@ -814,6 +851,7 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
                                     onSelectAll={handleSelectAll}
                                     showIndentationGuides={settings?.showIndentationGuides} // Pass prop
                                     spellCheck={settings?.enableSpellCheck ?? false}
+                                    onAddImages={handleAddImages}
                                     isWidgetMode={isWidgetMode}
                                     editorAlignment={editorAlignment}
                                 />

@@ -232,19 +232,21 @@ export function TodoSidebar({ isEmbedded }: TodoSidebarProps) {
             </div>
 
             {/* Bottom Actions */}
-            <div className="shrink-0 pt-0 pb-4 px-4 flex flex-col gap-2">
-                <Button
-                    variant="outline"
-                    className="w-full border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 text-primary font-bold tracking-wide shadow-sm relative h-10 bg-muted/20"
-                    onClick={() => setShowGoalModal(true)}
-                >
-                    <Target className="w-4 h-4 mr-2" />
-                    {t('calendar.goalSetting').toUpperCase()}
-                    {hasMissingGoals && (
-                        <span className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-red-500 rounded-full animate-pulse border-2 border-background" />
-                    )}
-                </Button>
-            </div>
+            {(!isEmbedded || isWidgetMode) && (
+                <div className="shrink-0 pt-0 pb-4 px-4 flex flex-col gap-2">
+                    <Button
+                        variant="outline"
+                        className="w-full border-dashed border-primary/30 hover:border-primary hover:bg-primary/5 text-primary font-bold tracking-wide shadow-sm relative h-10 bg-muted/20"
+                        onClick={() => setShowGoalModal(true)}
+                    >
+                        <Target className="w-4 h-4 mr-2" />
+                        {t('calendar.goalSetting').toUpperCase()}
+                        {hasMissingGoals && (
+                            <span className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-red-500 rounded-full animate-pulse border-2 border-background" />
+                        )}
+                    </Button>
+                </div>
+            )}
 
             <GoalSettingModal
                 open={showGoalModal}

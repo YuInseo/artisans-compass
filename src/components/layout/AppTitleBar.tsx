@@ -5,7 +5,7 @@ import { AppTitle } from "./AppTitle";
 import { AppTitleBarControls } from "./AppTitleBarControls";
 
 interface AppTitleBarProps {
-    dashboardView: 'weekly' | 'daily' | 'pomodoro' | 'statistics';
+    dashboardView: string;
     isSidebarOpen: boolean;
     setIsSidebarOpen: (isOpen: boolean) => void;
     focusedProject: Project | null;
@@ -48,9 +48,8 @@ export function AppTitleBar({
                 />
             )}
 
-            {/* Right Controls */}
-            {/* Header Portal Target for WeeklyView/DailyPanel controls (Moved here) */}
-            <div id="top-toolbar-portal" className="flex items-center h-full" style={{ flex: 1, minWidth: 0 } as any}></div>
+            {/* Top Toolbar Portal: Acts as flexible spacer and container for right-aligned navs */}
+            <div id="top-toolbar-portal" className="flex-1 flex items-center h-full min-w-0" style={{ WebkitAppRegion: 'drag' } as any}></div>
 
             <AppTitleBarControls
                 dashboardView={dashboardView}

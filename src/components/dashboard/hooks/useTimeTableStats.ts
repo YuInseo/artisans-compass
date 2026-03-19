@@ -1,24 +1,18 @@
 import { useMemo } from 'react';
 import { differenceInSeconds, getHours } from 'date-fns';
-import { Session, AppSettings } from '@/types';
-import { useTranslation } from 'react-i18next';
+import { Session } from '@/types';
 
 export function useTimeTableStats(
     sessions: Session[],
     liveSession: Session | null | undefined,
-    allSessions: Session[] | undefined,
-    allLiveSession: Session | null | undefined,
-    now: Date,
-    settings: AppSettings | null | undefined
+    now: Date
 ) {
-    const { t } = useTranslation();
-
-const { totalFocusTime, peakActivityHour } = useMemo(() => {
+    const { totalFocusTime, peakActivityHour } = useMemo(() => {
         let total = 0;
-        const allSessions = liveSession ? [...sessions, liveSession] : sessions;
+        const effectiveSessions = liveSession ? [...sessions, liveSession] : sessions;
         const hourlyDistribution = new Array(24).fill(0);
 
-        allSessions.forEach(session => {
+        effectiveSessions.forEach(session => {
             const s = new Date(session.start);
             const isLive = session === liveSession;
             const e = isLive ? now : new Date(session.end);
@@ -55,7 +49,7 @@ const { totalFocusTime, peakActivityHour } = useMemo(() => {
         });
 
         let peakActivityHour = null;
-        if (maxHour !== -1) {
+        if (maxHour !== -1 && maxDuration > 0) {
             const ampm = maxHour >= 12 ? 'PM' : 'AM';
             const displayHour = maxHour % 12 || 12;
             peakActivityHour = `${displayHour} ${ampm} `;
@@ -64,36 +58,5 @@ const { totalFocusTime, peakActivityHour } = useMemo(() => {
         return { totalFocusTime: total, peakActivityHour };
     }, [sessions, liveSession, now]);
 
-const { sortedApps, totalAppUsageTime } = useMemo(() => {
-        const effectiveAllSessions = allSessions || sessions;
-        const effectiveLiveSession = allLiveSession !== undefined ? allLiveSession : liveSession;
-
-        const allSessionsList = effectiveLiveSession ? [...effectiveAllSessions, effectiveLiveSession] : effectiveAllSessions;
-
-        let total = 0;
-        const appMap: Record<string, number> = {};
-
-        allSessionsList.forEach(session => {
-            const s = new Date(session.start);
-            const isLive = session === effectiveLiveSession;
-            const e = isLive ? now : new Date(session.end);
-
-            if (isNaN(s.getTime()) || isNaN(e.getTime())) return;
-
-            const duration = differenceInSeconds(e, s);
-            if (duration <= 0) return;
-
-            total += duration;
-            const appName = session.process || t('calendar.focusSession');
-            appMap[appName] = (appMap[appName] || 0) + duration;
-        });
-
-        const apps = Object.entries(appMap)
-            .map(([name, duration]) => ({ name, duration }))
-            .sort((a, b) => b.duration - a.duration);
-
-        return { sortedApps: apps, totalAppUsageTime: total };
-    }, [sessions, allSessions, liveSession, allLiveSession, now, t, settings]);
-
-    return { totalFocusTime, peakActivityHour, sortedApps, totalAppUsageTime };
+    return { totalFocusTime, peakActivityHour };
 }

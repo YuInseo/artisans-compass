@@ -39,10 +39,13 @@ import { QuotesRemindersTab } from "./settings/quotes-reminders-tab";
 import { NotionSetupDialog } from "./notion-setup-dialog"; // Import
 import { version } from "../../package.json";
 import { themes } from "@/config/themes";
-export type SettingsTab = 'general' | 'appearance' | 'quotes-reminders' | 'timetable' | 'timeline' | 'calendar' | 'tracking' | 'integrations' | 'updatelog' | 'advanced';
 import { CalendarViewTab } from "./settings/calendar-view-tab";
 import { UpdateLogTab } from "./settings/update-log-tab";
+import { PluginsTab } from "./settings/plugins-tab";
+import { useUIExtensions } from "@/core/ArtisansCompassProvider";
+import { BaseSettingsTab } from "@/plugins/api";
 
+export type SettingsTab = 'general' | 'appearance' | 'quotes-reminders' | 'timetable' | 'timeline' | 'calendar' | 'tracking' | 'integrations' | 'updatelog' | 'advanced' | 'plugin-manager' | string;
 // ... inside renderSidebar ...
 interface SettingsModalProps {
     open?: boolean;
@@ -60,6 +63,7 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
     const [activeTab, setActiveTab] = useState<SettingsTab>(defaultTab);
     const [activeSection, setActiveSection] = useState<string | null>(null);
     const { dailyLog } = useDataStore();
+    const { settingsTabs } = useUIExtensions();
 
     // Sync activeTab with defaultTab when open changes
     useEffect(() => {
@@ -502,170 +506,212 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
             <div className="px-3 pt-6 pb-3 md:pt-4">
                 <h2 className="text-xs font-bold text-muted-foreground uppercase px-2 mb-1">{t('settings.userSettings')}</h2>
             </div>
-
-            <SidebarButton
-                active={activeTab === 'general'}
-                onClick={() => { setActiveTab('general'); setActiveSection(null); }}
-                label={t('settings.general')}
-                icon={<Settings className="w-4 h-4 mr-2" />}
-            />
-            {activeTab === 'general' && (
+            <ScrollArea className="flex-1 overflow-y-auto">
                 <div className="flex flex-col gap-[2px]">
-                    <SectionButton
-                        active={activeSection === 'settings-language'}
-                        onClick={() => scrollToSection('settings-language')}
-                        label={t('settings.language')}
+                    <SidebarButton
+                        active={activeTab === 'general'}
+                        onClick={() => { setActiveTab('general'); setActiveSection(null); }}
+                        label={t('settings.general')}
+                        icon={<Settings className="w-4 h-4 mr-2" />}
                     />
-                    <SectionButton
-                        active={activeSection === 'settings-weekly'}
-                        onClick={() => scrollToSection('settings-weekly')}
-                        label={t('settings.weeklySchedule')}
-                    />
-                    <SectionButton
-                        active={activeSection === 'settings-tracked-apps-card'}
-                        onClick={() => scrollToSection('settings-tracked-apps-card')}
-                        label={t('settings.trackedApps')}
-                    />
-                    <SectionButton
-                        active={activeSection === 'settings-startup'}
-                        onClick={() => scrollToSection('settings-startup')}
-                        label={t('settings.startupBehavior')}
-                    />
-                    <SectionButton
-                        active={activeSection === 'settings-developer-mode'}
-                        onClick={() => scrollToSection('settings-developer-mode')}
-                        label={t('settings.developerMode') || "Developer Mode"}
-                    />
-                </div>
-            )}
+                    {
+                        activeTab === 'general' && (
+                            <div className="flex flex-col gap-[2px]">
+                                <SectionButton
+                                    active={activeSection === 'settings-language'}
+                                    onClick={() => scrollToSection('settings-language')}
+                                    label={t('settings.language')}
+                                />
+                                <SectionButton
+                                    active={activeSection === 'settings-weekly'}
+                                    onClick={() => scrollToSection('settings-weekly')}
+                                    label={t('settings.weeklySchedule')}
+                                />
+                                <SectionButton
+                                    active={activeSection === 'settings-tracked-apps-card'}
+                                    onClick={() => scrollToSection('settings-tracked-apps-card')}
+                                    label={t('settings.trackedApps')}
+                                />
+                                <SectionButton
+                                    active={activeSection === 'settings-startup'}
+                                    onClick={() => scrollToSection('settings-startup')}
+                                    label={t('settings.startupBehavior')}
+                                />
+                                <SectionButton
+                                    active={activeSection === 'settings-developer-mode'}
+                                    onClick={() => scrollToSection('settings-developer-mode')}
+                                    label={t('settings.developerMode') || "Developer Mode"}
+                                />
+                            </div>
+                        )
+                    }
 
-            <SidebarButton
-                active={activeTab === 'appearance'}
-                onClick={() => { setActiveTab('appearance'); setActiveSection(null); }}
-                label={t('settings.appearance.title')}
-                icon={<Palette className="w-4 h-4 mr-2" />}
-            />
-            {activeTab === 'appearance' && (
-                <div className="flex flex-col gap-[2px]">
-                    <SectionButton
-                        active={activeSection === 'settings-theme'}
-                        onClick={() => scrollToSection('settings-theme')}
-                        label={t('settings.theme')}
+                    <SidebarButton
+                        active={activeTab === 'appearance'}
+                        onClick={() => { setActiveTab('appearance'); setActiveSection(null); }}
+                        label={t('settings.appearance.title')}
+                        icon={<Palette className="w-4 h-4 mr-2" />}
                     />
-                    <SectionButton
-                        active={activeSection === 'settings-color-theme'}
-                        onClick={() => scrollToSection('settings-color-theme')}
-                        label={t('settings.appearance.colorTheme')}
-                    />
-                    <SectionButton
-                        active={activeSection === 'settings-widgets'}
-                        onClick={() => scrollToSection('settings-widgets')}
-                        label={t('settings.widgetSettings')}
-                    />
-                    <SectionButton
-                        active={activeSection === 'settings-editor'}
-                        onClick={() => scrollToSection('settings-editor')}
-                        label={t('settings.editor') || "Editor Settings"}
-                    />
-                </div>
-            )}
+                    {
+                        activeTab === 'appearance' && (
+                            <div className="flex flex-col gap-[2px]">
+                                <SectionButton
+                                    active={activeSection === 'settings-theme'}
+                                    onClick={() => scrollToSection('settings-theme')}
+                                    label={t('settings.theme')}
+                                />
+                                <SectionButton
+                                    active={activeSection === 'settings-color-theme'}
+                                    onClick={() => scrollToSection('settings-color-theme')}
+                                    label={t('settings.appearance.colorTheme')}
+                                />
+                                <SectionButton
+                                    active={activeSection === 'settings-widgets'}
+                                    onClick={() => scrollToSection('settings-widgets')}
+                                    label={t('settings.widgetSettings')}
+                                />
+                                <SectionButton
+                                    active={activeSection === 'settings-editor'}
+                                    onClick={() => scrollToSection('settings-editor')}
+                                    label={t('settings.editor') || "Editor Settings"}
+                                />
+                            </div>
+                        )
+                    }
 
-            <SidebarButton
-                active={activeTab === 'quotes-reminders'}
-                onClick={() => { setActiveTab('quotes-reminders'); setActiveSection(null); }}
-                label={t('settings.appearance.quotesAndReminders.title') || "Quotes & Reminders"}
-                icon={<div className="w-4 h-4 mr-2 flex items-center justify-center font-serif text-xs font-bold">“</div>}
-            />
+                    <SidebarButton
+                        active={activeTab === 'quotes-reminders'}
+                        onClick={() => { setActiveTab('quotes-reminders'); setActiveSection(null); }}
+                        label={t('settings.appearance.quotesAndReminders.title') || "Quotes & Reminders"}
+                        icon={<div className="w-4 h-4 mr-2 flex items-center justify-center font-serif text-xs font-bold">“</div>}
+                    />
 
-            <SidebarButton
-                active={activeTab === 'timetable'}
-                onClick={() => { setActiveTab('timetable'); setActiveSection(null); }}
-                label={t('sidebar.timetable')}
-                icon={<LayoutTemplate className="w-4 h-4 mr-2" />}
-            />
-            {activeTab === 'timetable' && (
-                <div className="flex flex-col gap-[2px]">
-                    <SectionButton
-                        active={activeSection === 'settings-work-apps'}
-                        onClick={() => scrollToSection('settings-work-apps')}
-                        label={t('settings.timeline.workApps')}
+                    <SidebarButton
+                        active={activeTab === 'timetable'}
+                        onClick={() => { setActiveTab('timetable'); setActiveSection(null); }}
+                        label={t('sidebar.timetable')}
+                        icon={<LayoutTemplate className="w-4 h-4 mr-2" />}
                     />
-                </div>
-            )}
+                    {
+                        activeTab === 'timetable' && (
+                            <div className="flex flex-col gap-[2px]">
+                                <SectionButton
+                                    active={activeSection === 'settings-work-apps'}
+                                    onClick={() => scrollToSection('settings-work-apps')}
+                                    label={t('settings.timeline.workApps')}
+                                />
+                            </div>
+                        )
+                    }
 
-            <SidebarButton
-                active={activeTab === 'timeline'}
-                onClick={() => { setActiveTab('timeline'); setActiveSection(null); }}
-                label={t('sidebar.timeline')}
-                icon={<Activity className="w-4 h-4 mr-2" />}
-            />
-            {activeTab === 'timeline' && (
-                <div className="flex flex-col gap-[2px]">
-                    <SectionButton
-                        active={activeSection === 'settings-project-types'}
-                        onClick={() => scrollToSection('settings-project-types')}
-                        label={t('settings.projectTypes')}
+                    <SidebarButton
+                        active={activeTab === 'timeline'}
+                        onClick={() => { setActiveTab('timeline'); setActiveSection(null); }}
+                        label={t('sidebar.timeline')}
+                        icon={<Activity className="w-4 h-4 mr-2" />}
                     />
-                    <SectionButton
-                        active={activeSection === 'settings-auto-scroll'}
-                        onClick={() => scrollToSection('settings-auto-scroll')}
-                        label={t('settings.timeline.autoScrollToToday')}
-                    />
-                    <SectionButton
-                        active={activeSection === 'settings-timeline-preview'}
-                        onClick={() => scrollToSection('settings-timeline-preview')}
-                        label={t('settings.timeline.dragPreview')}
-                    />
-                </div>
-            )}
+                    {
+                        activeTab === 'timeline' && (
+                            <div className="flex flex-col gap-[2px]">
+                                <SectionButton
+                                    active={activeSection === 'settings-project-types'}
+                                    onClick={() => scrollToSection('settings-project-types')}
+                                    label={t('settings.projectTypes')}
+                                />
+                                <SectionButton
+                                    active={activeSection === 'settings-auto-scroll'}
+                                    onClick={() => scrollToSection('settings-auto-scroll')}
+                                    label={t('settings.timeline.autoScrollToToday')}
+                                />
+                                <SectionButton
+                                    active={activeSection === 'settings-timeline-preview'}
+                                    onClick={() => scrollToSection('settings-timeline-preview')}
+                                    label={t('settings.timeline.dragPreview')}
+                                />
+                            </div>
+                        )
+                    }
 
-            <SidebarButton
-                active={activeTab === 'tracking'}
-                onClick={() => { setActiveTab('tracking'); setActiveSection(null); }}
-                label={t('settings.tracking.title')}
-                icon={<Shield className="w-4 h-4 mr-2" />}
-            />
-            {activeTab === 'tracking' && (
-                <div className="flex flex-col gap-[2px]">
-                    <SectionButton
-                        active={activeSection === 'settings-screenshots'}
-                        onClick={() => scrollToSection('settings-screenshots')}
+                    <SidebarButton
+                        active={activeTab === 'tracking'}
+                        onClick={() => { setActiveTab('tracking'); setActiveSection(null); }}
                         label={t('settings.tracking.title')}
+                        icon={<Shield className="w-4 h-4 mr-2" />}
                     />
+                    {
+                        activeTab === 'tracking' && (
+                            <div className="flex flex-col gap-[2px]">
+                                <SectionButton
+                                    active={activeSection === 'settings-screenshots'}
+                                    onClick={() => scrollToSection('settings-screenshots')}
+                                    label={t('settings.tracking.title')}
+                                />
+                            </div>
+                        )
+                    }
+
+                    <SidebarButton
+                        active={activeTab === 'integrations'}
+                        onClick={() => { setActiveTab('integrations'); setActiveSection(null); }}
+                        label={t('settings.backup.title')}
+                        icon={<Database className="w-4 h-4 mr-2" />}
+                    />
+                    <SidebarButton
+                        active={activeTab === 'advanced'}
+                        onClick={() => { setActiveTab('advanced'); setActiveSection(null); }}
+                        label={t('settings.advanced') || "Advanced Settings"}
+                        icon={<Sliders className="w-4 h-4 mr-2" />}
+                    />
+                    <SidebarButton
+                        active={activeTab === 'updatelog'}
+                        onClick={() => { setActiveTab('updatelog'); setActiveSection(null); }}
+                        label={t('settings.updateLog') || "패치 노트"}
+                        icon={<History className="w-4 h-4 mr-2" />}
+                    />
+                    <SidebarButton
+                        active={activeTab === 'plugin-manager'}
+                        onClick={() => { setActiveTab('plugin-manager'); setActiveSection(null); }}
+                        label={t('settings.plugins') || "Plugins"}
+                        icon={<Settings className="w-4 h-4 mr-2" />}
+                    />
+
+                    {/* Injected Plugin Settings Tabs */}
+                    {
+                        settingsTabs.length > 0 && (
+                            <>
+                                <div className="my-2 px-2"><Separator className="bg-border/50" /></div>
+                                <div className="px-3 pt-2 pb-1">
+                                    <h2 className="text-xs font-bold text-muted-foreground uppercase px-2 mb-1">Plugin Configurations</h2>
+                                </div>
+                            </>
+                        )
+                    }
+                    {
+                        settingsTabs.map((tab: BaseSettingsTab) => (
+                            <SidebarButton
+                                key={tab.id}
+                                active={activeTab === tab.id}
+                                onClick={() => { setActiveTab(tab.id); setActiveSection(null); }}
+                                label={tab.title}
+                                icon={tab.icon || <Settings className="w-4 h-4 mr-2" />}
+                            />
+                        ))
+                    }
+
                 </div>
-            )}
+            </ScrollArea>
 
-            <SidebarButton
-                active={activeTab === 'integrations'}
-                onClick={() => { setActiveTab('integrations'); setActiveSection(null); }}
-                label={t('settings.backup.title')}
-                icon={<Database className="w-4 h-4 mr-2" />}
-            />
-            <SidebarButton
-                active={activeTab === 'advanced'}
-                onClick={() => { setActiveTab('advanced'); setActiveSection(null); }}
-                label={t('settings.advanced') || "Advanced Settings"}
-                icon={<Sliders className="w-4 h-4 mr-2" />}
-            />
-            <SidebarButton
-                active={activeTab === 'updatelog'}
-                onClick={() => { setActiveTab('updatelog'); setActiveSection(null); }}
-                label={t('settings.updateLog') || "패치 노트"}
-                icon={<History className="w-4 h-4 mr-2" />}
-            />
+            <div className="shrink-0 p-2 mt-auto bg-background/80 backdrop-blur-sm border-t border-border/10">
+                {/* Close Button Mobile/Embedded */}
+                <div className="pb-2 md:hidden">
+                    <Button variant="destructive" className="w-full" onClick={() => onOpenChange?.(false)}>Close</Button>
+                </div>
 
-
-            <div className="my-2 px-2"><Separator className="bg-border/50" /></div>
-
-            {/* Close Button Mobile/Embedded */}
-            <div className="mt-auto p-2 pb-5 md:hidden">
-                <Button variant="destructive" className="w-full" onClick={() => onOpenChange?.(false)}>Close</Button>
+                <div className="pl-3 py-2 text-[10px] text-muted-foreground/40 font-mono text-left hidden md:block select-text">
+                    v{version}
+                </div>
             </div>
-
-            <div className="mt-auto pl-5 py-4 text-xs text-muted-foreground/30 font-mono text-left mb-1 hidden md:block">
-                v{version}
-            </div>
-        </div>
+        </div >
     );
 
     const renderGeneralTab = () => {
@@ -718,6 +764,16 @@ export function SettingsModal({ open, onOpenChange, settings, onSaveSettings, de
                                         onSaveSettings={onSaveSettings}
                                     />
                                 )}
+
+                                {activeTab === 'plugin-manager' && (
+                                    <PluginsTab
+                                        settings={settings}
+                                        onSaveSettings={onSaveSettings}
+                                    />
+                                )}
+
+                                {/* Injected Plugin Tabs Content */}
+                                {settingsTabs.find(t => t.id === activeTab)?.render()}
 
                                 {activeTab === 'calendar' && (
                                     <div className="space-y-6 animate-in fade-in duration-300">

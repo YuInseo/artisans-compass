@@ -7,6 +7,7 @@
   },
   "settings": {
     "title": "設定",
+    "plugins": "プラグイン",
     "userSettings": "ユーザー設定",
     "general": "一般",
     "widgetTextAlignment": "ウィジェットのテキスト配置",
@@ -416,5 +417,15 @@
     "focusLog": "集中記録",
     "focusNotes": "集中ノート",
     "notesPlaceholder": "あなたの考えを記録してみてください... 何を考えていますか？"
+  },
+  "undo": {
+    "taskAction": "元に戻す: タスクアクション",
+    "projectAction": "元に戻す: プロジェクトアクション",
+    "calendarAction": "元に戻す: カレンダーアクション"
+  },
+  "redo": {
+    "taskAction": "やり直し: タスクアクション",
+    "projectAction": "やり直し: プロジェクトアクション",
+    "calendarAction": "やり直し: カレンダーアクション"
   }
 }

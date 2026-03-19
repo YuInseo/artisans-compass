@@ -7,6 +7,7 @@
   },
   "settings": {
     "title": "설정",
+    "plugins": "플러그인",
     "userSettings": "사용자 설정",
     "general": "일반",
     "widgetTextAlignment": "위젯 텍스트 정렬",
@@ -358,7 +359,9 @@
     "creatingProject": "프로젝트 생성 중...",
     "projectCreated": "프로젝트가 생성되었습니다!",
     "projectCreateFailed": "프로젝트 생성 실패",
-    "pomodoroView": "포모도로 뷰"
+    "pomodoroView": "포모도로 뷰",
+    "collapseAllImages": "모든 이미지 숨기기",
+    "expandAllImages": "모든 이미지 나타내기"
   },
   "update": {
     "availableTitle": "업데이트 가능",
@@ -576,5 +579,15 @@
     "focusLog": "집중 기록",
     "focusNotes": "집중 노트",
     "notesPlaceholder": "당신의 생각을 기록해보세요... 무슨 생각이 있나요?"
+  },
+  "undo": {
+    "taskAction": "실행 취소: 할 일 목록 액션",
+    "projectAction": "실행 취소: 프로젝트 액션",
+    "calendarAction": "실행 취소: 캘린더 액션"
+  },
+  "redo": {
+    "taskAction": "다시 실행: 할 일 목록 액션",
+    "projectAction": "다시 실행: 프로젝트 액션",
+    "calendarAction": "다시 실행: 캘린더 액션"
   }
 }

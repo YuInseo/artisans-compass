@@ -8,9 +8,10 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { v4 as uuidv4 } from "uuid";
 import { WindowControls } from "./WindowControls";
+import { useUIExtensions } from "@/core/ArtisansCompassProvider";
 
 interface AppTitleBarControlsProps {
-    dashboardView: 'weekly' | 'daily' | 'pomodoro' | 'statistics';
+    dashboardView: string;
     isSidebarOpen: boolean;
     setIsSidebarOpen: (isOpen: boolean) => void;
     onFocusProject: (project: Project | null) => void;
@@ -27,6 +28,7 @@ export function AppTitleBarControls({
     const { t } = useTranslation();
     const { projects, saveProjects, addToHistory } = useDataStore();
     const [isCreating, setIsCreating] = useState(false);
+    const { titleBarItems } = useUIExtensions();
 
     return (
         <div className="flex items-center h-full z-50 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as any}>
@@ -81,17 +83,58 @@ export function AppTitleBarControls({
                 )}
 
                 {/* Mobile Search Toggle */}
-                <div className="lg:hidden flex items-center no-drag mr-1">
+                {dashboardView === 'daily' && (
+                    <div className="lg:hidden flex items-center no-drag mr-1">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg"
+                            onClick={() => setIsMobileSearchOpen(true)}
+                        >
+                            <Search className="w-4 h-4" />
+                        </Button>
+                    </div>
+                )}
+
+                {/* Collapse/Expand Images Global Toggle */}
+                {dashboardView === 'daily' && (
                     <Button
                         variant="ghost"
-                        size="sm"
-                        className="h-8 w-8 p-0 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg"
-                        onClick={() => setIsMobileSearchOpen(true)}
+                        size="icon"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted font-medium transition-colors no-drag"
+                        onClick={async () => {
+                            const coreApi = (window as any).artisansCompassApi;
+                            if (coreApi && coreApi.commandManager) {
+                                await coreApi.commandManager.executeCommand('cmd.toggleAllImages');
+                            }
+                        }}
+                        title={t('editor.toggleImages', 'Toggle All Images')}
+                        style={{ WebkitAppRegion: 'no-drag' } as any}
                     >
-                        <Search className="w-4 h-4" />
+                        <svg className="w-4 h-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                            <circle cx="9" cy="9" r="2" />
+                            <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                        </svg>
                     </Button>
-                </div>
+                )}
 
+                {/* Plugin Title Bar Items */}
+                {titleBarItems
+                    .filter(item => !item.showOnViews || item.showOnViews.length === 0 || item.showOnViews.includes(dashboardView))
+                    .map((item) => (
+                        <Button
+                            key={item.id}
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-muted font-medium transition-colors no-drag"
+                            onClick={item.onClick}
+                            title={item.title}
+                            style={{ WebkitAppRegion: 'no-drag' } as any}
+                        >
+                            {item.icon}
+                        </Button>
+                    ))}
             </div>
 
             {/* Window Controls (Custom) */}

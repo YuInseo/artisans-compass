@@ -30,7 +30,7 @@ export function WeeklyHeader({
     const { t } = useTranslation();
 
     return (
-        <div className="flex items-center justify-between w-full h-full px-2" style={{ WebkitAppRegion: 'drag' } as any}>
+        <div className="flex items-center justify-between w-full h-full" style={{ WebkitAppRegion: 'drag' } as any}>
             <div className="flex items-center gap-4" style={{ WebkitAppRegion: 'no-drag' } as any}>
                 <div className="flex bg-muted/30 p-1 rounded-lg border border-border/20">
                     <Button
@@ -54,7 +54,7 @@ export function WeeklyHeader({
                 </div>
             </div>
 
-            <div className="flex items-center gap-3" style={{ WebkitAppRegion: 'no-drag' } as any}>
+            <div className="flex items-center gap-3 pr-2" style={{ WebkitAppRegion: 'no-drag' } as any}>
                 {viewMode !== 'routine' && (
                     <h2 className="text-xl font-bold tracking-tight mr-2 whitespace-nowrap" style={{ WebkitAppRegion: 'drag' } as any}>
                         {format(viewDate, 'MMMM yyyy')}

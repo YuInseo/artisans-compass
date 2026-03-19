@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { format, isSameDay, getDay, setSeconds, setMinutes, setHours } from 'date-fns';
 import { WorkSession, Session, PlannedSession, RoutineSession, DailyLog } from '@/types';
 import { useDataStore } from '@/hooks/useDataStore';
-
+import { useArtisansCompass } from '@/core/ArtisansCompassProvider';
 export function useWeeklyData(
     days: Date[],
     viewMode: 'calendar' | 'routine',
@@ -12,7 +12,7 @@ export function useWeeklyData(
     setSelectedPlan: (plan: React.SetStateAction<Partial<PlannedSession> | null>) => void,
     todaySessions?: (WorkSession | Session)[]
 ) {
-    const { settings, saveSettings } = useDataStore();
+    const { settings } = useDataStore();
 
     const [weekSessions, setWeekSessions] = useState<(WorkSession | Session)[]>([]);
     const [weekPlanned, setWeekPlanned] = useState<PlannedSession[]>([]);
@@ -101,58 +101,21 @@ export function useWeeklyData(
         return showRoutineOverlay ? [...weekPlanned, ...routineSessions] : weekPlanned;
     }, [viewMode, showRoutineOverlay, weekPlanned, routineSessions]);
 
+    const { commandManager } = useArtisansCompass();
+
     const handleSaveRoutine = async (session: Partial<PlannedSession>, originalStart?: number) => {
-        if (!session.start || !session.title || !settings) return;
-
-        const date = new Date(session.start);
-        const dayOfWeek = getDay(date);
-        const startSeconds = date.getHours() * 3600 + date.getMinutes() * 60;
-        const durationSeconds = session.duration || 3600;
-
-        const newRoutine: RoutineSession = {
-            id: session.id || crypto.randomUUID(),
-            dayOfWeek,
-            startSeconds,
-            durationSeconds,
-            title: session.title,
-            description: session.description,
-            color: session.color,
-            location: session.location,
-            alert: session.alert,
-            priority: session.priority
-        };
-
-        let updatedRoutine = [...(localRoutine || settings?.weeklyRoutine || [])];
-
-        if (session.id && updatedRoutine.some(r => r.id === session.id)) {
-            if (originalStart) {
-                const originalDay = getDay(new Date(originalStart));
-                const targetIndex = updatedRoutine.findIndex(r => r.id === session.id && r.dayOfWeek === originalDay);
-
-                if (targetIndex >= 0) {
-                    updatedRoutine[targetIndex] = newRoutine;
-                } else {
-                    const idMatchIndex = updatedRoutine.findIndex(r => r.id === session.id);
-                    if (idMatchIndex >= 0) updatedRoutine[idMatchIndex] = newRoutine;
-                }
-            } else {
-                updatedRoutine = updatedRoutine.map(r => r.id === session.id ? newRoutine : r);
-            }
-        } else {
-            updatedRoutine.push(newRoutine);
-            if (isEditorOpen && !session.id) {
-                setSelectedPlan(prev => prev ? ({ ...prev, id: newRoutine.id }) : null);
+        let finalSession = { ...session };
+        if (!finalSession.id) {
+            finalSession.id = crypto.randomUUID();
+            if (isEditorOpen) {
+                setSelectedPlan(prev => prev ? ({ ...prev, id: finalSession.id }) : null);
             }
         }
-
-        setLocalRoutine(updatedRoutine);
-        await saveSettings({ ...settings, weeklyRoutine: updatedRoutine });
+        await commandManager.execute('cmd.saveRoutine', { session: finalSession, originalStart });
     };
 
     const handleDeleteRoutine = async (id: string) => {
-        if (!settings) return;
-        const updatedRoutine = (settings.weeklyRoutine || []).filter(r => r.id !== id);
-        await saveSettings({ ...settings, weeklyRoutine: updatedRoutine });
+        await commandManager.execute('cmd.deleteRoutine', { id });
     };
 
     const handleSavePlan = async (session: Partial<PlannedSession>, originalStart?: number) => {
@@ -160,113 +123,14 @@ export function useWeeklyData(
             await handleSaveRoutine(session, originalStart);
             return;
         }
-
-        if (!session.start || !session.title) return;
-
-        const newStart = new Date(session.start);
-        const newDateKey = format(newStart, 'yyyy-MM-dd');
-        const newMonthKey = format(newStart, 'yyyy-MM');
-
-        let oldDateKey: string | null = null;
-        let oldMonthKey: string | null = null;
-
-        const actualOriginalStart = originalStart || (session.id ? weekPlanned.find(p => p.id === session.id)?.start : undefined);
-
-        if (actualOriginalStart && !isSameDay(actualOriginalStart, newStart)) {
-            const oldStart = new Date(actualOriginalStart);
-            oldDateKey = format(oldStart, 'yyyy-MM-dd');
-            oldMonthKey = format(oldStart, 'yyyy-MM');
+        let finalSession = { ...session };
+        if (!finalSession.id) {
+            finalSession.id = crypto.randomUUID();
+            if (isEditorOpen) {
+                setSelectedPlan(prev => prev ? ({ ...prev, id: finalSession.id }) : null);
+            }
         }
-
-        if (!(window as any).ipcRenderer) return;
-        const ipc = (window as any).ipcRenderer;
-
-        if (oldMonthKey === newMonthKey || !oldMonthKey) {
-            const logs = await ipc.getMonthlyLog(newMonthKey);
-
-            if (oldDateKey && logs[oldDateKey] && logs[oldDateKey].plannedSessions) {
-                logs[oldDateKey].plannedSessions = logs[oldDateKey].plannedSessions.filter((p: PlannedSession) => p.id !== session.id);
-            }
-
-            if (!logs[newDateKey]) {
-                logs[newDateKey] = { date: newDateKey, sessions: [], todos: [], stats: { totalWorkSeconds: 0, questAchieved: false }, assets: [], isRestDay: false };
-            }
-            const log = logs[newDateKey];
-            const planned = log.plannedSessions || [];
-
-            const newSession = {
-                id: session.id || crypto.randomUUID(),
-                start: session.start,
-                duration: session.duration || 3600,
-                title: session.title,
-                description: session.description,
-                color: session.color,
-                location: session.location,
-                alert: session.alert,
-                priority: session.priority,
-                isCompleted: session.isCompleted
-            } as PlannedSession;
-
-            if (isEditorOpen && !session.id) {
-                setSelectedPlan(prev => prev ? ({ ...prev, id: newSession.id }) : null);
-            }
-
-            setWeekPlanned(prev => {
-                const existingIndex = prev.findIndex(p => p.id === newSession.id);
-                if (existingIndex >= 0) {
-                    const next = [...prev];
-                    next[existingIndex] = newSession;
-                    return next;
-                } else {
-                    return [...prev, newSession];
-                }
-            });
-
-            if (oldDateKey && oldDateKey !== newDateKey) {
-                log.plannedSessions = [...planned, newSession];
-            } else {
-                if (session.id && planned.some((p: PlannedSession) => p.id === session.id)) {
-                    log.plannedSessions = planned.map((p: PlannedSession) => p.id === session.id ? newSession : p);
-                } else {
-                    log.plannedSessions = [...planned, newSession];
-                }
-            }
-
-            await ipc.saveMonthlyLog({ yearMonth: newMonthKey, data: logs });
-        } else {
-            if (oldMonthKey && oldDateKey) {
-                const oldLogs = await ipc.getMonthlyLog(oldMonthKey);
-                if (oldLogs && oldLogs[oldDateKey] && oldLogs[oldDateKey].plannedSessions) {
-                    oldLogs[oldDateKey].plannedSessions = oldLogs[oldDateKey].plannedSessions.filter((p: PlannedSession) => p.id !== session.id);
-                    await ipc.saveMonthlyLog({ yearMonth: oldMonthKey, data: oldLogs });
-                }
-            }
-
-            const newLogs = await ipc.getMonthlyLog(newMonthKey);
-            if (!newLogs[newDateKey]) {
-                newLogs[newDateKey] = { date: newDateKey, sessions: [], todos: [], stats: { totalWorkSeconds: 0, questAchieved: false }, assets: [], isRestDay: false };
-            }
-            const log = newLogs[newDateKey];
-            const planned = log.plannedSessions || [];
-
-            const newSession = {
-                id: session.id || crypto.randomUUID(),
-                start: session.start,
-                duration: session.duration || 3600,
-                title: session.title,
-                description: session.description,
-                color: session.color,
-                location: session.location,
-                alert: session.alert,
-                priority: session.priority,
-                isCompleted: session.isCompleted
-            } as PlannedSession;
-
-            log.plannedSessions = [...planned, newSession];
-            await ipc.saveMonthlyLog({ yearMonth: newMonthKey, data: newLogs });
-        }
-
-        loadData();
+        await commandManager.execute('cmd.savePlan', { session: finalSession, originalStart });
     };
 
     const handleDeletePlan = async (id: string) => {
@@ -274,22 +138,13 @@ export function useWeeklyData(
             await handleDeleteRoutine(id);
             return;
         }
-
         const sessionToDelete = effectivePlanned.find(p => p.id === id);
         if (!sessionToDelete) return;
 
         const sessionDate = new Date(sessionToDelete.start);
-        const dateStr = format(sessionDate, 'yyyy-MM-dd');
-        const yearMonth = format(sessionDate, 'yyyy-MM');
+        const dateKey = format(sessionDate, 'yyyy-MM-dd');
 
-        if ((window as any).ipcRenderer) {
-            const logs = await (window as any).ipcRenderer.getMonthlyLog(yearMonth);
-            if (logs[dateStr] && logs[dateStr].plannedSessions) {
-                logs[dateStr].plannedSessions = logs[dateStr].plannedSessions.filter((p: PlannedSession) => p.id !== id);
-                await (window as any).ipcRenderer.saveMonthlyLog({ yearMonth, data: logs });
-                loadData();
-            }
-        }
+        await commandManager.execute('cmd.deletePlan', { id, dateKey });
     };
 
     return {
