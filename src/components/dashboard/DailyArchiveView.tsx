@@ -63,6 +63,11 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
     const { carryOverTodos } = useTodoStore();
     const [isGeneralOpen, setIsGeneralOpen] = useState(false);
 
+    const filteredProjects = useMemo(() => {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        return projects.filter(p => p.startDate <= dateStr && p.endDate >= dateStr);
+    }, [projects, date]);
+
     // General Work Logic
     const generalTodos = useMemo(() => {
         return projectTodos['general'] || [];
@@ -574,7 +579,7 @@ export function DailyArchiveView({ date, todos: initialTodos, projectTodos = {},
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="all">{t('sidebar.allProjects')}</SelectItem>
-                                            {projects.map(p => (
+                                            {filteredProjects.map(p => (
                                                 <SelectItem key={p.id} value={p.id}>
                                                     <span className="flex items-center gap-2">
                                                         <span className={`w-2 h-2 rounded-full`} style={{ backgroundColor: p.color || '#3b82f6' }} />

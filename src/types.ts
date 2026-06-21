@@ -100,6 +100,7 @@ export interface AppSettings {
     showPlannedSessions?: boolean; // default: false
     showAppOnOffIndicator?: boolean; // default: true
     enabledPlugins?: string[]; // List of enabled plugin IDs
+    undoScope?: 'global' | 'scoped'; // default: 'global'
 }
 
 export interface Project {

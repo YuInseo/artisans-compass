@@ -3,6 +3,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { Todo } from '@/types';
 import { format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
+import { recordEdit } from '@/lib/typing-recorder';
+import { pushDailyLog, makeDebouncedPusher } from '@/lib/firestore-sync';
 
 interface TodoStore {
     projectTodos: Record<string, Todo[]>;
@@ -13,7 +15,7 @@ interface TodoStore {
     // Actions
     setActiveProjectId: (id: string) => void;
     setTodos: (todos: Todo[], shouldSave?: boolean, targetProjectId?: string, skipHistory?: boolean) => void;
-    addTodo: (text: string, parentId?: string | null, afterId?: string | null, targetProjectId?: string, skipHistory?: boolean) => string;
+    addTodo: (text: string, parentId?: string | null, afterId?: string | null, targetProjectId?: string, skipHistory?: boolean, preGeneratedId?: string) => string;
     updateTodo: (id: string, updates: Partial<Todo>, skipHistory?: boolean, targetProjectId?: string) => void;
     deleteTodo: (id: string, targetProjectId?: string, skipHistory?: boolean) => void;
     deleteTodos: (ids: string[], targetProjectId?: string, skipHistory?: boolean) => void;
@@ -56,6 +58,13 @@ function debounce<T extends (...args: any[]) => void>(func: T, wait: number): T 
     } as T;
 }
 
+// Cloud push for today's projectTodos. Debounced so a typing burst only writes
+// one Firestore doc.
+const pushTodosToCloud = makeDebouncedPusher<Record<string, any>>(async (projectTodos) => {
+    const dateStr = format(new Date(), 'yyyy-MM-dd');
+    await pushDailyLog(dateStr, { projectTodos });
+}, 1500);
+
 // Helper to save to IPC
 const existingSaveToIPC = async (projectTodos: Record<string, Todo[]>) => {
     if ((window as any).ipcRenderer) {
@@ -76,6 +85,7 @@ const existingSaveToIPC = async (projectTodos: Record<string, Todo[]>) => {
             console.error("Failed to save todos to IPC", e);
         }
     }
+    pushTodosToCloud(projectTodos);
 };
 
 const saveToIPC = debounce(existingSaveToIPC, 2000);
@@ -387,9 +397,9 @@ export const useTodoStore = create<TodoStore>()(
                 if (shouldSave) saveToIPC(newProjectTodos);
             },
 
-            addTodo: (text, parentId = null, afterId = null, targetProjectId, skipHistory = false) => {
+            addTodo: (text, parentId = null, afterId = null, targetProjectId, skipHistory = false, preGeneratedId) => {
                 if (!skipHistory) get().addToHistory();
-                const newId = uuidv4();
+                const newId = preGeneratedId || uuidv4();
                 const newNode: Todo = { id: newId, text, completed: false, children: [] };
 
                 const { activeProjectId, projectTodos } = get();
@@ -435,6 +445,10 @@ export const useTodoStore = create<TodoStore>()(
 
                 set({ projectTodos: newProjectTodos });
                 saveToIPC(newProjectTodos);
+
+                if (typeof updates.text === 'string') {
+                    recordEdit('todo', id, updates.text);
+                }
             },
 
             deleteTodo: (id, targetProjectId, skipHistory = false) => {

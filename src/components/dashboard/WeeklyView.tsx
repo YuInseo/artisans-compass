@@ -6,6 +6,7 @@ import { WorkSession, Session, PlannedSession } from "@/types";
 import { PlanEditor } from "./PlanEditor";
 
 import { useDataStore } from "@/hooks/useDataStore";
+import { useCommandStoreInternal } from "@/core/useCommandStore";
 
 // Hooks
 import { useWeeklyState } from "./hooks/useWeeklyState";
@@ -29,6 +30,7 @@ interface WeeklyViewProps {
 
 export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessions }: WeeklyViewProps) {
     const { settings, saveSettings } = useDataStore();
+    const setActiveUndoDomain = useCommandStoreInternal((s) => s.setActiveUndoDomain);
 
     const {
         viewMode, setViewMode,
@@ -148,7 +150,7 @@ export function WeeklyView({ currentDate, onDateChange, liveSession, todaySessio
     );
 
     return (
-        <div id="weekly-view-container" className="flex flex-col h-full bg-background text-foreground select-none animate-in fade-in duration-300 relative">
+        <div id="weekly-view-container" className="flex flex-col h-full bg-background text-foreground select-none animate-in fade-in duration-300 relative" onPointerDown={() => setActiveUndoDomain('weekly')}>
             {portalTarget ? createPortal(header, portalTarget) : (
                 <div className="flex items-center justify-between px-4 py-3 border-b border-border/40 bg-card/50 backdrop-blur-sm shrink-0">
                     {header}

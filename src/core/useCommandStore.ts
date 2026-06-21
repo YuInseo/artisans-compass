@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { CommandResult } from './Command';
 
+export type UndoDomain = 'command' | 'weekly' | 'todo' | 'data';
+
 export interface CommandHistoryAction extends CommandResult {
     description: string;
 }
@@ -9,16 +11,21 @@ export interface ICommandStore {
     history: CommandHistoryAction[];
     future: CommandHistoryAction[];
     lastActionTime: number;
+    activeUndoDomain: UndoDomain;
 
     pushAction: (action: CommandHistoryAction) => void;
     undo: () => Promise<void>;
     redo: () => Promise<void>;
+    setActiveUndoDomain: (domain: UndoDomain) => void;
 }
 
 export const useCommandStoreInternal = create<ICommandStore>((set, get) => ({
     history: [],
     future: [],
     lastActionTime: 0,
+    activeUndoDomain: 'command' as UndoDomain,
+
+    setActiveUndoDomain: (domain: UndoDomain) => set({ activeUndoDomain: domain }),
 
     pushAction: (action) => {
         set((state) => {

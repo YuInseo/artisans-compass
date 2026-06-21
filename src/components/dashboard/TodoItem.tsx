@@ -28,6 +28,7 @@ interface TodoItemProps {
     onSelectAll?: () => void;
     spellCheck?: boolean;
     onAddImages?: (paths: string[], insertAfterId: string) => void;
+    onPasteItems?: (items: Array<{text: string, completed: boolean, indent: number}>, afterId: string) => void;
 }
 
 export const TodoItem = React.memo<TodoItemProps>(({
@@ -51,6 +52,7 @@ export const TodoItem = React.memo<TodoItemProps>(({
     onSelectAll,
     spellCheck = false,
     onAddImages,
+    onPasteItems,
     isWidgetMode = false,
     'data-todo-id': dataTodoId,
     editorAlignment = 'left'
@@ -66,42 +68,56 @@ export const TodoItem = React.memo<TodoItemProps>(({
     const isFocusedRef = useRef(isFocused);
     const [isUploading, setIsUploading] = React.useState(false);
     const [isImageModalOpen, setIsImageModalOpen] = React.useState(false);
-    const [resizingWidth, setResizingWidth] = React.useState<number | null>(null);
+    // resizingWidth removed — resize uses direct DOM manipulation for performance
     const [isCaptionVisible, setIsCaptionVisible] = React.useState(!!todo.text);
     const [isImageCollapsed, setIsImageCollapsed] = React.useState(todo.isCollapsed || false);
     const imageContainerRef = useRef<HTMLDivElement>(null);
 
-    const handleResizeStart = (e: React.MouseEvent) => {
+    const handleResizeStart = (e: React.PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        // Stop DndContext PointerSensor from intercepting via capture phase
+        e.nativeEvent.stopImmediatePropagation();
 
         if (isLocked) return;
 
-        const startX = e.pageX;
-        const startWidth = imageContainerRef.current?.getBoundingClientRect().width || 0;
+        // Capture pointer to this element so all subsequent pointer events route here
+        const target = e.currentTarget as HTMLElement;
+        target.setPointerCapture(e.pointerId);
 
-        // Disable text selection globally during drag using Tailwind's robust class
+        const startX = e.pageX;
+        const container = imageContainerRef.current;
+        const startWidth = container?.getBoundingClientRect().width || 0;
+
         document.body.classList.add('select-none');
 
-        const handleMouseMove = (mouseMoveEvent: MouseEvent) => {
-            window.getSelection()?.removeAllRanges(); // Force clear any selection blue boxes
-            const deltaX = mouseMoveEvent.pageX - startX;
-            setResizingWidth(Math.max(100, Math.min(startWidth + deltaX, window.innerWidth - 100)));
+        // Direct DOM manipulation during drag to avoid React re-renders (prevents lag)
+        const handlePointerMove = (moveEvent: PointerEvent) => {
+            const deltaX = moveEvent.pageX - startX;
+            const newWidth = Math.max(100, Math.min(startWidth + deltaX, window.innerWidth - 100));
+            if (container) {
+                container.style.width = `${newWidth}px`;
+            }
         };
 
-        const handleMouseUp = (mouseUpEvent: MouseEvent) => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-            document.body.classList.remove('select-none'); // Restore text selection
+        const handlePointerUp = (upEvent: PointerEvent) => {
+            target.releasePointerCapture(upEvent.pointerId);
+            document.removeEventListener('pointermove', handlePointerMove);
+            document.removeEventListener('pointerup', handlePointerUp);
+            document.removeEventListener('pointercancel', handlePointerUp);
+            document.body.classList.remove('select-none');
 
-            const finalDeltaX = mouseUpEvent.pageX - startX;
+            const finalDeltaX = upEvent.pageX - startX;
             const finalWidth = Math.max(100, startWidth + finalDeltaX);
+            if (container) {
+                container.style.width = '';  // Clear inline style, let React take over
+            }
             onUpdate(todo.id, { imageWidth: finalWidth });
-            setResizingWidth(null);
         };
 
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
+        document.addEventListener('pointermove', handlePointerMove);
+        document.addEventListener('pointerup', handlePointerUp);
+        document.addEventListener('pointercancel', handlePointerUp);
     };
 
     useEffect(() => {
@@ -249,12 +265,51 @@ export const TodoItem = React.memo<TodoItemProps>(({
         const items = e.clipboardData?.items;
         if (!items) return;
 
+        // Check for images first
         for (let i = 0; i < items.length; i++) {
             if (items[i].type.indexOf('image') !== -1) {
-                e.preventDefault(); // Stop text paste
+                e.preventDefault();
                 const file = items[i].getAsFile();
                 if (file) handleImageUpload(file);
-                break;
+                return;
+            }
+        }
+
+        // Check for markdown checkbox patterns in text
+        const text = e.clipboardData?.getData('text/plain');
+        if (text && onPasteItems) {
+            const checkboxPattern = /^(\s*)[-*]\s*\[([ xX])\]\s*(.*)/;
+            const lines = text.split('\n').filter(l => l.trim().length > 0);
+            const hasCheckboxes = lines.some(l => checkboxPattern.test(l));
+
+            if (hasCheckboxes) {
+                e.preventDefault();
+                const baseIndent = lines.reduce((min, l) => {
+                    const match = l.match(/^(\s*)/);
+                    const spaces = match ? match[1].replace(/\t/g, '    ').length : 0;
+                    return Math.min(min, spaces);
+                }, Infinity);
+
+                const parsed = lines.map(line => {
+                    const match = line.match(checkboxPattern);
+                    if (match) {
+                        const rawIndent = match[1].replace(/\t/g, '    ').length;
+                        return {
+                            text: match[3].trim(),
+                            completed: match[2].toLowerCase() === 'x',
+                            indent: Math.floor((rawIndent - baseIndent) / 2)
+                        };
+                    }
+                    // Non-checkbox line: treat as unchecked item
+                    const rawIndent = (line.match(/^(\s*)/)?.[1] || '').replace(/\t/g, '    ').length;
+                    return {
+                        text: line.trim(),
+                        completed: false,
+                        indent: Math.floor((rawIndent - baseIndent) / 2)
+                    };
+                });
+
+                onPasteItems(parsed, todo.id);
             }
         }
     };
@@ -396,7 +451,7 @@ export const TodoItem = React.memo<TodoItemProps>(({
                         }}
                         onKeyDown={(e) => handleKeyDown(e as any)}
                         style={{
-                            width: resizingWidth !== null ? `${resizingWidth}px` : (isImageCollapsed ? 'auto' : (todo.imageWidth ? `${todo.imageWidth}px` : '100%')),
+                            width: isImageCollapsed ? 'auto' : (todo.imageWidth ? `${todo.imageWidth}px` : '100%'),
                             maxWidth: '100%'
                         }}
                     >
@@ -407,7 +462,7 @@ export const TodoItem = React.memo<TodoItemProps>(({
                                     src={todo.images[0]}
                                     className="w-full h-auto rounded-lg object-contain shadow-sm cursor-pointer select-none"
                                     style={{
-                                        height: todo.imageWidth || resizingWidth ? 'auto' : undefined,
+                                        height: todo.imageWidth ? 'auto' : undefined,
                                     }}
                                     draggable={false}
                                     alt="Image block"
@@ -491,8 +546,10 @@ export const TodoItem = React.memo<TodoItemProps>(({
                                 {/* Right-side Resize Handle */}
                                 {!isLocked && (
                                     <div
+                                        data-resize-handle
                                         className="absolute top-0 right-0 w-4 h-full cursor-col-resize opacity-0 group-hover/img:opacity-100 flex items-center justify-center -mr-2 z-20 select-none"
-                                        onMouseDown={handleResizeStart}
+                                        style={{ touchAction: 'none' }}
+                                        onPointerDown={handleResizeStart}
                                         onDragStart={(e) => e.preventDefault()}
                                     >
                                         <div className="w-1.5 h-12 bg-white/50 rounded-full shadow-sm pointer-events-none" />
@@ -574,7 +631,8 @@ export const TodoItem = React.memo<TodoItemProps>(({
                         }}
                         onBlur={() => {
                             if (isLocked) return;
-                            if (localText.trim() === "") {
+                            if (localText.trim() === "" && todo.text.trim() !== "") {
+                                // Only auto-delete if the user cleared existing text, not a fresh empty todo
                                 onDelete(todo.id);
                             } else if (localText !== todo.text) {
                                 onUpdate(todo.id, { text: localText }, false);

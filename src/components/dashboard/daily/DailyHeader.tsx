@@ -30,6 +30,11 @@ export function DailyHeader({
     const toggleCollapseCommand = useMemo(() => new ToggleImageCollapseCommand(), []);
     const clearUntitledCommand = useMemo(() => new ClearUntitledTodosCommand(), []);
 
+    const activeProjects = useMemo(() => {
+        const todayStr = format(new Date(), 'yyyy-MM-dd');
+        return projects.filter(p => p.startDate <= todayStr && p.endDate >= todayStr);
+    }, [projects]);
+
     if (isWidgetMode) return null;
 
     return (
@@ -50,8 +55,8 @@ export function DailyHeader({
                             <SelectValue placeholder={t('dashboard.selectProject')} />
                         </SelectTrigger>
                         <SelectContent>
-                            {projects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
-                            {projects.map(p => (
+                            {activeProjects.length === 0 && <SelectItem value="none">No Project</SelectItem>}
+                            {activeProjects.map(p => (
                                 <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                             ))}
                         </SelectContent>

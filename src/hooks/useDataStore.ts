@@ -4,6 +4,11 @@ import { useEffect } from 'react';
 import { AppSettings, Project, DailyLog } from '@/types';
 import { format } from 'date-fns';
 import { useTodoStore } from './useTodoStore';
+import { recordEdit } from '@/lib/typing-recorder';
+import { pushSettings, pushProjects, makeDebouncedPusher } from '@/lib/firestore-sync';
+
+const pushSettingsToCloud = makeDebouncedPusher<AppSettings>(pushSettings, 1500);
+const pushProjectsToCloud = makeDebouncedPusher<Project[]>(pushProjects, 800);
 
 interface DataStore {
     settings: AppSettings | null;
@@ -163,10 +168,28 @@ export const useDataStoreInternal = create<DataStore>()(
                 if ((window as any).ipcRenderer) {
                     await (window as any).ipcRenderer.saveProjects(newProjects);
                 }
+                pushProjectsToCloud(newProjects);
             },
 
             saveSettings: async (newSettings: AppSettings) => {
+                const prev = get().settings;
                 set({ settings: newSettings });
+
+                // Record focus-goal text edits (the main typing surface in settings)
+                const prevGoals = prev?.focusGoals;
+                const nextGoals = newSettings.focusGoals;
+                if (nextGoals) {
+                    if (typeof nextGoals.monthly === 'string' && nextGoals.monthly !== prevGoals?.monthly) {
+                        recordEdit('goal', 'monthly', nextGoals.monthly);
+                    }
+                    if (typeof nextGoals.weekly === 'string' && nextGoals.weekly !== prevGoals?.weekly) {
+                        recordEdit('goal', 'weekly', nextGoals.weekly);
+                    }
+                    if (typeof nextGoals.dailyQuest === 'string' && nextGoals.dailyQuest !== prevGoals?.dailyQuest) {
+                        recordEdit('goal', 'dailyQuest', nextGoals.dailyQuest);
+                    }
+                }
+
                 const ipc = (window as any).ipcRenderer;
                 if (ipc) {
                     await ipc.saveSettings(newSettings);
@@ -174,6 +197,7 @@ export const useDataStoreInternal = create<DataStore>()(
                         await ipc.invoke('reload-settings');
                     }
                 }
+                pushSettingsToCloud(newSettings);
             },
 
             previewSettings: (partialSettings: Partial<AppSettings>) => {

@@ -21,6 +21,7 @@ export interface PlanDeletePayload {
 }
 
 export interface TodoAddPayload {
+    id?: string;
     text: string;
     parentId?: string | null;
     afterId?: string | null;
@@ -33,6 +34,10 @@ export interface TodoUpdatePayload {
 }
 export interface TodoDeletePayload {
     id: string;
+    projectId?: string;
+}
+export interface TodoDeleteBatchPayload {
+    ids: string[];
     projectId?: string;
 }
 export interface TodoTogglePayload {

@@ -3,6 +3,7 @@ import { Todo } from "@/types";
 import { useTodoStore } from "@/hooks/useTodoStore";
 import { useDataStore } from "@/hooks/useDataStore";
 import { useArtisansCompass } from "@/core/ArtisansCompassProvider";
+import { useCommandStoreInternal } from "@/core/useCommandStore";
 import { cn } from "@/lib/utils";
 import { TodoItem } from "./TodoItem";
 import {
@@ -104,7 +105,7 @@ const SortableTodoItem = ({ todo, indicatorPosition, indicatorDepth, onSelectAll
 export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projectId, editorAlignment = 'left', className, actions: propActions, forceProjectId }: TodoEditorProps) {
     const store = useTodoStore();
     const { settings } = useDataStore();
-    const { commandManager, undo, redo } = useArtisansCompass();
+    const { commandManager } = useArtisansCompass();
 
     // Use provided actions or fallback to command dispatch
     const actions = useMemo(() => {
@@ -125,11 +126,7 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
                 commandManager.execute('cmd.deleteTodo', { id, projectId: effectiveProjectId });
             },
             deleteTodos: (ids: string[]) => {
-                // To keep it simple, if deleting multiple, run DeleteTodoCommand? 
-                // Wait, DeleteTodoCommand can take an array? 
-                // Let's implement DeleteTodosCommand or handle loop?
-                // For now, TodoStore still has deleteTodos.
-                ids.forEach(id => commandManager.execute('cmd.deleteTodo', { id, projectId: effectiveProjectId }));
+                commandManager.execute('cmd.deleteTodos', { ids, projectId: effectiveProjectId });
             },
             indentTodo: (id: string) => commandManager.execute('cmd.indentTodo', { id, projectId: effectiveProjectId }),
             unindentTodo: (id: string) => commandManager.execute('cmd.unindentTodo', { id, projectId: effectiveProjectId }),
@@ -336,6 +333,49 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
         setFocusedId(newId);
         setSelectedIds(new Set());
     }, [addTodo]);
+
+    const handlePasteItems = useCallback((items: Array<{text: string, completed: boolean, indent: number}>, afterId: string) => {
+        if (items.length === 0) return;
+
+        const location = findNodeLocation(todos, afterId);
+        const baseParentId = location ? location.parentId : null;
+
+        // Track created items by indent level to resolve parent relationships
+        const parentStack: Array<{id: string, indent: number}> = [];
+        if (location) {
+            parentStack.push({ id: afterId, indent: -1 });
+        }
+
+        let lastCreatedId = afterId;
+
+        items.forEach((item) => {
+            let parentId = baseParentId;
+            let insertAfterId = lastCreatedId;
+
+            if (item.indent > 0 && parentStack.length > 0) {
+                // Find the nearest parent with a lower indent level
+                for (let i = parentStack.length - 1; i >= 0; i--) {
+                    if (parentStack[i].indent < item.indent) {
+                        parentId = parentStack[i].id;
+                        // Insert after the last item at this indent or deeper
+                        insertAfterId = lastCreatedId;
+                        break;
+                    }
+                }
+            }
+
+            const newId = addTodo(item.text, parentId, insertAfterId);
+            if (item.completed) {
+                updateTodo(newId, { completed: true }, true);
+            }
+
+            parentStack.push({ id: newId, indent: item.indent });
+            lastCreatedId = newId;
+        });
+
+        setFocusedId(lastCreatedId);
+        setSelectedIds(new Set());
+    }, [todos, addTodo, updateTodo]);
 
     const handleAddImages = useCallback((paths: string[], insertAfterId: string) => {
         let currentAfterId = insertAfterId;
@@ -570,39 +610,80 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
 
 
 
-    // Auto-scroll and Bulk Selection Logic
+    // Set undo domain when TodoEditor is interacted with
+    const setActiveUndoDomain = useCommandStoreInternal((s) => s.setActiveUndoDomain);
+    useEffect(() => {
+        setActiveUndoDomain('command');
+    }, [focusedId, setActiveUndoDomain]);
+
+    // Serialize todos to markdown for clipboard
+    const serializeTodosToMarkdown = useCallback((todoIds: Set<string>): string => {
+        const serializeTodo = (todo: Todo, depth: number): string => {
+            const indent = '  '.repeat(depth);
+            const checkbox = todo.completed ? '[x]' : '[ ]';
+            const lines = [`${indent}- ${checkbox} ${todo.text}`];
+            if (todo.children) {
+                for (const child of todo.children) {
+                    lines.push(serializeTodo(child, depth + 1));
+                }
+            }
+            return lines.join('\n');
+        };
+
+        // Find selected items in tree order, serialize with children
+        const selectedInOrder: Todo[] = [];
+        const collectSelected = (items: Todo[]) => {
+            for (const item of items) {
+                if (todoIds.has(item.id)) {
+                    selectedInOrder.push(item);
+                } else if (item.children) {
+                    collectSelected(item.children);
+                }
+            }
+        };
+        collectSelected(todos);
+
+        return selectedInOrder.map(t => serializeTodo(t, 0)).join('\n');
+    }, [todos]);
+
+    // Bulk Selection keyboard handlers
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // Copy: Ctrl+C with selection
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyC' && selectedIds.size > 0) {
+                const activeTag = document.activeElement?.tagName;
+                if ((activeTag === 'INPUT' || activeTag === 'TEXTAREA') && selectedIds.size <= 1) return;
+
+                e.preventDefault();
+                const markdown = serializeTodosToMarkdown(selectedIds);
+                navigator.clipboard.writeText(markdown);
+            }
+
+            // Cut: Ctrl+X with selection
+            if ((e.ctrlKey || e.metaKey) && e.code === 'KeyX' && selectedIds.size > 0) {
+                const activeTag = document.activeElement?.tagName;
+                if ((activeTag === 'INPUT' || activeTag === 'TEXTAREA') && selectedIds.size <= 1) return;
+
+                e.preventDefault();
+                const markdown = serializeTodosToMarkdown(selectedIds);
+                navigator.clipboard.writeText(markdown);
+                deleteTodos(Array.from(selectedIds));
+                setSelectedIds(new Set());
+            }
+
+            // Delete/Backspace with selection
             if ((e.key === 'Backspace' || e.key === 'Delete') && selectedIds.size > 0) {
                 const activeTag = document.activeElement?.tagName;
-                // If input/textarea is focused, ONLY allow delete if it's a multi-selection
-                // (Assuming intention is to delete selected items, not edit text)
-                // If single selection + input focus, let native backspace handle text edit
                 if ((activeTag === 'INPUT' || activeTag === 'TEXTAREA') && selectedIds.size <= 1) return;
 
                 e.preventDefault();
                 deleteTodos(Array.from(selectedIds));
                 setSelectedIds(new Set());
             }
-
-            // Undo/Redo
-            if (e.ctrlKey || e.metaKey) {
-                if (e.key === 'z') {
-                    e.preventDefault();
-                    if (e.shiftKey) {
-                        redo();
-                    } else {
-                        undo();
-                    }
-                } else if (e.key === 'y') {
-                    e.preventDefault();
-                    redo();
-                }
-            }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedIds, deleteTodo, undo, redo]);
+    }, [selectedIds, deleteTodo, serializeTodosToMarkdown]);
 
     // Track pointer Y for auto-scroll independent of events
     const pointerY = useRef(0);
@@ -755,7 +836,8 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
             target.closest('button') ||
             target.closest('[data-dnd-handle]') ||
             target.closest('[data-editable-text]') || // Ignored text - CLICK TO EDIT
-            target.closest('.lucide')
+            target.closest('.lucide') ||
+            target.closest('[data-resize-handle]')
         ) {
             return;
         }
@@ -852,6 +934,7 @@ export function TodoEditor({ todos, isWidgetMode, isWidgetLocked = false, projec
                                     showIndentationGuides={settings?.showIndentationGuides} // Pass prop
                                     spellCheck={settings?.enableSpellCheck ?? false}
                                     onAddImages={handleAddImages}
+                                    onPasteItems={handlePasteItems}
                                     isWidgetMode={isWidgetMode}
                                     editorAlignment={editorAlignment}
                                 />

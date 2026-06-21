@@ -1,0 +1,108 @@
+name: Build & Release
+
+# `master`에 push만 하면 알아서:
+#   1. package.json version이 latest release와 같으면 patch +1 (auto-bump).
+#   2. 빌드 + GitHub Release publish (electron-builder).
+#   3. bump한 package.json을 [skip ci] commit으로 다시 master에 push.
+# 사용자가 직접 version을 올린 commit이면 (1)/(3)을 건너뛰고 그 version으로
+# 그대로 publish합니다. major/minor가 필요할 때 그렇게 쓰세요.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Restore .env from secret (optional)
+        # repo secret `ENV_FILE`가 있으면 .env로 복원 → 빌드된 앱에서
+        # Google/Notion OAuth 동작. 없으면 그냥 빌드만 진행.
+        shell: pwsh
+        run: |
+          if ("${{ secrets.ENV_FILE }}") {
+            "${{ secrets.ENV_FILE }}" | Out-File -FilePath .env -Encoding utf8 -NoNewline
+            Write-Host "Wrote .env from secret"
+          } else {
+            Write-Host "No ENV_FILE secret set — building without .env"
+          }
+
+      - name: Compare current version with latest release
+        id: vercheck
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          LATEST_TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || true)
+          echo "Package version : v$PKG_VERSION"
+          echo "Latest release  : ${LATEST_TAG:-<none>}"
+          if [ "v$PKG_VERSION" = "$LATEST_TAG" ]; then
+            echo "needs_bump=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_bump=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Auto-bump patch version
+        if: steps.vercheck.outputs.needs_bump == 'true'
+        shell: bash
+        run: |
+          npm version patch --no-git-tag-version
+          NEW=$(node -p "require('./package.json').version")
+          echo "Auto-bumped to v$NEW"
+
+      - name: Resolve final version
+        id: final
+        shell: bash
+        run: |
+          FINAL=$(node -p "require('./package.json').version")
+          echo "version=$FINAL" >> "$GITHUB_OUTPUT"
+          echo "Will publish v$FINAL"
+
+      - name: Run copy-worker
+        run: node copy-worker.js
+
+      - name: TypeScript compile
+        run: npx tsc
+
+      - name: Vite build (renderer)
+        run: npx vite build
+
+      - name: electron-builder publish to GitHub Release
+        run: npx electron-builder --win --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit bumped version back to master
+        # Publish가 성공한 뒤에만 bump commit을 master에 push.
+        # commit message의 [skip ci]가 무한 트리거를 막아줍니다.
+        if: steps.vercheck.outputs.needs_bump == 'true' && success()
+        shell: bash
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          if [ -f package-lock.json ]; then git add package-lock.json; fi
+          git commit -m "chore: release v${{ steps.final.outputs.version }} [skip ci]"
+          git push origin HEAD:master

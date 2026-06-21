@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol, net, desktopCapturer, shell, screen, Menu } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol, net, desktopCapturer, shell, screen, Menu, Tray, nativeImage } from 'electron'
 // import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
@@ -11,6 +11,8 @@ import * as dotenv from 'dotenv';
 
 let win: BrowserWindow | null = null;
 let splash: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let isQuitting = false; // true when user really wants to exit (tray menu or quit-app IPC)
 
 // Configure electron-log to save to logs.txt
 // Note: File path will be set after app is ready
@@ -185,10 +187,60 @@ function createWindow() {
     setupTracker(win);
   }
 
+  // Hide-to-tray on close. The window only truly closes when isQuitting=true
+  // (set by tray "Quit" menu, app before-quit, or the quit-app IPC).
+  win.on('close', (event) => {
+    if (isQuitting) return;
+    if (!tray) return; // No tray yet — fall through to normal close.
+    event.preventDefault();
+    win?.hide();
+  });
+
   win.on('closed', () => {
     win = null;
-    app.quit();
   });
+}
+
+function createTray() {
+  if (tray) return;
+  const iconCandidate = path.join(process.env.VITE_PUBLIC || '', 'appLOGO.png');
+  let trayIcon;
+  try {
+    trayIcon = nativeImage.createFromPath(iconCandidate);
+    if (trayIcon.isEmpty()) {
+      // Fallback: create a tiny empty image so tray still appears.
+      trayIcon = nativeImage.createEmpty();
+    }
+  } catch {
+    trayIcon = nativeImage.createEmpty();
+  }
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Artisans Compass');
+
+  const showWindow = () => {
+    if (!win) {
+      createWindow();
+      return;
+    }
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  };
+
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Open Artisans Compass', click: showWindow },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+  tray.setContextMenu(contextMenu);
+  tray.on('click', showWindow);
+  tray.on('double-click', showWindow);
 }
 
 import { setupStorageHandlers } from './storage';
@@ -205,7 +257,29 @@ ipcMain.on('log-message', (_, msg) => {
 });
 
 ipcMain.on('quit-app', () => {
+  isQuitting = true;
   app.quit();
+});
+
+app.on('before-quit', () => {
+  isQuitting = true;
+});
+
+// On Windows/Linux, when the user closes the last window we want to STAY
+// alive in the background (tray). Only quit if the user explicitly chose to.
+app.on('window-all-closed', () => {
+  if (!tray) {
+    app.quit();
+  }
+});
+
+app.on('activate', () => {
+  // macOS dock click / generic reactivation.
+  if (!win) {
+    createWindow();
+  } else {
+    win.show();
+  }
 });
 
 import { getRunningApps } from './process-utils'; // Added import
@@ -233,8 +307,14 @@ ipcMain.on('toggle-maximize-window', () => {
 });
 
 ipcMain.on('close-window', () => {
-  const win = BrowserWindow.getFocusedWindow();
-  win?.close();
+  // Same behavior as the system close button: hide to tray if tray exists,
+  // otherwise fall through to a real close.
+  const focused = BrowserWindow.getFocusedWindow();
+  if (focused && tray && focused === win) {
+    focused.hide();
+  } else {
+    focused?.close();
+  }
 });
 
 ipcMain.on('toggle-dev-tools', () => {
@@ -623,12 +703,15 @@ function setupAutoUpdater() {
   // Initial Check (Splash Screen Flow)
   if (splash) {
     // Ensure we don't hold the user hostage forever in splash
+    // GitHub releases.atom can be slow from some networks (notably outside US/EU).
+    // 30s gives a slow connection enough time without locking the user out.
     const safetyTimeout = setTimeout(() => {
       if (splash) {
         log.warn('Update check timed out, launching app.');
+        sendToWindows('update-state', { status: 'timeout' });
         launchApp();
       }
-    }, 10000); // 10 seconds timeout
+    }, 30000);
 
     // Hook into events to clear timeout
     autoUpdater.once('update-available', () => clearTimeout(safetyTimeout));
@@ -817,6 +900,9 @@ app.whenReady().then(async () => {
   setupGoogleAuth();
   setupNotionAuth();
   setupNotionOps(); // Added
+
+  // Tray must exist before any window's `close` event fires so hide-to-tray works.
+  createTray();
 
   // Decide launch flow
   if (true || app.isPackaged) {

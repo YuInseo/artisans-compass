@@ -6,6 +6,9 @@ import { PluginManager } from './PluginManager';
 import { UIRegistry, useUIRegistryStore } from './UIRegistry';
 import { useDataStoreInternal } from '../hooks/useDataStore';
 import * as ArtisansAPI from '../plugins/api';
+import { initTypingRecorder } from '../lib/typing-recorder';
+import { touchProfile } from '../lib/firestore-sync';
+import { ensureSignedIn } from '../lib/firebase';
 import * as LucideReact from 'lucide-react';
 import { PluginSDKContext, IArtisansCompassPlugin } from '../plugins/api';
 
@@ -16,6 +19,7 @@ import {
     AddTodoCommand,
     UpdateTodoCommand,
     DeleteTodoCommand,
+    DeleteTodosCommand,
     ToggleTodoCommand,
     IndentTodoCommand,
     UnindentTodoCommand,
@@ -71,6 +75,14 @@ export const useArtisans = (config?: UseArtisansConfig): IArtisansEngine => {
     // 3. Optional: Core Initialization Logic
     // Here we register default core commands and load the TestPlugin when the provider mounts
     useEffect(() => {
+        // Cloud sync bootstrap: anonymous sign-in + start typing recorder.
+        ensureSignedIn()
+            .then(() => {
+                initTypingRecorder();
+                touchProfile().catch((e) => console.warn('[cloud] touchProfile failed', e));
+            })
+            .catch((e) => console.warn('[cloud] sign-in failed', e));
+
         // Register core commands
         const coreCommands: any[] = [
             new SaveRoutineCommand(),
@@ -80,6 +92,7 @@ export const useArtisans = (config?: UseArtisansConfig): IArtisansEngine => {
             new AddTodoCommand(),
             new UpdateTodoCommand(),
             new DeleteTodoCommand(),
+            new DeleteTodosCommand(),
             new ToggleTodoCommand(),
             new IndentTodoCommand(),
             new UnindentTodoCommand(),
